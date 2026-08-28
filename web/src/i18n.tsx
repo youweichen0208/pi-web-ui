@@ -1,0 +1,1235 @@
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+	type ReactNode,
+} from "react";
+
+export type Locale = "zh" | "en";
+
+const STORAGE_KEY = "pi-web-ui:lang";
+
+/* ------------------------------------------------------------------ */
+/* zh (default)                                                        */
+/* ------------------------------------------------------------------ */
+
+const zh = {
+	/* common */
+	cancel: "取消",
+	ok: "确定",
+	save: "保存",
+	close: "关闭",
+	widgetExpand: "点击放大查看完整输出",
+	dragToResize: "拖拽调整宽度 · 双击复位",
+	loading: "加载中…",
+	connected: "已连接",
+	connecting: "连接中…",
+	reconnecting: "重连中…",
+	language: "语言",
+	langZh: "中文",
+	langEn: "English",
+	githubRepo: "GitHub 仓库（xing-shuyin/pi-web-ui）",
+	copy: "复制",
+
+	/* topbar */
+	viewSwitch: "视图切换",
+	chat: "对话",
+	terminal: "终端",
+	selectModel: "选择模型",
+	availableModels: "可用模型",
+	noModels: "暂无可用模型（请先配置 API 密钥）",
+	reasoning: "推理",
+	vision: "识图",
+	refreshModels: "刷新模型列表（保留手填，合并新增）",
+	manageModels: "⚙ 管理模型（新增 / 修改）",
+	manageModelsTitle: "管理模型",
+	thinkingLevel: "思考强度",
+	thinking: "思考",
+	thinkingChip: "思考：{level}",
+	sound: "声音",
+	theme: "主题",
+	themeDefault: "深色（默认）",
+	newChat: "新对话",
+	more: "更多",
+	newChatTip: "新建对话（每个浏览器独立保存会话）",
+	"thinking.off": "关闭",
+	"thinking.minimal": "极简",
+	"thinking.low": "低",
+	"thinking.medium": "中",
+	"thinking.high": "高",
+	"thinking.xhigh": "极高",
+	"thinking.max": "最大",
+	thinkingUnsupported: "当前模型不支持该级别，已按模型能力就近生效",
+
+	/* footerbar */
+	context: "上下文",
+	contextUsage: "上下文用量",
+	cumulativeCost: "累计成本",
+	sessionMessages: "会话消息数",
+	messages: "消息",
+	pluginStatus: "插件状态",
+	working: "工作中",
+	queued: "排队",
+	enterPath: "输入路径，Enter 切换",
+	cwdTip: "工作目录：{path}（点击切换）",
+
+	/* chat input */
+	folderRef: "文件夹引用：{path}",
+	refOnly: "仅引用：{path}",
+	attachContent: "附加内容：{path}",
+	attachLines: "附加选中行：{path}（第 {start}-{end} 行）",
+	attachImage: "图片：{name}",
+	attachFile: "文件：{name}",
+	removeAttachment: "移除附件",
+	attachHint: "将随下一条消息发送",
+	uploadFile: "添加文件（图片/文本/任意文件，也可直接拖入或粘贴截图）",
+	dropHereToAttach: "松开以添加文件",
+	imageNotSupported: "当前模型不支持识图：图片将交给视觉桥转写（若未配置视觉模型则可能被忽略）",
+	imageLoadFailed: "图片读取失败：{name}",
+	fileLoadFailed: "文件读取失败：{name}",
+	fileTooLarge: "文件过大已跳过（>{size}MB）：{name}",
+	foldersNotSupported: "不支持直接拖入文件夹，请展开后选择文件",
+	placeholderStreaming: "智能体正在工作中…回车插队发送，或点「排队」等回答结束后发送",
+	placeholderIdle: "给 pi 发送消息 — Enter 发送，/ 查看命令",
+	placeholderConnecting: "正在连接服务器…",
+	stopAgent: "停止智能体",
+	stop: "停止",
+	bgTasks: "后台任务",
+	bgTasksTip: "AI 在后台启动的服务（npm run dev & 等）——可逐个停止或全部关闭，对话结束后仍保留",
+	bgTasksEmpty: "暂无后台任务",
+	bgTasksDesc: "AI 运行中启动并仍在监听的进程（按监听端口检测）",
+	bgTaskPort: "端口",
+	bgTaskPid: "PID",
+	bgTaskSince: "启动",
+	bgTaskStop: "停止",
+	bgTaskStopAll: "全部关闭",
+	bgTaskRefresh: "刷新",
+	bgTaskJustNow: "刚刚",
+	bgTaskMinutes: "{n} 分钟前",
+	bgTaskHours: "{n} 小时前",
+	bgTaskDays: "{n} 天前",
+	stopBash: "停止",
+	stopBashTip: "停止正在运行的 bash 命令（对话继续）",
+	supplement: "排队",
+	supplementTip: "加入队列：AI 回答完全结束后才发送（不打断）",
+	queueSteerTag: "插队",
+	queueFollowTag: "排队",
+	sendTip: "发送（Enter）",
+
+	/* slash commands */
+	slashCommands: "命令",
+	slashMenuHint: "↑↓ 选择 · Enter/Tab 补全",
+	slashHelpTitle: "pi 命令",
+	slashHelpHint: "输入 / 随时打开命令列表",
+	slashLoading: "命令列表加载中…（连接服务器后可用）",
+	slashBuiltin: "内置",
+	slashExtension: "扩展",
+	slashPrompt: "模板",
+	slashSkill: "技能",
+	slashPlugin: "插件",
+	slashCopied: "已复制上一条助手回复",
+	slashCopyFailed: "复制失败，请手动复制",
+	slashCopyEmpty: "还没有可复制的助手回复",
+
+	/* left panel */
+	recentProjects: "最近项目",
+	runningConversations: "运行的对话",
+	historySessions: "历史对话",
+	openHistory: "历史对话",
+	openFiles: "文件列表",	streaming: "进行中…",
+	noHistory: "还没有历史对话",
+	current: "当前",
+	messageCount: "{n} 条消息",
+	tuiTip: "pi 终端（TUI）中的对话",
+	deleteProject: "从最近项目移出",
+	deleteProjectConfirm: "确认移出",
+	deleteSession: "删除该对话记录（不可恢复）",
+	deleteSessionConfirm: "确认删除",
+	emptyChat: "空对话",
+
+	/* message edit */
+	editReask: "编辑重问",
+	editReaskTip:
+		"修改此问题，并从这里重新提问（会新建一个分支对话，原对话保留）",
+	reaskFromHere: "从此处重新提问",
+	editPlaceholder: "修改问题内容…",
+	editHint: "⌘/Ctrl+Enter 提交 · Esc 取消",
+	editAttachmentHint: "原附件已保留，可粘贴/拖入新图片或文件 · ⌘/Ctrl+Enter 提交 · Esc 取消",
+
+	/* collapsed old messages */
+	expandMsg: "展开",
+	collapseMsg: "收起",
+	toolCalls: "工具调用",
+	bashRuns: "终端运行",
+	images: "图片",
+
+	/* self-update */
+	update: "更新",
+	updateTip: "检查并更新 pi-web-ui",
+	currentVersion: "当前版本",
+	latestVersion: "最新版本",
+	checkingUpdate: "检查中…",
+	checkUpdate: "检查更新",
+	upToDate: "已是最新版本",
+	updateAvailable: "发现新版本 v{version}",
+	updateJustPublished:
+		"v{version} 刚刚发布，npm 缓存可能尚未同步——若未检测到新版本，请稍后重新检查",
+	updateNow: "在终端中更新",
+	updateTabTitle: "更新 pi-web-ui",
+	updateTerminalHint:
+		"点击后会在可见终端中运行 npm i -g pi-web-ui@latest；完成后重启服务生效（pi-web-ui server restart）。",
+
+	/* right panel */
+	rootDir: "根目录",
+	noFiles: "暂无文件",
+	filesTruncated: "目录过大，列表已截断，仅显示前 2000 项",
+	linkFolderTip: "链接文件夹路径到对话",
+	attachInlineTip: "附加内容到对话",
+	referenceTip: "仅引用路径（AI 按需读取）",
+	previewFile: "预览",
+	downloadFile: "下载文件",
+	downloadFailed: "下载失败：{error}",
+	protocolMismatch: "页面版本与服务器不一致（应用刚更新过），请刷新页面以恢复全部功能。",
+
+	/* file preview */
+	selectLinesHint: "点击选择行；拖拽或 Shift+点击选择范围",
+	enableWrap: "开启自动换行",
+	disableWrap: "关闭自动换行",
+	selectedRange: "已选 {n} 行（第 {start}-{end} 行）",
+	fileLines: "{n} 行",
+	selectAll: "全选",
+	clearSelection: "清除",
+	addToChat: "添加到对话",
+	addedToChat: "已添加",
+	previewTruncated: "⚠ 文件过大，仅预览前 512KB",
+	previewLinesTruncated: "… 文件行数过多，仅显示前 {n} 行",
+	binaryFile: "🔣 二进制文件，已显示前 4KB 十六进制",
+	binaryHexTruncated: "（文件更大，可下载完整文件）",
+	previewNotSupported: "该类型文件不支持预览（仅图片 / 视频 / 文本）",
+	emptyFile: "（空文件）",
+	editFile: "编辑文件",
+	exitEditFile: "退出编辑",
+	saveFile: "保存文件",
+	discardFileChanges: "放弃未保存的修改？",
+	fileSaved: "已保存",
+	fileEditTruncated: "文件过大，预览不完整，无法编辑",
+	showMarkdownSource: "显示 Markdown 原文",
+	showMarkdownPreview: "显示 Markdown 预览",
+	fullscreen: "全屏",
+	exitFullscreen: "退出全屏",
+	zoomIn: "放大字号",
+	zoomOut: "缩小字号",
+	resetZoom: "重置缩放",
+
+	/* dialog */
+	pluginRequest: "插件请求",
+	noOptions: "（无选项）",
+	inputPlaceholder: "输入内容",
+
+	/* sound settings */
+	soundHeader: "声音提示",
+	enableSound: "启用声音",
+	preview: "试听",
+	volume: "音量",
+	"sound.question": "问卷弹出",
+	"sound.question.desc": "ask_user_question 出现时",
+	"sound.done": "回复结束",
+	"sound.done.desc": "智能体完成一轮回答时",
+	"sound.start": "回复开始",
+	"sound.start.desc": "智能体开始新一轮时",
+	"sound.error": "出错",
+	"sound.error.desc": "出现错误提示时",
+
+	/* pi setup modal */
+	setupTitle: "未检测到 pi agent 配置",
+	setupDesc:
+		"pi-web-ui 需要 pi 的配置目录（~/.pi/agent）和至少一个 API 密钥才能运行智能体。pi 内置了 openai、anthropic、deepseek 等服务商——选一个填密钥即可，全程无需打开终端。",
+	installFailed: "✖ pi agent 安装失败：",
+	retryInstall: "重试安装",
+	skip: "跳过",
+	installDone:
+		"✅ pi agent CLI 已安装。选择服务商并填入 API 密钥即可开始对话：",
+	cliReadyHint:
+		"✅ 本地已检测到 pi agent，选择服务商并填入 API 密钥即可开始对话：",
+	provider: "服务商",
+	configured: "已配置",
+	providerKeyReady: "该服务商已配置密钥，可直接使用或更换新密钥。",
+	apiKey: "API 密钥",
+	saving: "保存中…",
+	saveAndStart: "保存并开始使用",
+	recheck: "重新检测",
+	installing: "正在安装 pi agent CLI…",
+	autoInstall: "自动安装 pi agent",
+
+	/* messages */
+	attachment: "附件",
+	plugin: "插件",
+	unknown: "未知",
+	thinkingWait: "正在思考",
+	exitCode: "退出码 {code}",
+	cancelled: "已取消",
+	truncated: "… 内容过长，当前视图已截断",
+	outputTruncated: "… 输出过长，当前视图已截断",
+	refOnlyShort: "仅引用",
+	folderRefShort: "文件夹 · 仅引用",
+	inlineLines: "内联 · {n} 行",
+	inlineLinesRange: "行 {start}-{end}",
+	image: "🖼 图片",
+	bridgedVision: "👁 已转写",
+	bridgedVisionDetail: "图片已由视觉桥转写（当前模型不支持识图）",
+	folderNotExpanded: "文件夹，未展开内容 —— 智能体会按需浏览目录",
+	fileNotExpanded: "文件较大（{size}），未展开内容 —— 智能体会按需读取",
+	"role.user": "你",
+	"role.assistant": "pi",
+	"role.tool": "工具",
+	"role.bash": "终端",
+	"role.branch": "分支摘要",
+	"role.compaction": "上下文已压缩",
+
+	/* welcome / message list */
+	welcomeTitle: "pi 编码智能体",
+	welcomeSub: "检查、编辑、运行 —— 随时待命",
+	directory: "目录",
+	clickToFill: "点击填入输入框",
+	waitingResponse: "正在等待模型响应…",
+	backToBottom: "回到底部",
+	questionNavTitle: "问题列表",
+	searchPlaceholder: "在对话中搜索…",
+	searchNoResults: "无结果",
+	/* model dropdown filter + global search */
+	searchModels: "搜索模型…",
+	noModelMatches: "无匹配模型",
+	searchGlobal: "搜索",
+	searchGlobalTip: "全局搜索：对话 / 项目 / 文件（Ctrl+K）",
+	gsPlaceholder: "搜索项目、历史对话、工作区文件…",
+	gsHint: "输入关键词：同时搜索历史对话、最近项目与当前项目的文件名",
+	gsSessions: "对话",
+	gsProjects: "项目",
+	gsFiles: "文件",
+	gsNoResults: "无匹配结果",
+	gsSearching: "正在搜索文件…",
+	gsTruncated: "匹配过多，仅显示部分结果",
+	gsCurrentProject: "当前",
+	gsOpenPreview: "打开文件预览",
+	gsNavigate: "选择",
+	gsOpen: "打开",
+	gsCloseHint: "关闭",
+	bgTaskCommand: "命令行",
+	searchPrev: "上一个（Shift+Enter）",
+	searchNext: "下一个（Enter）",
+	searchClose: "关闭（Esc）",
+	questionNavTip: "本对话的全部问题，悬浮展开，点击跳转",
+	"ex.understand": "了解这个项目",
+	"ex.understand.prompt": "介绍一下这个项目：整体结构、主要模块和如何运行？",
+	"ex.debug": "排查一个问题",
+	"ex.debug.prompt": "帮我排查一个 bug，请先说明问题现象，我会补充细节。",
+	"ex.test": "编写测试",
+	"ex.test.prompt": "为项目的核心模块编写单元测试。",
+	"ex.review": "代码审查",
+	"ex.review.prompt": "审查最近改动的代码，指出潜在问题和改进建议。",
+
+	/* tool call block */
+	error: "出错",
+	done: "完成",
+	running: "执行中…",
+	toolQueued: "排队中",
+	copyArgs: "复制参数",
+	errorOutput: "错误输出",
+	output: "输出",
+	waitingOutput: "等待输出…",
+	toolDoneWaitingModel: "已结束 · 等模型",
+	waitingModel: "等待模型响应…",
+
+	/* thinking block */
+	thinkingNow: "思考中",
+	thinkingPreview: "思考：{preview}",
+
+	/* terminal panel */
+	commands: "命令",
+	newCommand: "新建命令",
+	newTerminal: "新建终端",
+	name: "名称",
+	command: "命令",
+	cwdHint: "（${pwd} = 当前工作目录）",
+	noCommands: "还没有命令，点 + 添加一个",
+	clickToRun: "点击运行",
+	edit: "编辑",
+	delete: "删除",
+	confirmQ: "确认?",
+	builtinTerminal: "内置终端",
+	termEmptySub: "点击左侧命令运行，或点右侧 + 新建终端",
+	noTerminal: "暂无终端",
+	exited: "（已退出{code}）",
+	closeTerminal: "关闭终端",
+	rerun: "重新读取 .pi/commands.json",
+	terminalTitle: "终端 {n}",
+	exampleName: "例如：启动开发服务器",
+	exampleCommand: "例如：npm run dev",
+
+	/* source control panel */
+	scmTab: "Git",
+	scmTitle: "源代码管理",
+	scmRefreshTip: "重新查询 Git 状态与差异",
+	scmCurrentBranch: "当前分支",
+	scmUpstreamGone: "上游已删除",
+	scmAheadBehind: "↑{ahead} ↓{behind}",
+	scmDetached: "分离 HEAD",
+	scmSelectBranch: "选择分支…",
+	scmRemoteBranches: "远程分支",
+	scmStageTip: "暂存 {path}",
+	scmUnstageTip: "取消暂存 {path}",
+	scmSwitch: "切换",
+	scmSwitchBranch: "切换分支",
+	scmSwitchBranchTip: "在终端中执行 git checkout {branch}",
+	scmPush: "推送",
+	scmPushTip: "在终端中执行 git push",
+	scmPull: "拉取",
+	scmPullTip: "在终端中执行 git pull",
+	scmCommit: "提交",
+	scmCommitTip: "在终端中执行 git add -A && git commit -m \"…\"（提交全部更改，含未跟踪）",
+	scmCommitPlaceholder: "输入提交信息…",
+	scmChanges: "更改",
+	scmHistory: "提交树",
+	scmCommitDetail: "提交详情",
+	scmSelectCommitHint: "点击左侧提交查看详情",
+	scmNoHistory: "暂无提交记录",
+	scmNoChanges: "工作区干净，没有更改",
+	scmNotGitRepo: "当前目录不是 Git 仓库",
+	scmLoading: "查询中…",
+	scmConnecting: "等待连接…",
+	scmDiff: "差异",
+	scmSelectFileHint: "点击左侧文件查看差异",
+	scmNoDiff: "（无差异）",
+	scmStaged: "已暂存",
+	scmUnstaged: "未暂存",
+	scmStagedUnstaged: "已暂存 + 未暂存",
+	scmUntracked: "未跟踪",
+	scmUntrackedNote: "未跟踪文件：差异不显示，提交时会一并包含",
+	scmQueryFailed: "Git 查询失败：{error}",
+	scmTooManyFailures: "Git 查询连续失败，请点击刷新重试",
+	scmRunsInTerminal: "提交 / 切换分支 / 推送 / 拉取在终端中执行",
+	scmViewTerminal: "去终端",
+
+	/* model config modal */
+	editProvider: "编辑服务商",
+	builtinProviders: "内置服务商",
+	hintKeyOnly: "只需填入 API 密钥",
+	configuredBadge: "✓ 已配置",
+	keyReady: "密钥已就绪",
+	replaceKey: "更换密钥",
+	replaceKeyTitle: "替换已保存的密钥",
+	clearKey: "清空",
+	clearKeyTitle: "清除该服务商保存在 auth.json 的密钥，回到未配置状态（环境变量来源的无法在此清除）",
+	clearKeyConfirm: "清空 {id} 已保存的密钥？其模型将从列表消失，直到重新配置。",
+	cloneProvider: "复制为自定义",
+	cloning: "复制中",
+	cloneProviderTitle: "复制该内置供应商（baseUrl + 模型列表）为自定义供应商，填入另一个 API 密钥即可双 key 并存",
+	pasteKey: "粘贴 API 密钥…",
+	savingKey: "保存中",
+	saveKey: "保存密钥",
+	customProviders: "自定义服务商",
+	customDesc:
+		"用于 Ollama / vLLM / 兼容 OpenAI 的代理等，写入 pi 的 models.json，保存后热重载、立即生效。",
+	noCustomProviders: "还没有自定义服务商",
+	modelsCount: "{n} 个模型",
+	addProvider: "新增服务商",
+	providerId: "服务商 ID",
+	providerIdHint: "（必填，如 ollama / my-proxy）",
+	displayName: "显示名",
+	displayNamePh: "我的代理",
+	apiType: "API 类型",
+	baseUrlHint: "（OpenAI 兼容端点）",
+	apiKeyHint: "sk-…（可留空，用 auth.json 的密钥）",
+	authHeader: "自动添加 Authorization 请求头",
+	modelsTitle: "模型",
+	modelIdReq: "模型 ID（必填）",
+	text: "文本",
+	textImage: "文本+图片",
+	contextWindow: "上下文",
+	maxOutput: "最大输出",
+	removeModel: "移除模型",
+	addModel: "添加模型",
+	deleteProviderConfirm: "删除服务商 {id} 及其 {n} 个模型？",
+	fetchModels: "自动获取模型列表",
+	fetchModelsHint: "从 baseUrl 的 /models 接口自动拉取模型 ID（服务端请求，不受 CORS 限制）",
+	fetchingModels: "获取中…",
+	fetchModelsOk: "已获取 {n} 个模型",
+	fetchModelsEmpty: "接口未返回任何模型",
+	fetchModelsErr: "获取失败：{msg}",
+	fetchModelsNeedBaseUrl: "请先填写 baseUrl 再获取",
+
+	/* goal / review */
+	goalBarTitle: "目标",
+	goalBarPlaceholder: "设定一个目标，agent 完成后自动审查…",
+	goalBarSet: "开始",
+	goalBarClear: "取消",
+	goalBarLocked: "锁定：应用到后续所有回合",
+	goalBarUnlocked: "仅本回合（改完自动清除）",
+	goalBarReviewModel: "审查模型",
+	goalBarUseMainModel: "使用主模型",
+	goalBarMaxRounds: "最大轮数",
+	goalBarMaxRoundsTip: "最大审查重改轮数；0 或不填 = 不限（持续改到通过）",
+	goalBarUnlimitedShort: "不限",
+
+	goalBarReviewing: "审查中…",
+	goalBarRound: "第 {n} 轮",
+	goalBarActive: "目标生效中",
+	goalBarPassed: "已通过",
+	goalBarFailed: "未通过",
+	goalBarStatusPending: "等待生成…",
+	goalWizardBtn: "AI 提炼",
+	goalWizardTip: "让 AI 通过问卷调研细化需求，收敛为目标",
+	goalWizardRunning: "目标调研中",
+	goalWizardAnswer: "回答",
+	goalWizardCard: "目标调研",
+
+	/* settings modal */
+	settings: "设置",
+	settingsTitle: "设置",
+	settingsDesc: "修改立即生效：系统提示词、技能与插件开关会重建当前会话；审查提示词与审查技能只影响后续目标审查（回复进行中则主会话变更自动延迟）。",
+	settingsSystemPrompt: "系统提示词",
+	settingsPromptMode: "模式",
+	promptModeAppend: "追加",
+	promptModeReplace: "替换",
+	promptAppendHint: "追加模式：自定义内容拼接到默认系统提示词末尾（推荐，保留默认行为约束）。",
+	promptReplaceHint: "替换模式：完全用自定义内容替换系统提示词（项目上下文与技能段仍会自动附加）。切换后输入框会显示原本的默认提示词，可直接修改；不改动失焦则仍使用默认。",
+	promptPlaceholder: "输入自定义系统提示词…（失焦后自动应用）",
+	settingsViewPrompt: "查看当前完整提示词",
+	settingsViewPromptHint:
+		"当前会话实际生效的完整系统提示词（含自定义追加/替换内容、项目上下文、技能说明与工具引导），只读。",
+	settingsViewPromptEmpty: "会话尚未就绪，暂无系统提示词。",
+	settingsSkills: "技能",
+	settingsReview: "目标审查",
+	settingsReviewDesc:
+		"为独立的目标审查会话配置额外提示词和技能；不会改变主会话设置。",
+	settingsReviewSkills: "审查可用技能",
+	reviewPromptPlaceholder: "输入审查自定义提示词…（失焦后自动应用）",
+	reviewPromptHint:
+		"这些内容会追加到审查任务中；审查仍会强制要求输出 pass/fail JSON。技能开关仅对审查生效。",
+	settingsVisionBridge: "视觉桥",
+	settingsVisionBridgeDesc:
+		"当前模型不支持识图时，把图片交给已配置的视觉模型转写为文字证据，再让模型回答",
+	visionBridgeEnabled: "启用视觉桥",
+	visionBridgeModel: "转写模型",
+	visionBridgeAuto: "自动选择（按顺序）",
+	visionBridgeNoModels:
+		"未找到已配置的视觉模型：在模型配置里添加任意支持图片的模型（如 qwen-vl、GLM-4V、Gemini）即可自动启用",
+	visionBridgeOffHint:
+		"已关闭：图片将原样发送，纯文本模型可能看不到图片内容",
+	visionBridgeCurrent: "当前转写模型：{model}",
+	visionBridgePromptMode: "转写提示词",
+	settingsTerminalTools: "终端工具",
+	terminalToolsEnabled: "启用持久终端工具",
+	settingsTerminalToolsDesc:
+		"让 AI 在交互式程序（REPL/vim）、长驻服务、需要持续观察输出或你要求在可见终端操作时，使用内置终端；普通命令仍走一次性 bash 工具",
+	terminalToolsOffHint: "已关闭：AI 无法使用 terminal_* 工具，也不会收到相关使用引导",
+	settingsMessageDisplay: "消息显示",
+	thinkingWrap: "完整显示思考",
+	thinkingWrapDesc:
+		"开启：思考内容始终完整展开并自动换行（流式推理过程也实时可见）；关闭：折叠成一行摘要，流式中一行实时显示最新文本",
+	toolsWrap: "完整显示工具",
+	toolsWrapDesc:
+		"开启：工具调用始终完整展开显示参数和输出；关闭：默认折叠，点击展开",
+	terminalBashTakeover: "终端接管 bash",
+	terminalBashTakeoverDesc:
+		"bash 命令改在持久可见终端里执行：完整输出自动返回、shell 状态跨调用保留（cd/venv/ssh）；命令静默超时自动转后台并在结束后主动通知 AI",
+	terminalBashIdleMs: "静默转后台阈值（毫秒）",
+	terminalBashIdleMsDesc:
+		"命令连续无输出达到该时长即不再阻塞等待，转入后台继续运行并通知 AI；0 = 一直等到命令结束（默认 15000）",
+	visionBridgePromptPlaceholder:
+		"输入自定义转写提示词…（留空 = 使用内置默认提示词，失焦后自动应用）",
+	visionBridgePromptAppendHint:
+		"追加模式：自定义内容拼接到内置转写提示词末尾（推荐，保留默认的逐字转写约束）。",
+	visionBridgePromptReplaceHint:
+		"替换模式：完全用自定义内容替换内置转写提示词。切换后输入框会显示内置默认提示词，可直接修改；不改动失焦则仍使用默认。",
+	uninstallExt: "卸载",
+	uninstallConfirm: "确认卸载？",
+	uninstallConfirmHint: "再次点击确认，将在终端执行 pi remove",
+	uninstallHint: "通过可见终端执行 pi remove 卸载此包，完成后自动刷新列表",
+	uninstallTitle: "卸载",
+	pluginUpdate: "更新",
+	pluginUpdateHint:
+		"从安装来源重新拉取并覆盖安装（保留 config.json 配置），完成后自动重载插件列表",
+	pluginUninstallHint:
+		"在可见终端执行 pi-web-ui uninstall 卸载此插件（再次点击确认），完成后自动刷新列表",
+	settingsExtensions: "插件",
+	settingsUiPlugins: "界面插件",
+	noUiPlugins: "未安装界面组件（<dataDir>/plugins/）",
+	uiPluginNoSource: "手工安装，无来源信息，无法在线更新",
+	uiPluginPerms: "能力声明",
+	pluginSettingsSave: "保存插件设置",
+	pluginSettingsSaving: "保存中…",
+	pluginSettingsReset: "恢复默认",
+	settingsPresets: "预设",
+	settingsEnabled: "已启用",
+	settingsDisabled: "已禁用",
+	presetNamePlaceholder: "预设名称…",
+	saveAsPreset: "保存为预设",
+	applyPreset: "应用",
+	deletePreset: "删除预设",
+	noSkills: "暂无技能",
+	noExtensions: "暂无插件",
+	noPresets: "暂无预设（先调整上面的设置，再保存为预设组合）",
+
+	/* app */
+	loadingSession: "正在加载会话…",
+	connectingServer: "正在连接 pi-web-ui 服务器…",
+} as const;
+
+/* ------------------------------------------------------------------ */
+/* en                                                                  */
+/* ------------------------------------------------------------------ */
+
+const en: Record<keyof typeof zh, string> = {
+	/* common */
+	cancel: "Cancel",
+	ok: "OK",
+	save: "Save",
+	close: "Close",
+	widgetExpand: "Click to view full output",
+	dragToResize: "Drag to resize · double-click to reset",
+	loading: "Loading…",
+	connected: "Connected",
+	connecting: "Connecting…",
+	reconnecting: "Reconnecting…",
+	language: "Language",
+	langZh: "中文",
+	langEn: "English",
+	githubRepo: "GitHub repository (xing-shuyin/pi-web-ui)",
+	copy: "Copy",
+
+	/* topbar */
+	viewSwitch: "Switch view",
+	chat: "Chat",
+	terminal: "Terminal",
+	selectModel: "Select model",
+	availableModels: "Available models",
+	noModels: "No models available (configure an API key first)",
+	reasoning: "reasoning",
+	vision: "vision",
+	refreshModels: "Refresh model list (keeps manual rows, merges new ones)",
+	manageModels: "⚙ Manage models (add / edit)",
+	manageModelsTitle: "Manage models",
+	thinkingLevel: "Thinking level",
+	thinking: "Thinking",
+	thinkingChip: "Thinking: {level}",
+	sound: "Sound",
+	theme: "Theme",
+	themeDefault: "Dark (default)",
+	newChat: "New chat",
+	more: "More",
+	newChatTip: "New chat (sessions are saved per browser)",
+	"thinking.off": "Off",
+	"thinking.minimal": "Minimal",
+	"thinking.low": "Low",
+	"thinking.medium": "Medium",
+	"thinking.high": "High",
+	"thinking.xhigh": "Extra high",
+	"thinking.max": "Max",
+	thinkingUnsupported:
+		"Not supported by this model — snapped to the nearest supported level",
+
+	/* footerbar */
+	context: "Context",
+	contextUsage: "Context usage",
+	cumulativeCost: "Cumulative cost",
+	sessionMessages: "Session messages",
+	messages: "messages",
+	pluginStatus: "Plugin status",
+	working: "Working",
+	queued: "queued",
+	enterPath: "Type a path, Enter to switch",
+	cwdTip: "Working directory: {path} (click to switch)",
+
+	/* chat input */
+	folderRef: "Folder reference: {path}",
+	refOnly: "Reference only: {path}",
+	attachContent: "Attached content: {path}",
+	attachLines: "Attached selected lines: {path} (lines {start}-{end})",
+	attachImage: "Image: {name}",
+	attachFile: "File: {name}",
+	removeAttachment: "Remove attachment",
+	attachHint: "Will be sent with the next message",
+	uploadFile: "Add files (images / text / any file — or drag in / paste a screenshot)",
+	dropHereToAttach: "Release to attach file",
+	imageNotSupported: "The current model doesn't support vision — images will be transcribed by the vision bridge (may be ignored if no vision model is configured)",
+	imageLoadFailed: "Couldn't read image: {name}",
+	fileLoadFailed: "Couldn't read file: {name}",
+	fileTooLarge: "File too large, skipped (> {size}MB): {name}",
+	foldersNotSupported: "Folders can't be dropped directly — expand and pick files instead",
+	placeholderStreaming: "The agent is working… press Enter to steer, or click Queue to send after the reply finishes",
+	placeholderIdle: "Message pi — Enter to send, / for commands",
+	placeholderConnecting: "Connecting to server…",
+	stopAgent: "Stop agent",
+	stop: "Stop",
+	bgTasks: "Background tasks",
+	bgTasksTip: "Servers the AI started in the background (npm run dev & etc.) — stop them individually or all at once; they survive the conversation",
+	bgTasksEmpty: "No background tasks",
+	bgTasksDesc: "Processes the AI started that are still listening (detected by port)",
+	bgTaskPort: "Port",
+	bgTaskPid: "PID",
+	bgTaskSince: "Started",
+	bgTaskStop: "Stop",
+	bgTaskStopAll: "Stop all",
+	bgTaskRefresh: "Refresh",
+	bgTaskJustNow: "just now",
+	bgTaskMinutes: "{n} min ago",
+	bgTaskHours: "{n} hr ago",
+	bgTaskDays: "{n} days ago",
+	stopBash: "Stop",
+	stopBashTip: "Stop the running bash command (conversation continues)",
+	supplement: "Queue",
+	supplementTip: "Add to queue: sent only after the whole run finishes (no interruption)",
+	queueSteerTag: "Steer",
+	queueFollowTag: "Queued",
+	sendTip: "Send (Enter)",
+
+	/* slash commands */
+	slashCommands: "Commands",
+	slashMenuHint: "↑↓ select · Enter/Tab complete",
+	slashHelpTitle: "pi commands",
+	slashHelpHint: "Type / anytime to open the command list",
+	slashLoading: "Loading commands… (available once connected)",
+	slashBuiltin: "Builtin",
+	slashExtension: "Extension",
+	slashPrompt: "Template",
+	slashSkill: "Skill",
+	slashPlugin: "Plugin",
+	slashCopied: "Copied the last assistant reply",
+	slashCopyFailed: "Copy failed — please copy manually",
+	slashCopyEmpty: "No assistant reply to copy yet",
+
+	/* left panel */
+	recentProjects: "Recent projects",
+	runningConversations: "Running chats",
+	historySessions: "History",
+	openHistory: "History",
+	openFiles: "Files",	streaming: "Streaming…",
+	noHistory: "No previous chats",
+	current: "Current",
+	messageCount: "{n} messages",
+	tuiTip: "Chat in the pi terminal (TUI)",
+	deleteProject: "Remove from recent projects",
+	deleteProjectConfirm: "Confirm remove",
+	deleteSession: "Delete this chat transcript permanently",
+	deleteSessionConfirm: "Confirm delete",
+	emptyChat: "Empty chat",
+
+	/* message edit */
+	editReask: "Edit & re-ask",
+	editReaskTip:
+		"Edit this question and re-ask from here (forks a new conversation; the original is kept)",
+	reaskFromHere: "Re-ask from here",
+	editPlaceholder: "Edit the question…",
+	editHint: "⌘/Ctrl+Enter to submit · Esc to cancel",
+	editAttachmentHint:
+		"Original attachments kept — paste/drop images or files · ⌘/Ctrl+Enter to submit · Esc to cancel",
+
+	/* collapsed old messages */
+	expandMsg: "Expand",
+	collapseMsg: "Collapse",
+	toolCalls: "tool calls",
+	bashRuns: "bash runs",
+	images: "images",
+
+	/* self-update */
+	update: "Update",
+	updateTip: "Check & update pi-web-ui",
+	currentVersion: "Current version",
+	latestVersion: "Latest version",
+	checkingUpdate: "Checking…",
+	checkUpdate: "Check for updates",
+	upToDate: "You're up to date",
+	updateAvailable: "New version v{version} available",
+	updateJustPublished:
+		"v{version} was just published — npm cache may lag; if the new version isn't detected yet, re-check in a moment",
+	updateNow: "Update in terminal",
+	updateTabTitle: "Update pi-web-ui",
+	updateTerminalHint:
+		"Clicking runs npm i -g pi-web-ui@latest in a visible terminal; restart the service afterwards to take effect (pi-web-ui server restart).",
+
+	/* right panel */
+	rootDir: "Root",
+	noFiles: "No files",
+	filesTruncated: "Directory too large — list truncated (first 2000 shown)",
+	linkFolderTip: "Link folder path to chat",
+	attachInlineTip: "Attach content to chat",
+	referenceTip: "Reference path only (AI reads on demand)",
+	previewFile: "Preview",
+	downloadFile: "Download file",
+	downloadFailed: "Download failed: {error}",
+	protocolMismatch:
+		"Page version differs from the server (the app was just updated). Refresh the page to restore full functionality.",
+
+	/* file preview */
+	selectLinesHint: "Click a line to select; drag or Shift+click for a range",
+	enableWrap: "Enable line wrap",
+	disableWrap: "Disable line wrap",
+	selectedRange: "Selected {n} lines (lines {start}-{end})",
+	fileLines: "{n} lines",
+	selectAll: "Select all",
+	clearSelection: "Clear",
+	addToChat: "Add to chat",
+	addedToChat: "Added",
+	previewTruncated: "⚠ File too large — previewing the first 512KB",
+	previewLinesTruncated: "… too many lines — showing the first {n}",
+	binaryFile: "🔣 Binary file — first 4KB shown as hex",
+	binaryHexTruncated: " (file larger — download for the full file)",
+	previewNotSupported:
+		"This file type can't be previewed (only images / videos / text)",
+	emptyFile: "(empty file)",
+	editFile: "Edit file",
+	exitEditFile: "Exit editing",
+	saveFile: "Save file",
+	discardFileChanges: "Discard unsaved changes?",
+	fileSaved: "Saved",
+	fileEditTruncated: "The preview is incomplete, so this file can't be edited",
+	showMarkdownSource: "Show Markdown source",
+	showMarkdownPreview: "Show Markdown preview",
+	fullscreen: "Fullscreen",
+	exitFullscreen: "Exit fullscreen",
+	zoomIn: "Increase font size",
+	zoomOut: "Decrease font size",
+	resetZoom: "Reset zoom",
+
+	/* dialog */
+	pluginRequest: "Plugin request",
+	noOptions: "(no options)",
+	inputPlaceholder: "Enter content",
+
+	/* sound settings */
+	soundHeader: "Sound notifications",
+	enableSound: "Enable sound",
+	preview: "Preview",
+	volume: "Volume",
+	"sound.question": "Question popup",
+	"sound.question.desc": "When ask_user_question appears",
+	"sound.done": "Reply finished",
+	"sound.done.desc": "When the agent finishes a turn",
+	"sound.start": "Reply started",
+	"sound.start.desc": "When the agent starts a new turn",
+	"sound.error": "Error",
+	"sound.error.desc": "When an error notice appears",
+
+	/* pi setup modal */
+	setupTitle: "pi agent config not detected",
+	setupDesc:
+		"pi-web-ui needs pi's config directory (~/.pi/agent) and at least one API key to run the agent. pi has built-in providers such as openai, anthropic, and deepseek — just pick one and enter a key, no terminal needed.",
+	installFailed: "✖ pi agent installation failed:",
+	retryInstall: "Retry install",
+	skip: "Skip",
+	installDone:
+		"✅ pi agent CLI installed. Pick a provider and enter an API key to start chatting:",
+	cliReadyHint:
+		"✅ pi agent CLI already installed locally. Pick a provider and enter an API key to start chatting:",
+	provider: "Provider",
+	configured: "configured",
+	providerKeyReady: "This provider already has a key — use it or replace it.",
+	apiKey: "API key",
+	saving: "Saving…",
+	saveAndStart: "Save and start using",
+	recheck: "Recheck",
+	installing: "Installing pi agent CLI…",
+	autoInstall: "Auto-install pi agent",
+
+	/* messages */
+	attachment: "Attachment",
+	plugin: "plugin",
+	unknown: "unknown",
+	thinkingWait: "Thinking",
+	exitCode: "Exit code {code}",
+	cancelled: "Cancelled",
+	truncated: "… content too long, truncated in this view",
+	outputTruncated: "… output too long, truncated in this view",
+	refOnlyShort: "Reference only",
+	folderRefShort: "Folder · reference only",
+	inlineLines: "Inline · {n} lines",
+	inlineLinesRange: "Lines {start}-{end}",
+	image: "🖼 Image",
+	bridgedVision: "👁 Transcribed",
+	bridgedVisionDetail: "Image transcribed by the vision bridge (current model can't see images)",
+	folderNotExpanded:
+		"Folder — content not expanded, the agent will browse it as needed",
+	fileNotExpanded:
+		"Large file ({size}) — content not expanded, the agent will read it as needed",
+	"role.user": "You",
+	"role.assistant": "pi",
+	"role.tool": "Tool",
+	"role.bash": "Terminal",
+	"role.branch": "Branch summary",
+	"role.compaction": "Context compacted",
+
+	/* welcome / message list */
+	welcomeTitle: "pi coding agent",
+	welcomeSub: "Inspect, edit, run — always ready",
+	directory: "Directory",
+	clickToFill: "Click to fill input",
+	waitingResponse: "Waiting for model response…",
+	backToBottom: "Back to bottom",
+	questionNavTitle: "Questions",
+	searchPlaceholder: "Search in conversation…",
+	searchNoResults: "No results",
+	/* model dropdown filter + global search */
+	searchModels: "Filter models…",
+	noModelMatches: "No matching models",
+	searchGlobal: "Search",
+	searchGlobalTip: "Global search: sessions / projects / files (Ctrl+K)",
+	gsPlaceholder: "Search projects, past conversations, workspace files…",
+	gsHint: "Type to search session history, recent projects and file names in the current workspace at once",
+	gsSessions: "Conversations",
+	gsProjects: "Projects",
+	gsFiles: "Files",
+	gsNoResults: "No matches",
+	gsSearching: "Searching files…",
+	gsTruncated: "Too many matches — showing a subset",
+	gsCurrentProject: "current",
+	gsOpenPreview: "Open file preview",
+	gsNavigate: "select",
+	gsOpen: "open",
+	gsCloseHint: "close",
+	bgTaskCommand: "Command",
+	searchPrev: "Previous (Shift+Enter)",
+	searchNext: "Next (Enter)",
+	searchClose: "Close (Esc)",
+	questionNavTip: "All questions in this conversation — hover to expand, click to jump",
+	"ex.understand": "Understand this project",
+	"ex.understand.prompt":
+		"Introduce this project: overall structure, main modules, and how to run it?",
+	"ex.debug": "Debug an issue",
+	"ex.debug.prompt":
+		"Help me debug a bug — describe the symptom first, and I'll add details.",
+	"ex.test": "Write tests",
+	"ex.test.prompt": "Write unit tests for the core modules.",
+	"ex.review": "Code review",
+	"ex.review.prompt":
+		"Review the recently changed code and point out potential issues and improvements.",
+
+	/* tool call block */
+	error: "Error",
+	done: "Done",
+	running: "Running…",
+	toolQueued: "Queued",
+	copyArgs: "Copy args",
+	errorOutput: "Error output",
+	output: "Output",
+	waitingOutput: "Waiting for output…",
+	toolDoneWaitingModel: "Done · waiting on model",
+	waitingModel: "Waiting for model response…",
+
+	/* thinking block */
+	thinkingNow: "Thinking",
+	thinkingPreview: "Thinking: {preview}",
+
+	/* terminal panel */
+	commands: "Commands",
+	newCommand: "New command",
+	newTerminal: "New terminal",
+	name: "Name",
+	command: "Command",
+	cwdHint: "(${pwd} = current working directory)",
+	noCommands: "No commands yet — click + to add one",
+	clickToRun: "Click to run",
+	edit: "Edit",
+	delete: "Delete",
+	confirmQ: "Confirm?",
+	builtinTerminal: "Built-in terminal",
+	termEmptySub:
+		"Click a command on the left to run it, or + on the right for a new terminal",
+	noTerminal: "No terminals",
+	exited: "(exited{code})",
+	closeTerminal: "Close terminal",
+	rerun: "Reload .pi/commands.json",
+	terminalTitle: "Terminal {n}",
+	exampleName: "e.g. start dev server",
+	exampleCommand: "e.g. npm run dev",
+
+	/* source control panel */
+	scmTab: "Git",
+	scmTitle: "Source Control",
+	scmRefreshTip: "Re-query git status & diff",
+	scmCurrentBranch: "Current branch",
+	scmUpstreamGone: "Upstream deleted",
+	scmAheadBehind: "↑{ahead} ↓{behind}",
+	scmDetached: "Detached HEAD",
+	scmSelectBranch: "Select branch…",
+	scmRemoteBranches: "Remote branches",
+	scmStageTip: "Stage {path}",
+	scmUnstageTip: "Unstage {path}",
+	scmSwitch: "Switch",
+	scmSwitchBranch: "Switch branch",
+	scmSwitchBranchTip: "Runs git checkout {branch} in the terminal",
+	scmPush: "Push",
+	scmPushTip: "Runs git push in the terminal",
+	scmPull: "Pull",
+	scmPullTip: "Runs git pull in the terminal",
+	scmCommit: "Commit",
+	scmCommitTip:
+		"Runs git add -A && git commit -m \"…\" in the terminal (commits all changes incl. untracked)",
+	scmCommitPlaceholder: "Type a commit message…",
+	scmChanges: "Changes",
+	scmHistory: "Commit tree",
+	scmCommitDetail: "Commit details",
+	scmSelectCommitHint: "Click a commit on the left to view its details",
+	scmNoHistory: "No commits yet",
+	scmNoChanges: "Working tree clean — no changes",
+	scmNotGitRepo: "Current directory is not a Git repository",
+	scmLoading: "Querying…",
+	scmConnecting: "Waiting for connection…",
+	scmDiff: "Diff",
+	scmSelectFileHint: "Click a file on the left to view its diff",
+	scmNoDiff: "(no diff)",
+	scmStaged: "Staged",
+	scmUnstaged: "Unstaged",
+	scmStagedUnstaged: "Staged + unstaged",
+	scmUntracked: "Untracked",
+	scmUntrackedNote: "Untracked file — not shown in diff, included on commit",
+	scmQueryFailed: "Git query failed: {error}",
+	scmTooManyFailures:
+		"Git queries keep failing — click refresh to retry",
+	scmRunsInTerminal: "Commit / branch switch / push / pull run in the terminal",
+	scmViewTerminal: "Open terminal",
+
+	/* model config modal */
+	editProvider: "Edit provider",
+	builtinProviders: "Built-in providers",
+	hintKeyOnly: "Just enter an API key",
+	configuredBadge: "✓ Configured",
+	keyReady: "Key ready",
+	replaceKey: "Replace key",
+	replaceKeyTitle: "Replace the saved key",
+	clearKey: "Clear",
+	clearKeyTitle: "Remove this provider's key stored in auth.json; it returns to unconfigured (env-var sourced keys can't be cleared here)",
+	clearKeyConfirm: "Clear the stored key for {id}? Its models will leave the list until you configure it again.",
+	cloneProvider: "Clone as custom",
+	cloning: "Cloning",
+	cloneProviderTitle: "Copy this built-in provider (baseUrl + model catalog) into a custom provider — paste another API key to run both keys side by side",
+	pasteKey: "Paste API key…",
+	savingKey: "Saving",
+	saveKey: "Save key",
+	customProviders: "Custom providers",
+	customDesc:
+		"For Ollama / vLLM / OpenAI-compatible proxies, etc. Written to pi's models.json — hot-reloaded immediately.",
+	noCustomProviders: "No custom providers yet",
+	modelsCount: "{n} models",
+	addProvider: "Add provider",
+	providerId: "Provider ID",
+	providerIdHint: "(required, e.g. ollama / my-proxy)",
+	displayName: "Display name",
+	displayNamePh: "My proxy",
+	apiType: "API type",
+	baseUrlHint: "(OpenAI-compatible endpoint)",
+	apiKeyHint: "sk-… (optional — uses the auth.json key)",
+	authHeader: "Auto-add Authorization header",
+	modelsTitle: "Models",
+	modelIdReq: "Model ID (required)",
+	text: "Text",
+	textImage: "Text+image",
+	contextWindow: "Context",
+	maxOutput: "Max output",
+	removeModel: "Remove model",
+	addModel: "Add model",
+	deleteProviderConfirm: "Delete provider {id} and its {n} models?",
+	fetchModels: "Fetch model list",
+	fetchModelsHint: "Pull model IDs from the baseUrl /models endpoint (server-side, no CORS)",
+	fetchingModels: "Fetching…",
+	fetchModelsOk: "Fetched {n} models",
+	fetchModelsEmpty: "The endpoint returned no models",
+	fetchModelsErr: "Fetch failed: {msg}",
+	fetchModelsNeedBaseUrl: "Enter a baseUrl first",
+
+	/* goal / review */
+	goalBarTitle: "Goal",
+	goalBarPlaceholder: "Set a goal; the agent's output is auto-reviewed…",
+	goalBarSet: "Start",
+	goalBarClear: "Cancel",
+	goalBarLocked: "Locked: applies to every later turn",
+	goalBarUnlocked: "This turn only (cleared afterwards)",
+	goalBarReviewModel: "Review model",
+	goalBarUseMainModel: "Use the main model",
+	goalBarMaxRounds: "Max rounds",
+	goalBarMaxRoundsTip: "Max review-revision rounds; 0 or empty = unlimited (keep revising until it passes)",
+	goalBarUnlimitedShort: "Unlimited",
+	goalBarReviewing: "Reviewing…",
+	goalBarRound: "Round {n}",
+	goalBarActive: "Goal active",
+	goalBarPassed: "Passed",
+	goalBarFailed: "Failed",
+	goalBarStatusPending: "Waiting to generate…",
+	goalWizardBtn: "AI Scrape",
+	goalWizardTip: "Let AI refine the requirement into a goal via a Q&A survey",
+	goalWizardRunning: "Scoping the goal",
+	goalWizardAnswer: "Answer",
+	goalWizardCard: "Goal survey",
+
+	/* settings modal */
+	settings: "Settings",
+	settingsTitle: "Settings",
+	settingsDesc: "Changes apply immediately: system prompt, skill and extension toggles rebuild the current session; review instructions and review skills affect later goal reviews (main-session changes are deferred while streaming).",
+	settingsSystemPrompt: "System prompt",
+	settingsPromptMode: "Mode",
+	promptModeAppend: "Append",
+	promptModeReplace: "Replace",
+	promptAppendHint: "Append mode: your text is appended to the end of the default system prompt (recommended — keeps the default behavior constraints).",
+	promptReplaceHint: "Replace mode: your text fully replaces the system prompt (project context and skills are still appended automatically). After switching, the editor shows the built-in default prompt ready to edit; blurring without changes keeps the default.",
+	promptPlaceholder: "Type a custom system prompt… (applied on blur)",
+	settingsViewPrompt: "View the current full prompt",
+	settingsViewPromptHint:
+		"The full system prompt actually in effect for this conversation (custom append/replace text, project context, skills and tool guidance). Read-only.",
+	settingsViewPromptEmpty: "Session not ready yet — no system prompt available.",
+	settingsSkills: "Skills",
+	settingsReview: "Goal review",
+	settingsReviewDesc:
+		"Configure extra instructions and skills for the isolated goal-review session; the main session is unaffected.",
+	settingsReviewSkills: "Skills available to review",
+	reviewPromptPlaceholder: "Type custom review instructions… (applied on blur)",
+	reviewPromptHint:
+		"These instructions are added to the review task; pass/fail JSON output is still enforced. Skill toggles apply only to review.",
+	settingsVisionBridge: "Vision bridge",
+	settingsVisionBridgeDesc:
+		"When the current model can't see images, send them to a configured vision model and transcribe into text evidence first",
+	visionBridgeEnabled: "Enable vision bridge",
+	visionBridgeModel: "Transcription model",
+	visionBridgeAuto: "Auto (in order)",
+	visionBridgeNoModels:
+		"No configured vision model found: add any image-capable model (e.g. qwen-vl, GLM-4V, Gemini) in Model config to enable automatically",
+	visionBridgeOffHint:
+		"Disabled: images are sent as-is, a text-only model may not see them",
+	visionBridgeCurrent: "Current transcription model: {model}",
+	visionBridgePromptMode: "Transcription prompt",
+	settingsTerminalTools: "Terminal tools",
+	terminalToolsEnabled: "Enable persistent terminal tools",
+	settingsTerminalToolsDesc:
+		"Let the AI use the built-in terminal for interactive programs (REPLs/vim), long-running servers, continuous output watching, or when you ask it to work in the visible terminal; ordinary commands still go through the one-shot bash tool",
+	terminalToolsOffHint:
+		"Disabled: the AI has no terminal_* tools and receives no usage guidance",
+	settingsMessageDisplay: "Message display",
+	thinkingWrap: "Show full thinking",
+	thinkingWrapDesc:
+		"On: thinking always expands fully and wraps (live reasoning visible while streaming); Off: collapses to a one-line summary with the latest text shown live while streaming",
+	toolsWrap: "Show full tools",
+	toolsWrapDesc:
+		"On: tool calls always expand fully showing arguments and output; Off: collapsed by default, click to expand",
+	terminalBashTakeover: "Terminal-backed bash",
+	terminalBashTakeoverDesc:
+		"Run bash commands inside the persistent visible terminal: full output returned automatically, shell state retained across calls (cd/venv/ssh); silent commands move to the background and notify the AI when they finish",
+	terminalBashIdleMs: "Silence-to-background threshold (ms)",
+	terminalBashIdleMsDesc:
+		"When a command produces no output for this long, stop blocking and let it keep running in the background; the AI is notified when it finishes. 0 = always wait until completion (default 15000)",
+	visionBridgePromptPlaceholder:
+		"Type a custom transcription prompt… (empty = built-in default, applied on blur)",
+	visionBridgePromptAppendHint:
+		"Append mode: custom text is appended after the built-in transcription prompt (recommended — keeps the verbatim-transcription contract).",
+	visionBridgePromptReplaceHint:
+		"Replace mode: custom text replaces the built-in transcription prompt entirely. After switching, the editor shows the built-in default prompt ready to edit; blurring without changes keeps the default.",
+	uninstallExt: "Uninstall",
+	uninstallConfirm: "Confirm?",
+	uninstallConfirmHint: "Click again to confirm — runs pi remove in the terminal",
+	uninstallHint: "Runs pi remove in a visible terminal, then refreshes the list automatically",
+	uninstallTitle: "Uninstall",
+	pluginUpdate: "Update",
+	pluginUpdateHint:
+		"Re-installs from the recorded source (--force, keeps config.json), then refreshes the plugin list automatically",
+	pluginUninstallHint:
+		"Runs pi-web-ui uninstall in a visible terminal (click again to confirm), then refreshes the list automatically",
+	settingsExtensions: "Extensions",
+	settingsUiPlugins: "UI plugins",
+	noUiPlugins: "No UI plugins installed (<dataDir>/plugins/)",
+	uiPluginNoSource: "Installed manually — no recorded source, online update unavailable",
+	uiPluginPerms: "Permissions",
+	pluginSettingsSave: "Save plugin settings",
+	pluginSettingsSaving: "Saving…",
+	pluginSettingsReset: "Reset defaults",
+	settingsPresets: "Presets",
+	settingsEnabled: "Enabled",
+	settingsDisabled: "Disabled",
+	presetNamePlaceholder: "Preset name…",
+	saveAsPreset: "Save as preset",
+	applyPreset: "Apply",
+	deletePreset: "Delete preset",
+	noSkills: "No skills",
+	noExtensions: "No extensions",
+	noPresets: "No presets yet (tune the settings above, then save them as a preset)",
+
+	/* app */
+	loadingSession: "Loading session…",
+	connectingServer: "Connecting to pi-web-ui server…",
+};
+
+/* ------------------------------------------------------------------ */
+/* context + hook                                                      */
+/* ------------------------------------------------------------------ */
+
+export type Translate = (
+	key: keyof typeof zh,
+	vars?: Record<string, string | number>,
+) => string;
+
+interface I18nContextValue {
+	locale: Locale;
+	setLocale: (locale: Locale) => void;
+	t: Translate;
+}
+
+const I18nContext = createContext<I18nContextValue | null>(null);
+
+function loadLocale(): Locale {
+	try {
+		const saved = localStorage.getItem(STORAGE_KEY);
+		if (saved === "zh" || saved === "en") return saved;
+	} catch {
+		// localStorage unavailable — fall through to the default.
+	}
+	return "zh"; // default: Chinese
+}
+
+export function LanguageProvider({ children }: { children: ReactNode }) {
+	const [locale, setLocaleState] = useState<Locale>(loadLocale);
+
+	const setLocale = useCallback((l: Locale) => {
+		setLocaleState(l);
+		try {
+			localStorage.setItem(STORAGE_KEY, l);
+		} catch {
+			// ignore storage errors
+		}
+	}, []);
+
+	const t = useCallback<Translate>(
+		(key, vars) => {
+			let str: string = en[key];
+			if (locale === "zh") str = zh[key];
+			if (vars) {
+				for (const [k, v] of Object.entries(vars)) {
+					str = str.replaceAll(`{${k}}`, String(v));
+				}
+			}
+			return str;
+		},
+		[locale],
+	);
+
+	useEffect(() => {
+		document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+	}, [locale]);
+
+	const value = useMemo(
+		() => ({ locale, setLocale, t }),
+		[locale, setLocale, t],
+	);
+
+	return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+export function useI18n(): I18nContextValue {
+	const ctx = useContext(I18nContext);
+	if (!ctx) throw new Error("useI18n must be used within LanguageProvider");
+	return ctx;
+}
+
+/** Convenience: translation function only. */
+export function useT(): Translate {
+	return useI18n().t;
+}
