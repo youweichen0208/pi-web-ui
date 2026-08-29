@@ -12,7 +12,7 @@ pi-web-ui 是 pi 编码智能体（`@earendil-works/pi-coding-agent` SDK）的 W
 Windows 计划任务部署。
 
 - 仓库（公开）：`git@github.com:xing-shuyin/pi-web-ui.git`
-- npm 包：`pi-web-ui`（发布者 npm 账号 `xingshuyin`）
+- npm 包：`@youweichen/pi-web-ui`（发布者 npm 账号 `youweichen`；fork 自原作者 `xingshuyin` 的 `pi-web-ui`）
 - Node 要求：**>= 22.19.0**（pi SDK 的 dist 使用了 `import … with { type: "json" }` 语法）
 - 版本：`package.json` 与 `package-lock.json` 两处同步维护
 
@@ -174,8 +174,8 @@ npm run test:smoke   # 零 token 协议冒烟聚合跑器
 # 升版本 → 自检构建 → git commit → git push → npm publish
 npm run typecheck && npm run build
 git add -A && git commit -m "feat(xxx): 描述"
-git push origin main
-npm publish
+git push origin develop
+npm publish --access public
 ```
 
 注意事项：版本号必须高于 npm registry；提交信息不要带 `Co-authored-by`；升级后需手动重启服务 `pi-web-ui server restart`；发布前检查示例文件不泄密。
