@@ -25,7 +25,7 @@ Stream conversations, inspect tool calls, manage files, and run your workspace �
 A web chat interface for the [pi coding agent](https://pi.dev). The agent runs
 **in-process** via the pi SDK and streams events to the browser over WebSocket:
 thinking blocks, tool calls, file trees, a built-in terminal, model management,
-theme switching, and a full settings panel — tuned for daily development.
+and a full settings panel — tuned for daily development.
 
 > **Requirements** — Node.js ≥ 22.19 and a configured pi install.
 
@@ -39,7 +39,7 @@ theme switching, and a full settings panel — tuned for daily development.
 
 | 💬 **Chat that works like you do** | 🖼️ **Files & images** | 🧩 **Extensible by design** | 🔒 **Private by default** |
 | --- | --- | --- | --- |
-| Streaming replies, steer & follow-up queueing, slash commands, multiple conversations per project, edit-&-re-ask. | Attach files, paste images, ask about pictures (vision bridge), preview anything with GBK fallback. | Drop-in UI **plugins** (extra top-bar tabs + agent tools) and standalone **themes** — no rebuild, no restart. | Loopback-only, credential-safe: provider keys & headers never reach the browser. |
+| Streaming replies, steer & follow-up queueing, slash commands, multiple conversations per project, edit-&-re-ask. | Attach files, paste images, ask about pictures (vision bridge), preview anything with GBK fallback. | Drop-in UI **plugins** (extra top-bar tabs + agent tools) — no rebuild, no restart. | Loopback-only, credential-safe: provider keys & headers never reach the browser. |
 
 ## 📚 Table of Contents
 
@@ -49,7 +49,6 @@ theme switching, and a full settings panel — tuned for daily development.
 - ⚡ [Quick start](#quick-start)
 - 🖥️ [System service](#system-service)
 - 🧩 [Plugins](#plugins)
-- 🎨 [Themes](#themes)
 - 🔒 [Security](#security)
 - 🌐 [Reverse proxy (nginx)](#reverse-proxy-nginx)
 - 🤝 [Contribute](#contribute)
@@ -84,7 +83,6 @@ theme switching, and a full settings panel — tuned for daily development.
 
 ### 🎛️ Models & settings
 
-- Theme switching — pick a theme in the top bar; each theme is a full standalone stylesheet (default dark + a bundled light). See [Themes](#themes) for how to add your own or contribute one.
 - Model management — edit `models.json` in the UI and set per-provider API keys (keys/headers never leave the server).
 - Thinking level per model (only the levels the model actually supports are shown).
 - First-run setup wizard.
@@ -301,47 +299,9 @@ pi-web-ui uninstall <id>      # remove a plugin
   too — back up `<dataDir>/plugins/<id>/config.json` first if you need it.
 
 
-## Themes
+## Theme
 
-Each theme is a **complete standalone stylesheet** — a full copy of the bundled dark `web/src/styles.css` with a different palette (no CSS-variable extraction, no base file to include). Picking a theme swaps the whole file, so any theme works with every build.
-
-Built-in themes ship in the npm package (`themes/`, e.g. the bundled light theme). The theme picker lives in the top bar (🌞 icon); the current choice is stored per browser in `localStorage`.
-
-### Using a theme
-
-Just pick it in the top bar — built-in and user themes are merged in the same menu. User themes win over built-ins on the same id.
-
-### Providing a theme locally (no GitHub needed)
-
-Any CSS file dropped into your **data-dir themes folder** shows up in the theme menu automatically — no restart, no rebuild:
-
-1. Find your data dir (default `~/.pi-web`, override with `PI_WEB_DATA_DIR`).
-2. Create `<dataDir>/themes/` and drop your stylesheet in: e.g. `~/.pi-web/themes/my-theme.css`.
-3. Reload the page and pick it in the top bar. The **file name (without `.css`)** is the theme id shown in the menu.
-
-```
-~/.pi-web/
-└── themes/
-    └── my-theme.css          # appears in the menu as "my-theme"
-```
-
-Easiest way to write one: copy `themes/light.css` (or the bundled dark `web/src/styles.css` from the source repo) and change the `:root` colors plus any hardcoded values — the file must be **self-contained**. Notes:
-
-- The **terminal follows the theme** — set the `--term-*` variables (terminal ANSI palette + `--term-bg`) in your `:root` and both the xterm canvas and its padded container adapt automatically (see the defaults in `styles.css` and the light values in `themes/light.css`).
-- Syntax-highlight colors (`highlight.js`'s `github-dark.css` is bundled) must be overridden in your theme file or code will be unreadable — see the `.hljs` overrides at the bottom of `themes/light.css` for the pattern.
-- Theme ids must match `^[A-Za-z0-9_-]+$` (no dots/slashes — path-traversal guard on the server).
-
-### Contributing a theme to the repository (GitHub)
-
-Want your theme shipped to everyone? Open a pull request at [github.com/xing-shuyin/pi-web-ui](https://github.com/xing-shuyin/pi-web-ui):
-
-1. Fork the repo and clone it.
-2. Create your theme as `themes/<id>.css` — a **self-contained** stylesheet. Copy `themes/light.css` as the starting template (it's the generator output for a full standalone theme).
-3. Verify locally: run `npm run dev`, then use the top bar theme picker — your theme must be listed and render correctly (chat cards, code blocks, tool-call cards, git/terminal panels).
-4. If you only changed colors in `styles.css` and want the bundled light theme updated too, regenerate it with `node make-light-theme.mjs`.
-5. Commit (`git add themes/<id>.css`) and open the PR. The `themes/` folder is already in the npm package `files` whitelist, so once merged and released, `npm i -g pi-web-ui` will ship your theme to everyone.
-
-Rules for merged themes: the file must be a single self-contained CSS file, be a full standalone theme (no imports of the base `styles.css`), set the `--term-*` variables for a readable terminal, and override `.hljs` syntax colors for readable code.
+pi-web-ui ships a single, fixed light theme (Inter + IBM Plex Mono, indigo accents, dark "code island" blocks) — there is no theme picker or switching UI. `web/src/styles.css` is the only stylesheet; fonts are self-hosted under `web/public/fonts/` for fully offline use.
 
 
 ## Security
@@ -431,12 +391,11 @@ Full working example (with an frp tunnel): `deploy/nginx-subpath.conf`.
 
 ## Contribute
 
-pi-web-ui is a small open-source project — **your contributions are what make it grow**. Code, plugins, themes, docs, translations, ideas: everything is welcome, and every merged PR ships to all users with the next `npm publish`. ❤️
+pi-web-ui is a small open-source project — **your contributions are what make it grow**. Code, plugins, docs, translations, ideas: everything is welcome, and every merged PR ships to all users with the next `npm publish`. ❤️
 
 | Way to contribute | How to get started |
 | --- | --- |
 | 🧩 **Write a plugin** | Build your own UI tab + agent tools. Copy `dev/plugins/demo-mailbox` as the minimal template (it doubles as the test fixture), develop locally, then either open a PR to ship it in the [catalog](#plugin-catalog) or [publish it standalone](https://github.com/xing-shuyin/pi-web-ui/tree/main/dev/plugins). |
-| 🎨 **Contribute a theme** | Copy `themes/light.css` as a self-contained template, tweak the `:root` palette + `--term-*` + `.hljs`, verify with `npm run dev`, then open a PR — full walkthrough in [Contributing a theme](#contributing-a-theme-to-the-repository-github). |
 | 💻 **Fix a bug / add a feature** | Look for [open issues](https://github.com/xing-shuyin/pi-web-ui/issues) or propose something new. Fork → branch → PR. Keep the code conventions in `AGENTS.md` (tabs, i18n keys in both languages, protocol changes in `server/protocol.ts`). |
 | 📖 **Docs & translations** | Improve the READMEs, write plugin docs, fix typos, or help translate the UI / docs into more languages. |
 | 💡 **Ideas & feedback** | Open an [issue](https://github.com/xing-shuyin/pi-web-ui/issues) or start a [discussion](https://github.com/xing-shuyin/pi-web-ui/discussions) — feature requests, bug reports, UI polish ideas, deployment experience reports. |

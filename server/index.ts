@@ -38,7 +38,6 @@ import { previewKind } from "./text-sniff.js";
 import { startControlServer } from "./control-socket.js";
 import { scheduleUploadCleanup } from "./uploads.js";
 import { ensureWindowsBash, windowsBashDir } from "./ensure-bash.js";
-import { listThemes, resolveThemeFile } from "./themes.js";
 import { PluginManager, resolvePluginClientFile } from "./plugins.js";
 import { McpBridge } from "./mcp-bridge.js";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
@@ -206,32 +205,6 @@ function resolvePkgRoot(): string {
 	return candidates[0];
 }
 const pkgRoot = resolvePkgRoot();
-// Theme CSS files: complete standalone stylesheets. Builtin themes ship in
-// <pkg>/themes (npm files whitelist); user themes can be dropped into
-// <dataDir>/themes and are served alongside (user wins on id collision).
-const BUILTIN_THEMES_DIR = join(pkgRoot, "themes");
-const USER_THEMES_DIR = join(DATA_DIR, "themes");
-
-app.get("/api/themes", (_req, res) => {
-	res.json({ themes: listThemes(BUILTIN_THEMES_DIR, USER_THEMES_DIR) });
-});
-// Serve a theme's full CSS file so the frontend can swap the whole stylesheet.
-// Registered before the SPA catch-all below (otherwise it'd return index.html).
-app.get("/themes/:id.css", (req, res) => {
-	const file = resolveThemeFile(
-		BUILTIN_THEMES_DIR,
-		USER_THEMES_DIR,
-		req.params.id,
-	);
-	if (!file) {
-		res.status(404).end("theme not found");
-		return;
-	}
-	res.setHeader("Content-Type", "text/css; charset=utf-8");
-	res.setHeader("Cache-Control", "no-cache");
-	res.sendFile(file);
-});
-
 // Plugin client bundles: <dataDir>/plugins/<id>/client/* served at
 // /plugins/<id>/client/* so the frontend can import() plugin views. Only the
 // client/ subtree is exposed — manifest.json and the server-side index.mjs

@@ -165,6 +165,24 @@ export interface ChatState {
 	/** Server wire-protocol version differs from ours — the page was loaded
 	 *  before/after an app update; show a persistent refresh banner. */
 	protocolMismatch: boolean;
+	/**
+	 * Optimistic local echo of a just-sent prompt. The server is the single
+	 * source of truth for `state.messages` — nothing here is ever treated as
+	 * authoritative — but rendering this immediately on send means the user
+	 * sees their own message the instant they hit Enter, instead of nothing
+	 * happening until the round trip (SDK auth/compaction/extension-hook
+	 * checks, then the model call) comes back. Cleared automatically the
+	 * moment the next snapshot/snapshot_delta actually appends a message —
+	 * see the "snapshot"/"snapshot_delta" reducer cases — never left to a
+	 * timer, so it can't outlive or fight with the real message.
+	 */
+	pendingEcho: PendingEcho | null;
+}
+
+export interface PendingEcho {
+	conversationId: string;
+	text: string;
+	ts: number;
 }
 
 type Action =
@@ -242,7 +260,9 @@ type Action =
 	| { type: "goal_status"; status: GoalStatus }
 	| { type: "settings"; settings: UiSettingsState }
 	| { type: "bg_servers"; servers: BgServer[] }
-	| { type: "plugins"; plugins: UiPluginInfo[]; epoch: number };
+	| { type: "plugins"; plugins: UiPluginInfo[]; epoch: number }
+	| { type: "set_pending_echo"; echo: PendingEcho }
+	| { type: "clear_pending_echo" };
 
 const MAX_LIVE_OUTPUT = 200_000;
 const MAX_TERM_BUFFER = 200_000;
@@ -413,6 +433,10 @@ function reducer(state: ChatState, action: Action): ChatState {
 				activeConversationId: action.state.conversationId,
 				liveOutputs: pruneLiveOutputs(state.liveOutputs, action.state),
 				toolStatuses: pruneToolStatuses(state.toolStatuses, action.state),
+				// A full resync always reflects reality as of now — whatever we
+				// were optimistically echoing is either already in here or gone
+				// (conversation switched away from under it).
+				pendingEcho: null,
 			};
 		case "snapshot_delta": {
 			// Incremental checkpoint from the server. Apply ONLY when it chains
@@ -438,6 +462,11 @@ function reducer(state: ChatState, action: Action): ChatState {
 				activeConversationId: merged.conversationId,
 				liveOutputs: pruneLiveOutputs(state.liveOutputs, merged),
 				toolStatuses: pruneToolStatuses(state.toolStatuses, merged),
+				// Only clear once real messages actually landed — a delta that
+				// merely updates existing fields (e.g. isStreaming flipping)
+				// shouldn't drop the echo before the user's message has a real
+				// counterpart to replace it with.
+				pendingEcho: d.appended.length > 0 ? null : state.pendingEcho,
 			};
 		}
 		case "tool_delta": {
@@ -483,6 +512,10 @@ function reducer(state: ChatState, action: Action): ChatState {
 				...state,
 				notices: state.notices.filter((n) => n.id !== action.id),
 			};
+		case "set_pending_echo":
+			return { ...state, pendingEcho: action.echo };
+		case "clear_pending_echo":
+			return { ...state, pendingEcho: null };
 		case "sessions":
 			return { ...state, sessions: action.sessions };
 		case "conversations":
@@ -672,6 +705,7 @@ export function useChat() {
 		plugins: [],
 		pluginsEpoch: 0,
 		protocolMismatch: false,
+		pendingEcho: null,
 	});
 	const wsRef = useRef<WebSocket | null>(null);
 	/** Terminal output bridge (writers keyed by terminalId). */
@@ -1066,6 +1100,16 @@ export function useChat() {
 		[],
 	);
 
+	/** See ChatState.pendingEcho — call right alongside send({type:"prompt",…}). */
+	const setPendingEcho = useCallback(
+		(conversationId: string, text: string) =>
+			dispatch({
+				type: "set_pending_echo",
+				echo: { conversationId, text, ts: Date.now() },
+			}),
+		[],
+	);
+
 	// -- terminal tab management ----------------------------------------------
 
 	const terminalCreate = useCallback(
@@ -1091,6 +1135,7 @@ export function useChat() {
 		send,
 		pushNotice,
 		dismissNotice,
+		setPendingEcho,
 		terminal: {
 			create: terminalCreate,
 			close: terminalClose,
@@ -1103,6 +1148,7 @@ export function useChat() {
 		send,
 		pushNotice,
 		dismissNotice,
+		setPendingEcho,
 		terminal: {
 			create: terminalCreate,
 			close: terminalClose,

@@ -19,11 +19,13 @@ import type {
 	UiThinkingBlock,
 	UiToolCallBlock,
 } from "../types";
+import { LeakedThinkingBlock } from "./LeakedThinkingBlock";
 import { Markdown } from "./Markdown";
 import { StreamMarkdown } from "./StreamMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolCallBlock, type ToolView } from "./ToolCallBlock";
 import { useT, type Translate } from "../i18n";
+import { splitLeakedThinking } from "../leaked-thinking";
 import { parseSkillBlock, type SkillBlock } from "../skill-block";
 import { isRasterImage, fileToProcessedImage } from "../image-paste";
 
@@ -197,7 +199,13 @@ export const Message = memo(function Message({
 		: userText.split("\n").join(" ").trim();
 	// Streaming bubble with no content yet (first token not arrived) — show a
 	// visible “thinking…” placeholder instead of an invisible empty bubble.
-	const isEmptyStreaming = streaming && isLast && message.content.length === 0;
+	// Both this placeholder and the trailing blinking caret below are meant
+	// for the assistant's own in-progress reply — never for the user's own
+	// just-sent bubble, which is briefly "the last message" (and the
+	// conversation is already marked streaming) in the gap before the
+	// assistant's placeholder message is appended.
+	const isEmptyStreaming =
+		streaming && isLast && message.role !== "user" && message.content.length === 0;
 
 	const canEdit =
 		message.role === "user" && !streaming && !isEmptyStreaming && !!onEdit;
@@ -511,7 +519,7 @@ export const Message = memo(function Message({
 								<span className="dot" />
 							</div>
 						)}
-						{streaming && isLast && !isEmptyStreaming && (
+						{streaming && isLast && message.role !== "user" && !isEmptyStreaming && (
 							<span className="stream-cursor" />
 						)}
 					</>
@@ -707,9 +715,16 @@ function Block({
 	const text = asText(block);
 	if (text) {
 		const live = streaming && isLast;
+		// Still streaming: a </think> the model hasn't finished emitting yet
+		// would false-split on a truncated tag, so only apply the leaked-
+		// reasoning guard once the block is done.
+		const leak = !live ? splitLeakedThinking(text.text) : null;
 		return (
 			<div className="msg-text">
-				{live ? (
+				{leak && <LeakedThinkingBlock text={leak.leaked} />}
+				{leak ? (
+					leak.visible && <Markdown text={leak.visible} />
+				) : live ? (
 					<StreamMarkdown text={text.text} />
 				) : (
 					<Markdown text={text.text} />

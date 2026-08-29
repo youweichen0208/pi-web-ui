@@ -1,15 +1,12 @@
 import { useState } from "react";
 import {
-	FiDownload,
 	FiFolder,
 	FiGitBranch,
-	FiGithub,
 	FiGlobe,
 	FiMenu,
 	FiMessageSquare,
 	FiMoreHorizontal,
 	FiSearch,
-	FiSun,
 	FiPlus,
 	FiSettings,
 	FiLayers,
@@ -18,7 +15,6 @@ import {
 } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import type { ClientMessage, CommandDef } from "../types";
-import { randomUuid } from "../uuid";
 import { Dropdown, DropdownItem } from "./Dropdown";
 import { ModelThinking } from "./ModelThinking";
 import { SoundSettingsPanel } from "./SoundSettings";
@@ -61,10 +57,6 @@ interface TopBarProps {
 	sound: SoundSettings;
 	onSoundChange: (settings: SoundSettings) => void;
 	onSoundPreview: (kind: SoundKind) => void;
-	/** Theme list + current selection + switch handler (owned by App). */
-	themes: { id: string; name: string; builtin: boolean }[];
-	theme: string | null;
-	onThemeChange: (id: string | null) => void;
 }
 
 export function TopBar({
@@ -82,15 +74,10 @@ export function TopBar({
 	sound,
 	onSoundChange,
 	onSoundPreview,
-	themes,
-	theme,
-	onThemeChange,
 }: TopBarProps) {
 	const { locale, setLocale, t } = useI18n();
 	const [soundOpen, setSoundOpen] = useState(false);
 	const [langOpen, setLangOpen] = useState(false);
-	const [themeOpen, setThemeOpen] = useState(false);
-	const [updateOpen, setUpdateOpen] = useState(false);
 	const [moreOpen, setMoreOpen] = useState(false);
 
 	const LANGUAGES: { value: Locale; label: string }[] = [
@@ -104,113 +91,6 @@ export function TopBar({
 			? t("reconnecting")
 			: t("connecting");
 	const connClass = chat.ready ? "ok" : "busy";
-
-	/** Run `npm i -g pi-web-ui@latest` in a visible terminal tab (SCM-style):
-	 *  reuse the tab with the same title, otherwise create one; switch to the
-	 *  terminal view so the user watches the install live. */
-	const runUpdate = () => {
-		if (!chat.ready) return;
-		const title = t("updateTabTitle");
-		const cmd: CommandDef = {
-			name: title,
-			command: "npm i -g pi-web-ui@latest",
-			cwd: "${pwd}",
-		};
-		const existing = chat.terminals.find((tm) => tm.title === title);
-		if (existing) {
-			terminal.restart(existing.id);
-			send({
-				type: "run_command",
-				terminalId: existing.id,
-				conversationId: existing.conversationId,
-				command: cmd,
-				cols: 80,
-				rows: 24,
-			});
-		} else {
-			terminal.create({
-				id: randomUuid(),
-				conversationId:
-					chat.activeConversationId || chat.state?.conversationId || "",
-				title,
-				cwd: chat.state?.cwd ?? "",
-				cols: 80,
-				rows: 24,
-				running: true,
-				exitCode: null,
-				command: cmd,
-			});
-		}
-		setUpdateOpen(false);
-		setMoreOpen(false);
-		onViewChange("terminal");
-	};
-
-	// Shared by the desktop update dropdown and the mobile "⋯" panel.
-	const renderUpdateBody = () => (
-		<>
-			<div className="dd-update">
-				<div className="dd-row">
-					<span>{t("currentVersion")}</span>
-					<b>v{chat.update?.current ?? "…"}</b>
-				</div>
-				<div className="dd-row">
-					<span>{t("latestVersion")}</span>
-					<b>
-						{chat.update === null
-							? t("checkingUpdate")
-							: chat.update.error
-								? chat.update.error
-								: chat.update.latest
-									? `v${chat.update.latest}`
-									: t("checkingUpdate")}
-					</b>
-				</div>
-				{chat.update && chat.update.upToDate && (
-					<div className="dd-note ok">{t("upToDate")}</div>
-				)}
-				{chat.update &&
-					!chat.update.upToDate &&
-					chat.update.latest && (
-						<div className="dd-note warn">
-							{t("updateAvailable", { version: chat.update.latest })}
-						</div>
-					)}
-				{chat.update?.latestPublishedAt &&
-					Date.now() - new Date(chat.update.latestPublishedAt).getTime() <
-						30 * 60_000 && (
-						<div className="dd-note warn">
-							{t("updateJustPublished", {
-								version: chat.update.latest ?? "",
-							})}
-						</div>
-					)}
-				{chat.update && !chat.update.upToDate && chat.update.latest && (
-					<div className="dd-note">{t("updateTerminalHint")}</div>
-				)}
-			</div>
-			<div className="dd-actions">
-				<button
-					type="button"
-					className="dd-refresh"
-					onClick={() => send({ type: "check_update" })}
-				>
-					{chat.update === null ? t("checkingUpdate") : t("checkUpdate")}
-				</button>
-				{chat.update &&
-					!chat.update.upToDate &&
-					chat.update.latest && (
-						<button
-							type="button"
-							className="dd-refresh accent"
-							onClick={runUpdate}
-						>
-							{t("updateNow")}
-						</button>
-					)}
-			</div>
-		</>
-	);
 
 	return (
 		<header className="topbar">
@@ -289,7 +169,9 @@ export function TopBar({
 				</div>
 
 				{/* Desktop toolbar — hidden on mobile (model/thinking move into the
-				    input row; sound/lang/update/github fold into "⋯" below). */}
+				    input row; sound/lang fold into "⋯" below). Update-check and
+				    GitHub link live only inside the "⋯" panel now, on both
+				    desktop and mobile — no separate top-level chips for them. */}
 				<div className="topbar-desktop">
 					{/* Global search — sessions / projects / workspace files. */}
 					<button
@@ -377,76 +259,6 @@ export function TopBar({
 						))}
 					</Dropdown>
 
-					<Dropdown
-						trigger={
-							<>
-								<FiSun />
-								<span className="chip-sub">{t("theme")}</span>
-							</>
-						}
-						open={themeOpen}
-						onOpenChange={setThemeOpen}
-					>
-						<div className="dd-header">{t("theme")}</div>
-						<DropdownItem
-							active={theme === null}
-							onClick={() => {
-								onThemeChange(null);
-								setThemeOpen(false);
-							}}
-						>
-							{t("themeDefault")}
-						</DropdownItem>
-						{themes.map((th) => (
-							<DropdownItem
-								key={th.id}
-								active={theme === th.id}
-								onClick={() => {
-									onThemeChange(th.id);
-									setThemeOpen(false);
-								}}
-							>
-								{th.name}
-							</DropdownItem>
-						))}
-					</Dropdown>
-
-					<Dropdown
-						trigger={
-							<>
-								<FiDownload />
-								<span className="chip-sub">v{chat.update?.current ?? "…"}</span>
-								{chat.update &&
-									!chat.update.upToDate && (
-										<span
-											className="update-dot"
-											title={t("updateAvailable", {
-												version: chat.update.latest ?? "",
-											})}
-										/>
-									)}
-							</>
-						}
-						open={updateOpen}
-						onOpenChange={(v) => {
-							setUpdateOpen(v);
-							if (v) send({ type: "check_update" });
-						}}
-						fit
-					>
-						<div className="dd-header">{t("update")}</div>
-						{renderUpdateBody()}
-					</Dropdown>
-
-					<a
-						className="chip github"
-						href="https://github.com/xing-shuyin/pi-web-ui"
-						target="_blank"
-						rel="noreferrer noopener"
-						title={t("githubRepo")}
-					>
-						<FiGithub />
-					</a>
 				</div>
 
 				<button
@@ -459,25 +271,17 @@ export function TopBar({
 					<span>{t("newChat")}</span>
 				</button>
 
-				{/* Mobile "⋯" panel — folds sound / language / update / GitHub.
-				    Hidden on desktop (each stays its own chip up there). */}
+				{/* Mobile "⋯" panel — folds sound / language. */}
 				<div className="topbar-more">
 					<Dropdown
 						trigger={
 							<>
 								<FiMoreHorizontal />
 								<span className="chip-sub">{t("more")}</span>
-								{chat.update &&
-									!chat.update.upToDate && (
-										<span className="update-dot" />
-									)}
 							</>
 						}
 						open={moreOpen}
-						onOpenChange={(v) => {
-							setMoreOpen(v);
-							if (v) send({ type: "check_update" });
-						}}
+						onOpenChange={setMoreOpen}
 					>
 						<div className="dd-header">{t("sound")}</div>
 						<div className="dd-header">{t("settings")}</div>
@@ -523,38 +327,6 @@ export function TopBar({
 								{l.label}
 							</DropdownItem>
 						))}
-						<div className="dd-header">{t("theme")}</div>
-						<DropdownItem
-							active={theme === null}
-							onClick={() => {
-								onThemeChange(null);
-								setMoreOpen(false);
-							}}
-						>
-							{t("themeDefault")}
-						</DropdownItem>
-						{themes.map((th) => (
-							<DropdownItem
-								key={th.id}
-								active={theme === th.id}
-								onClick={() => {
-									onThemeChange(th.id);
-									setMoreOpen(false);
-								}}
-							>
-								{th.name}
-							</DropdownItem>
-						))}
-						<div className="dd-header">{t("update")}</div>
-						{renderUpdateBody()}
-						<a
-							className="dd-refresh dd-more-link"
-							href="https://github.com/xing-shuyin/pi-web-ui"
-							target="_blank"
-							rel="noreferrer noopener"
-						>
-							<FiGithub /> {t("githubRepo")}
-						</a>
 					</Dropdown>
 				</div>
 

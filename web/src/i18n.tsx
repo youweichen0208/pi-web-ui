@@ -297,6 +297,7 @@ const zh = {
 	directory: "目录",
 	clickToFill: "点击填入输入框",
 	waitingResponse: "正在等待模型响应…",
+	sending: "发送中",
 	backToBottom: "回到底部",
 	questionNavTitle: "问题列表",
 	searchPlaceholder: "在对话中搜索…",
@@ -348,6 +349,7 @@ const zh = {
 	/* thinking block */
 	thinkingNow: "思考中",
 	thinkingPreview: "思考：{preview}",
+	leakedThinking: "异常内容（疑似泄露的思考文本）",
 
 	/* terminal panel */
 	commands: "命令",
@@ -872,6 +874,7 @@ const en: Record<keyof typeof zh, string> = {
 	directory: "Directory",
 	clickToFill: "Click to fill input",
 	waitingResponse: "Waiting for model response…",
+	sending: "Sending",
 	backToBottom: "Back to bottom",
 	questionNavTitle: "Questions",
 	searchPlaceholder: "Search in conversation…",
@@ -926,6 +929,7 @@ const en: Record<keyof typeof zh, string> = {
 	/* thinking block */
 	thinkingNow: "Thinking",
 	thinkingPreview: "Thinking: {preview}",
+	leakedThinking: "Unexpected content (likely leaked reasoning text)",
 
 	/* terminal panel */
 	commands: "Commands",
