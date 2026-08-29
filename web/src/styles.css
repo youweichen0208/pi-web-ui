@@ -4045,6 +4045,13 @@ span.msg-editor-hint svg {
 	color: var(--accent);
 }
 
+/* Leaked-reasoning fallback (LeakedThinkingBlock): amber instead of the
+   normal accent color, so it visually reads as "unexpected" rather than
+   as an ordinary collapsed thinking block. */
+.thinking.leaked .thinking-icon {
+	color: var(--amber);
+}
+
 .thinking-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -4424,27 +4431,6 @@ span.msg-editor-hint svg {
 	margin-top: 8px;
 	font-size: 12px;
 	color: var(--text-faint);
-}
-
-.cursor {
-	display: inline-block;
-	width: 2px;
-	height: 13px;
-	background: var(--accent);
-	border-radius: 1px;
-	vertical-align: -2px;
-	margin-left: 4px;
-	animation: blink 1s ease-in-out infinite;
-}
-
-@keyframes blink {
-	0%,
-	100% {
-		opacity: 1;
-	}
-	50% {
-		opacity: 0.15;
-	}
 }
 
 /* ---------------------------------------------------------------- bashblock */
@@ -5646,19 +5632,28 @@ span.msg-editor-hint svg {
 /* ------------------------------------------------------------------ scroll */
 
 ::-webkit-scrollbar {
-	width: 10px;
-	height: 10px;
+	width: 8px;
+	height: 8px;
 }
+/* Semi-transparent + no border (was a hardcoded dark thumb with a border
+   matching the page background — assumed a dark page, so it read as a thick
+   pale ring wherever it sat over a dark surface like a code/terminal block
+   on this light theme). color-mix over transparent stays legible on both
+   the light page and dark code islands without needing a border at all. */
 ::-webkit-scrollbar-thumb {
-	background: #2a2f3d;
-	border-radius: 6px;
-	border: 2px solid var(--bg);
+	background: color-mix(in srgb, var(--text-faint) 55%, transparent);
+	border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-	background: #3a4152;
+	background: color-mix(in srgb, var(--text-faint) 80%, transparent);
 }
 ::-webkit-scrollbar-track {
 	background: transparent;
+}
+/* Firefox equivalent (webkit rules above are no-ops there). */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in srgb, var(--text-faint) 55%, transparent) transparent;
 }
 
 @media (max-width: 640px) {

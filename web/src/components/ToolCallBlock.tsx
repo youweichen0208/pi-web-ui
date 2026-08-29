@@ -370,8 +370,9 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 						<div className="toolcall-output">
 							<div className="toolcall-output-label">
 								{isError ? t("errorOutput") : t("output")}
-								{running && <span className="cursor" />}
-								{waitingModel && <span className="thinking-spinner" aria-hidden="true" />}
+								{(running || waitingModel) && (
+									<span className="thinking-spinner" aria-hidden="true" />
+								)}
 								<span className="toolcall-output-spacer" />
 								{isMarkdown && !isError && (
 									<button
@@ -405,7 +406,10 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 					)}
 					{running && output.length === 0 && (
 						<div className="toolcall-waiting">
-							<span className="cursor" /> {t("waitingOutput")}
+							<span className="thinking-live-label">
+								<span className="thinking-spinner" aria-hidden="true" />
+								{t("waitingOutput")}
+							</span>
 						</div>
 					)}
 					{waitingModel && output.length === 0 && (

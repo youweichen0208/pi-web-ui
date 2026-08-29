@@ -349,6 +349,7 @@ const zh = {
 	/* thinking block */
 	thinkingNow: "思考中",
 	thinkingPreview: "思考：{preview}",
+	leakedThinking: "异常内容（疑似泄露的思考文本）",
 
 	/* terminal panel */
 	commands: "命令",
@@ -928,6 +929,7 @@ const en: Record<keyof typeof zh, string> = {
 	/* thinking block */
 	thinkingNow: "Thinking",
 	thinkingPreview: "Thinking: {preview}",
+	leakedThinking: "Unexpected content (likely leaked reasoning text)",
 
 	/* terminal panel */
 	commands: "Commands",

@@ -19,11 +19,13 @@ import type {
 	UiThinkingBlock,
 	UiToolCallBlock,
 } from "../types";
+import { LeakedThinkingBlock } from "./LeakedThinkingBlock";
 import { Markdown } from "./Markdown";
 import { StreamMarkdown } from "./StreamMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolCallBlock, type ToolView } from "./ToolCallBlock";
 import { useT, type Translate } from "../i18n";
+import { splitLeakedThinking } from "../leaked-thinking";
 import { parseSkillBlock, type SkillBlock } from "../skill-block";
 import { isRasterImage, fileToProcessedImage } from "../image-paste";
 
@@ -713,9 +715,16 @@ function Block({
 	const text = asText(block);
 	if (text) {
 		const live = streaming && isLast;
+		// Still streaming: a </think> the model hasn't finished emitting yet
+		// would false-split on a truncated tag, so only apply the leaked-
+		// reasoning guard once the block is done.
+		const leak = !live ? splitLeakedThinking(text.text) : null;
 		return (
 			<div className="msg-text">
-				{live ? (
+				{leak && <LeakedThinkingBlock text={leak.leaked} />}
+				{leak ? (
+					leak.visible && <Markdown text={leak.visible} />
+				) : live ? (
 					<StreamMarkdown text={text.text} />
 				) : (
 					<Markdown text={text.text} />
