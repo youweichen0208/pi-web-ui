@@ -5,8 +5,8 @@
  * glitch, not something this app or the pi SDK can parse away upstream —
  * from here it's indistinguishable from ordinary text until it shows up
  * literally in a reply). Different reasoning models/providers spell the tag
- * differently (`</think>` vs `</thinking>` both observed in practice), so
- * both are matched.
+ * differently (`</think>` vs `</thinking>` vs Kimi-style `</antThinking>`
+ * all observed in practice), so all variants are matched.
  *
  * Everything up to and including the *last* closing tag in a text block is
  * treated as leaked reasoning noise and can be tucked behind a collapsed
@@ -23,7 +23,7 @@ export interface LeakedThinkingSplit {
 	visible: string;
 }
 
-const CLOSE_TAG_RE = /<\/think(?:ing)?>/gi;
+const CLOSE_TAG_RE = /<\/(?:ant)?think(?:ing)?>/gi;
 
 export function splitLeakedThinking(text: string): LeakedThinkingSplit | null {
 	let lastEnd = -1;
