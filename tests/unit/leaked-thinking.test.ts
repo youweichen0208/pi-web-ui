@@ -27,4 +27,22 @@ describe("splitLeakedThinking", () => {
 		expect(r).not.toBeNull();
 		expect(r!.visible).toBe("");
 	});
+
+	it("<thinking>...</thinking>（非 <think> 拼法）也能识别", () => {
+		const r = splitLeakedThinking(
+			"<thinking> some reasoning </thinking>\n真正的回复",
+		);
+		expect(r).not.toBeNull();
+		expect(r!.leaked).toBe("<thinking> some reasoning </thinking>");
+		expect(r!.visible).toBe("真正的回复");
+	});
+
+	it("同一段文字里混用 </think> 和 </thinking>：切到最后一个为止", () => {
+		const r = splitLeakedThinking(
+			"foo </think> <thinking>bar</thinking> 最终答案",
+		);
+		expect(r).not.toBeNull();
+		expect(r!.leaked).toBe("foo </think> <thinking>bar</thinking>");
+		expect(r!.visible).toBe("最终答案");
+	});
 });
