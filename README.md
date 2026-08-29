@@ -23,6 +23,13 @@ or without installing:
 npx @youweichen/pi-web-ui
 ```
 
+## Upgrade
+
+```bash
+npm i -g @youweichen/pi-web-ui@latest
+pi-web-ui server restart   # if you installed the autostart service
+```
+
 ## Autostart on boot
 
 ```bash
