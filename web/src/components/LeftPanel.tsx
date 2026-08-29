@@ -53,6 +53,20 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 	// awaiting its second click. Mirrors the settings-panel uninstall pattern.
 	const [confirmDel, setConfirmDel] = useState<string | null>(null);
 
+	// 乐观项目切换反馈：点击后立即高亮 + 转圈，等 cwd 真正变过来再清掉。
+	// "warm" 切换很快，这段几乎一闪而过；"cold" 切换（需要真正恢复会话运行时）
+	// 期间也能让用户立刻知道点击生效了，而不是干等服务端往返。
+	const [pendingCwd, setPendingCwd] = useState<string | null>(null);
+	useEffect(() => {
+		if (pendingCwd && cwd === pendingCwd) setPendingCwd(null);
+	}, [cwd, pendingCwd]);
+	// 兜底：万一切换失败/服务端从未回包，别让转圈永远卡住。
+	useEffect(() => {
+		if (!pendingCwd) return;
+		const timer = setTimeout(() => setPendingCwd(null), 15000);
+		return () => clearTimeout(timer);
+	}, [pendingCwd]);
+
 	// Lazy load + stale-while-revalidate: (re)fetch whenever the panel is on
 	// screen, the connection is ready, or the workspace changed. Old data
 	// stays visible while the fresh listing is in flight.
@@ -108,6 +122,7 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 					<div className="projects-scroll">
 						{projects.map((p) => {
 							const active = currentCwd === p.path;
+							const pending = !active && pendingCwd === p.path;
 							return (
 								<div
 									className="lp-row"
@@ -118,10 +133,13 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 								>
 									<button
 										type="button"
-										className={`project-item ${active ? "active" : ""}`}
+										className={`project-item ${active ? "active" : ""} ${pending ? "pending" : ""}`}
 										title={p.path}
 										onClick={() => {
-											if (!active) send({ type: "set_cwd", path: p.path });
+											if (!active) {
+												setPendingCwd(p.path);
+												send({ type: "set_cwd", path: p.path });
+											}
 										}}
 									>
 										<FiFolder className="project-icon" />
@@ -129,9 +147,13 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 											<span className="project-name">{projectName(p.path)}</span>
 											<span className="project-path">{p.path}</span>
 										</span>
-										<span className="project-time">
-											{formatModified(p.lastUsed)}
-										</span>
+										{pending ? (
+											<span className="thinking-spinner project-spinner" aria-hidden="true" />
+										) : (
+											<span className="project-time">
+												{formatModified(p.lastUsed)}
+											</span>
+										)}
 									</button>
 									{delButton(
 										`proj:${p.path}`,

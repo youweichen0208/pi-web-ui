@@ -101,8 +101,8 @@ try {
 	check("GET / without token → 401", r1.status === 401);
 	const r2 = await fetch(url("/?token=wrong"));
 	check("GET / with wrong token → 401", r2.status === 401);
-	const api = await fetch(url("/api/themes"));
-	check("GET /api/themes without token → 401", api.status === 401);
+	const api = await fetch(url("/api/file?path=x"));
+	check("GET /api/file without token → 401", api.status === 401);
 
 	// 3. query-param token accepted and cookie issued
 	const r3 = await fetch(url(`/?token=${encodeURIComponent(TOKEN)}`));

@@ -9,7 +9,8 @@ import type {
 	UiMessage,
 	UiState,
 } from "../types";
-import { Message, asText } from "./Message";
+import type { PendingEcho } from "../use-chat";
+import { Message, asText, roleLabel } from "./Message";
 
 import { collectQuestionAttachments } from "../question-attachments";
 
@@ -85,9 +86,12 @@ interface MessageListProps {
 	thinkingWrap?: boolean;
 	/** 工具调用是否默认展开（设置面板开关；false = 默认折叠）。 */
 	toolsWrap?: boolean;
+	/** 乐观本地回显（见 ChatState.pendingEcho）——服务端确认前立即显示的
+	 *  用户消息幻影气泡，与 state.conversationId 匹配时才渲染。 */
+	pendingEcho?: PendingEcho | null;
 }
 
-export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap }: MessageListProps) {
+export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho }: MessageListProps) {
 	const t = useT();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
@@ -606,6 +610,42 @@ export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBa
 				)}
 				{state.isStreaming && messages.length === 0 && (
 					<div className="streaming-wait">{t("waitingResponse")}</div>
+				)}
+				{/* 已有历史消息时的"助手正在处理"提示：isStreaming 已经由服务端确认为
+				 *  true，但 streamingMessage 要等 SDK 真正吐出第一个内容块（可能是权限
+				 *  检查/压缩/扩展钩子处理完之后）才会出现——这段空档之前完全没有任何
+				 *  视觉反馈，看起来像卡住了。上面那个大号居中提示只在"全新空会话"时
+                 *  才触发（messages.length === 0），这里补一条内联小气泡覆盖其余情况。 */}
+				{state.isStreaming && !state.streamingMessage && messages.length > 0 && (
+					<div className="msg msg-assistant assistant-wait-msg" data-role="assistant">
+						<div className="msg-meta">
+							<span className="msg-role">{roleLabel("assistant", t)}</span>
+						</div>
+						<div className="msg-body">
+							<span className="assistant-wait">
+								<span className="thinking-spinner" aria-hidden="true" />
+								{t("waitingResponse")}
+							</span>
+						</div>
+					</div>
+				)}
+				{/* 乐观本地回显：刚点发送、服务端确认（snapshot_delta 追加）之前，
+				 *  立刻把用户刚输入的文字显示出来，避免等待服务端往返的空白期。
+				 *  一旦真实消息落地（reducer 里 appended.length>0）就会清空 pendingEcho，
+				 *  这里绝不会与随后的真实气泡重复显示。 */}
+				{pendingEcho && pendingEcho.conversationId === state.conversationId && (
+					<div className="msg msg-user pending-echo" data-role="user">
+						<div className="msg-meta">
+							<span className="msg-role">{t("role.user")}</span>
+							<span className="pending-echo-tag">
+								<span className="thinking-spinner" aria-hidden="true" />
+								{t("sending")}
+							</span>
+						</div>
+						<div className="msg-body">
+							<div className="msg-text">{pendingEcho.text}</div>
+						</div>
+					</div>
 				)}
 				{state.queue.steering.map((text, i) => (
 					<div className="queued-msg" key={`q-steer-${i}`}>

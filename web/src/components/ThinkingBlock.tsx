@@ -37,8 +37,13 @@ export function ThinkingBlock({ thinking, streaming, wrap = true }: ThinkingBloc
 				<span className="thinking-label">
 					{streaming && expanded ? (
 						<span className="thinking-live-label">
+							<span className="thinking-spinner" aria-hidden="true" />
 							{t("thinkingNow")}
-							<span className="dots" />
+						</span>
+					) : streaming ? (
+						<span className="thinking-live-label">
+							<span className="thinking-spinner" aria-hidden="true" />
+							{t("thinkingPreview", { preview })}
 						</span>
 					) : expanded ? (
 						t("thinking")

@@ -25,6 +25,13 @@ interface ChatInputProps {
 	models: ModelInfo[];
 	modelsLoading: boolean;
 	send: (msg: ClientMessage) => boolean;
+	/** Active conversation id — tags the optimistic echo so it only renders
+	 *  in the conversation it was actually sent from. */
+	activeConversationId: string;
+	/** Optimistic local echo (see ChatState.pendingEcho) — called right
+	 *  alongside the real send() so the user's own message appears instantly
+	 *  instead of waiting for the server round trip. */
+	setPendingEcho: (conversationId: string, text: string) => void;
 	/** Files/folders attached via the right panel / preview, waiting to be sent. */
 	attachments: {
 		path: string;
@@ -63,6 +70,8 @@ export const ChatInput = memo(function ChatInput({
 	models,
 	modelsLoading,
 	send,
+	activeConversationId,
+	setPendingEcho,
 	attachments,
 	onRemoveAttachment,
 	onAddImageFiles,
@@ -303,6 +312,7 @@ export const ChatInput = memo(function ChatInput({
 				}),
 			})
 		) {
+			setPendingEcho(activeConversationId, trimmed);
 			setText("");
 			onSent();
 			taRef.current?.focus();

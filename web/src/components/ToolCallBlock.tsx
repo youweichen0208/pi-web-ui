@@ -10,6 +10,7 @@ import {
 import type { ToolStatus, UiMessage, UiToolCallBlock } from "../types";
 import { useT } from "../i18n";
 import { Markdown } from "./Markdown";
+import { highlightLine } from "../hljs-lite";
 
 export interface ToolView {
 	/** Tool result message if the tool already finished. */
@@ -54,6 +55,184 @@ function isMarkdownReadTarget(block: UiToolCallBlock): boolean {
 	}
 }
 
+/** Extension → highlight.js language alias, for coloring a `read` tool's
+ *  raw dump the same way a fenced code block in chat gets colored (only
+ *  covers languages bundled by rehype-highlight's "common" set — anything
+ *  else falls through unhighlighted via `ignoreMissing: true`, never errors). */
+const EXT_LANG: Record<string, string> = {
+	json: "json",
+	jsonc: "json",
+	ts: "typescript",
+	mts: "typescript",
+	cts: "typescript",
+	tsx: "typescript",
+	js: "javascript",
+	mjs: "javascript",
+	cjs: "javascript",
+	jsx: "javascript",
+	py: "python",
+	rb: "ruby",
+	go: "go",
+	rs: "rust",
+	java: "java",
+	kt: "kotlin",
+	kts: "kotlin",
+	swift: "swift",
+	c: "c",
+	h: "c",
+	cpp: "cpp",
+	cc: "cpp",
+	hpp: "cpp",
+	cs: "csharp",
+	php: "php",
+	sql: "sql",
+	css: "css",
+	scss: "scss",
+	less: "less",
+	html: "xml",
+	htm: "xml",
+	xml: "xml",
+	svg: "xml",
+	yml: "yaml",
+	yaml: "yaml",
+	sh: "bash",
+	bash: "bash",
+	zsh: "bash",
+	toml: "ini",
+	ini: "ini",
+	graphql: "graphql",
+	gql: "graphql",
+	lua: "lua",
+	r: "r",
+	makefile: "makefile",
+	diff: "diff",
+	patch: "diff",
+};
+
+/** hljs language for a file path by extension, or null when unrecognized. */
+function langFromPath(path: string): string | null {
+	const ext = path.split(/[\\/]/).pop()?.split(".").pop()?.toLowerCase();
+	return (ext && EXT_LANG[ext]) || null;
+}
+
+/** hljs language for a `read` tool call's target path, or null when the
+ *  path has no recognized extension (falls back to the plain <pre> dump —
+ *  and to the dedicated Markdown-preview path above for .md/.markdown). */
+function readTargetLanguage(block: UiToolCallBlock): string | null {
+	if (block.name !== "read" || !block.argumentsText) return null;
+	try {
+		const args = JSON.parse(block.argumentsText) as { path?: unknown };
+		return typeof args.path === "string" ? langFromPath(args.path) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** For a `write` tool call: the language for its target path, and the raw
+ *  content it's about to write — so the args panel can show colored code
+ *  instead of the raw `{"path":...,"content":...}` JSON blob. Null when this
+ *  isn't a (parseable) write call. */
+function writeTargetPreview(
+	block: UiToolCallBlock,
+): { lang: string | null; content: string } | null {
+	if (block.name !== "write" || !block.argumentsText) return null;
+	try {
+		const args = JSON.parse(block.argumentsText) as {
+			path?: unknown;
+			content?: unknown;
+		};
+		if (typeof args.content !== "string") return null;
+		const lang = typeof args.path === "string" ? langFromPath(args.path) : null;
+		return { lang, content: args.content };
+	} catch {
+		return null;
+	}
+}
+
+/** For an `edit` tool call: the language for its target path (drives the
+ *  diff view's per-line syntax coloring). Null when unavailable. */
+function editTargetLanguage(block: UiToolCallBlock): string | null {
+	if (block.name !== "edit" || !block.argumentsText) return null;
+	try {
+		const args = JSON.parse(block.argumentsText) as { path?: unknown };
+		return typeof args.path === "string" ? langFromPath(args.path) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Shape of the `edit` tool's toolResult.details on success (see
+ *  edit-diff.ts's generateDiffString — a plain-text, line-numbered diff:
+ *  each line is `+`/`-`/` ` followed by a padded line number, a space, then
+ *  the code). Absent/malformed on error results. */
+interface EditDiffDetails {
+	diff?: unknown;
+}
+
+/** The `edit` tool's diff text for this block's result, or null when this
+ *  isn't a successful edit result (running/error/not-an-edit-call). */
+function editResultDiff(block: UiToolCallBlock, view: ToolView): string | null {
+	if (block.name !== "edit" || !view.result || view.result.isError) return null;
+	const details = view.result.details as EditDiffDetails | undefined;
+	return typeof details?.diff === "string" ? details.diff : null;
+}
+
+/** One parsed line of the edit tool's diff text (see EditDiffDetails). */
+interface DiffLine {
+	marker: "+" | "-" | " ";
+	lineNum: string;
+	code: string;
+}
+
+const DIFF_LINE_RE = /^([+\- ])(\s*\d+) (.*)$/;
+
+function parseDiffLines(diff: string): DiffLine[] {
+	return diff.split("\n").map((raw) => {
+		const m = DIFF_LINE_RE.exec(raw);
+		if (!m) return { marker: " " as const, lineNum: "", code: raw };
+		return { marker: m[1] as "+" | "-" | " ", lineNum: m[2], code: m[3] };
+	});
+}
+
+/** The edit tool's own diff (see EditDiffDetails), rendered as colored
+ *  +/- lines with per-line syntax highlighting — same green/red convention
+ *  as the git diff viewer in SCMPanel.tsx (.scm-diff-line), but this one
+ *  also tokenizes each line's code the way a fenced code block would. */
+function DiffView({ diff, lang }: { diff: string; lang: string | null }) {
+	const lines = parseDiffLines(diff);
+	return (
+		<div className="toolcall-diff">
+			{lines.map((ln, i) => (
+				<div
+					key={i}
+					className={`toolcall-diff-line ${ln.marker === "+" ? "add" : ln.marker === "-" ? "del" : "ctx"}`}
+				>
+					<span className="toolcall-diff-gutter">
+						{ln.marker}
+						{ln.lineNum}
+					</span>
+					<code
+						className="toolcall-diff-code hljs"
+						// biome-ignore lint: highlightLine only ever returns hljs's own
+						// escaped/span-wrapped output (see hljs-lite.ts), never raw input.
+						dangerouslySetInnerHTML={{ __html: highlightLine(ln.code, lang) || "\u200b" }}
+					/>
+				</div>
+			))}
+		</div>
+	);
+}
+
+/** Wrap raw text in a fenced code block, picking a fence long enough that it
+ *  can't be broken by a run of backticks already inside the text (CommonMark
+ *  fence rule: the fence must be longer than any backtick run it contains). */
+function fenceCodeBlock(text: string, lang: string): string {
+	const runs = text.match(/`+/g)?.map((r) => r.length) ?? [];
+	const longestRun = runs.length ? Math.max(...runs) : 0;
+	const fence = "`".repeat(Math.max(3, longestRun + 1));
+	return `${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}`;
+}
+
 export const ToolCallBlock = memo(function ToolCallBlock({
 	block,
 	view,
@@ -84,6 +263,17 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 	const waitingModel = !view.result && !!view.status;
 	const isError = view.result?.isError ?? view.status?.isError ?? false;
 	const isMarkdown = isMarkdownReadTarget(block);
+	// Non-markdown `read` targets still get colored like a normal code block
+	// when the extension maps to a known language — was a flat monochrome
+	// <pre> dump before, unlike every other code block in the app.
+	const codeLang = !isMarkdown && !isError ? readTargetLanguage(block) : null;
+	// `write` calls: show the file content they're about to write as colored
+	// code instead of the raw {"path":...,"content":...} JSON blob.
+	const writePreview = writeTargetPreview(block);
+	// `edit` calls: the diff the tool itself computed (server-side, already
+	// line-numbered) — colored +/- with per-line syntax highlighting.
+	const editDiff = editResultDiff(block, view);
+	const editLang = editDiff ? editTargetLanguage(block) : null;
 
 	const output = view.result
 		? view.result.content.map((b) => (b.type === "text" ? b.text : "")).join("")
@@ -163,6 +353,14 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 						<div className="toolcall-args">
 							{block.name === "bash" && block.argumentsText.startsWith("{") ? (
 								<TerminalCommand args={block.argumentsText} />
+							) : writePreview ? (
+								writePreview.lang ? (
+									<div className="toolcall-code">
+										<Markdown text={fenceCodeBlock(writePreview.content, writePreview.lang)} />
+									</div>
+								) : (
+									<pre>{writePreview.content}</pre>
+								)
 							) : (
 								<pre>{block.argumentsText}</pre>
 							)}
@@ -172,7 +370,8 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 						<div className="toolcall-output">
 							<div className="toolcall-output-label">
 								{isError ? t("errorOutput") : t("output")}
-								{(running || waitingModel) && <span className="cursor" />}
+								{running && <span className="cursor" />}
+								{waitingModel && <span className="thinking-spinner" aria-hidden="true" />}
 								<span className="toolcall-output-spacer" />
 								{isMarkdown && !isError && (
 									<button
@@ -189,9 +388,15 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 									</button>
 								)}
 							</div>
-							{isMarkdown && markdownPreview && !isError ? (
+							{editDiff ? (
+								<DiffView diff={editDiff} lang={editLang} />
+							) : isMarkdown && markdownPreview && !isError ? (
 								<div className="toolcall-markdown">
 									<Markdown text={output} />
+								</div>
+							) : codeLang ? (
+								<div className="toolcall-code">
+									<Markdown text={fenceCodeBlock(output, codeLang)} />
 								</div>
 							) : (
 								<pre>{output}</pre>
@@ -205,7 +410,10 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 					)}
 					{waitingModel && output.length === 0 && (
 						<div className="toolcall-waiting">
-							<span className="cursor" /> {t("waitingModel")}
+							<span className="thinking-live-label">
+								<span className="thinking-spinner" aria-hidden="true" />
+								{t("waitingModel")}
+							</span>
 						</div>
 					)}
 				</div>

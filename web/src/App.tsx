@@ -54,7 +54,6 @@ import {
 	type SoundKind,
 	type SoundSettings,
 } from "./sounds";
-import { useTheme } from "./theme";
 
 export interface PendingAttachment {
 	path: string;
@@ -187,7 +186,7 @@ type ViewName = "chat" | "terminal" | "git" | `plugin:${string}`;
 
 export function App() {
 	const t = useT();
-	const { chat, send, dismissNotice, pushNotice, terminal } = useChat();
+	const { chat, send, dismissNotice, pushNotice, setPendingEcho, terminal } = useChat();
 	const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
 	/** Full-window file drag in progress (issue #19) — shows the app-wide
@@ -297,8 +296,6 @@ export function App() {
 
 	// -- sound notifications --------------------------------------------------
 	const [sound, setSound] = useState<SoundSettings>(loadSoundSettings);
-	// -- theme (whole stylesheet swap) ---------------------------------------
-	const { themes, theme, switchTheme } = useTheme();
 	const prevStreaming = useRef<boolean | null>(null);
 	const prevDialogId = useRef<number | null>(null);
 	const lastErrorNotice = useRef(0);
@@ -622,9 +619,6 @@ export function App() {
 				sound={sound}
 				onSoundChange={setSound}
 				onSoundPreview={(kind: SoundKind) => playSound(kind, sound)}
-				themes={themes}
-				theme={theme}
-				onThemeChange={switchTheme}
 			/>
 			{chat.protocolMismatch && (
 				<div className="protocol-banner">
@@ -674,6 +668,7 @@ export function App() {
 								onKillBash={() => send({ type: "abort_bash" })}
 								thinkingWrap={chat.settings?.thinkingWrap ?? true}
 							toolsWrap={chat.settings?.toolsWrap ?? true}
+							pendingEcho={chat.pendingEcho}
 							/>
 						) : (
 							<div className="boot-wait">
@@ -698,6 +693,8 @@ export function App() {
 							modelState={modelState}
 							models={chat.models}
 							modelsLoading={chat.modelsLoading}
+							activeConversationId={chat.activeConversationId}
+							setPendingEcho={setPendingEcho}
 							attachments={attachments}
 							onRemoveAttachment={removeAttachmentCb}
 							onAddImageFiles={addImageFilesCb}

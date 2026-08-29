@@ -25,7 +25,7 @@ import { PluginStorage, PluginSecrets, ensurePluginDeps, WorkspaceFS } from "./p
 import type { Request, Response } from "express";
 import { createHash } from "node:crypto";
 
-/** 合法插件 id：字母/数字/下划线/连字符，防路径穿越（同 themes.ts 的做法）。 */
+/** 合法插件 id：字母/数字/下划线/连字符，防路径穿越。 */
 const ID_RE = /^[A-Za-z0-9_-]+$/;
 
 /** 插件收到的工具执行事件（agent-service 的 SDK tool_execution_start/end 转发）。 */

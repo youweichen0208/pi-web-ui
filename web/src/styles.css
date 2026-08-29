@@ -1,30 +1,186 @@
-/* pi-web-ui — dark theme, pi-flavored */
+/* pi-web-ui — default theme, inspired by a minimal Inter/VitePress blog:
+   white canvas, indigo links, dark code islands. This used to be an
+   opt-in alternate theme ("博客风"); it is now the only stylesheet — the
+   in-app theme switcher has been removed. */
+
+/* Self-hosted fonts (Inter + IBM Plex Mono, latin/latin-ext subsets from
+   @fontsource — matches the reference blog's font choice) so the theme
+   renders correctly offline, without depending on Google Fonts at runtime.
+   Chinese text still falls back to the system CJK font in --sans (PingFang
+   SC / Microsoft YaHei / Noto Sans CJK) — no CJK webfont is bundled, since
+   a full Noto Sans SC subset set is tens of MB and system CJK fonts already
+   look effectively identical. */
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 400;
+	src: url("/fonts/inter/inter-latin-ext-400-normal.woff2") format("woff2");
+	unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 400;
+	src: url("/fonts/inter/inter-latin-400-normal.woff2") format("woff2");
+	unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 500;
+	src: url("/fonts/inter/inter-latin-ext-500-normal.woff2") format("woff2");
+	unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 500;
+	src: url("/fonts/inter/inter-latin-500-normal.woff2") format("woff2");
+	unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 600;
+	src: url("/fonts/inter/inter-latin-ext-600-normal.woff2") format("woff2");
+	unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 600;
+	src: url("/fonts/inter/inter-latin-600-normal.woff2") format("woff2");
+	unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 700;
+	src: url("/fonts/inter/inter-latin-ext-700-normal.woff2") format("woff2");
+	unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 700;
+	src: url("/fonts/inter/inter-latin-700-normal.woff2") format("woff2");
+	unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 800;
+	src: url("/fonts/inter/inter-latin-ext-800-normal.woff2") format("woff2");
+	unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 800;
+	src: url("/fonts/inter/inter-latin-800-normal.woff2") format("woff2");
+	unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 400;
+	src: url("/fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-400-normal.woff2") format("woff2");
+	unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 400;
+	src: url("/fonts/ibm-plex-mono/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+	unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 500;
+	src: url("/fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-500-normal.woff2") format("woff2");
+	unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 500;
+	src: url("/fonts/ibm-plex-mono/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+	unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 600;
+	src: url("/fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-600-normal.woff2") format("woff2");
+	unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 600;
+	src: url("/fonts/ibm-plex-mono/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
+	unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
 
 :root {
-	--bg: #0d0e12;
-	--bg-elev: #14161c;
-	--bg-elev2: #1a1d26;
-	--border: #262a35;
-	--border-soft: #1e2230;
-	--text: #e6e8ef;
-	--text-dim: #9aa1b4;
-	--text-faint: #6b7284;
-	--accent: #8b5cf6;
-	--accent-soft: rgba(139, 92, 246, 0.14);
-	--green: #34d399;
-	--green-soft: rgba(52, 211, 153, 0.12);
-	--red: #f87171;
-	--red-soft: rgba(248, 113, 113, 0.12);
-	--amber: #fbbf24;
-	/* Terminal ANSI palette (xterm canvas reads these via web/src/theme.ts
-	   buildTermTheme; the CSS containers below use --term-bg so the padded
-	   area blends with the canvas). User themes override this block. */
-	--term-bg: #0b0d12;
+	color-scheme: light;
+	--bg: #fbfbfd;
+	--bg-elev: #ffffff;
+	--bg-elev2: #f1f3f8;
+	--border: #e3e7ee;
+	--border-soft: #edf0f5;
+	--text: #334155;
+	--text-dim: #64748b;
+	--text-faint: #94a3b8;
+	--accent: #3b49df;
+	--accent-soft: rgba(59, 73, 223, 0.12);
+	--green: #16a34a;
+	--green-soft: rgba(22, 163, 74, 0.12);
+	--red: #dc2626;
+	--red-soft: rgba(220, 38, 38, 0.1);
+	--amber: #d97706;
+	--code-bg: #1b1f24;
+	--code-fg: var(--term-fg);
+	/* Terminal ANSI palette — kept as a dark "island" like the reference
+	   blog's own Shiki code cards, even though the page chrome is light. */
+	--term-bg: #1b1f24;
 	--term-fg: #e6e8ef;
-	--term-cursor: #8b5cf6;
-	--term-cursor-accent: #0b0d12;
-	--term-selection: rgba(139, 92, 246, 0.35);
-	--term-black: #1a1d26;
+	--term-cursor: #3b49df;
+	--term-cursor-accent: #1b1f24;
+	--term-selection: rgba(59, 73, 223, 0.35);
+	--term-black: #2a2f37;
 	--term-red: #f87171;
 	--term-green: #34d399;
 	--term-yellow: #fbbf24;
@@ -40,10 +196,10 @@
 	--term-bright-magenta: #c084fc;
 	--term-bright-cyan: #22d3ee;
 	--term-bright-white: #ffffff;
-	--mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+	--mono: "IBM Plex Mono", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
 	--sans:
-		-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-		"Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+		Inter, "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI",
+		"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -439,7 +595,7 @@ body.panel-resizing {
 .session-item.active {
 	background: var(--accent-soft);
 	color: var(--text);
-	border: 1px solid rgba(139, 92, 246, 0.3);
+	border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 	padding: 7px 9px;
 }
 
@@ -572,7 +728,7 @@ body.panel-resizing {
 .project-item.active {
 	background: var(--accent-soft);
 	color: var(--text);
-	border: 1px solid rgba(139, 92, 246, 0.3);
+	border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 	padding: 6px 9px;
 }
 
@@ -610,6 +766,19 @@ body.panel-resizing {
 .project-time {
 	font-size: 10.5px;
 	color: var(--text-faint);
+	flex-shrink: 0;
+}
+
+/* 乐观项目切换反馈：点击后立即高亮，右侧时间换成转圈，等 cwd 真正切换过来
+ * （或 15s 兜底超时）再恢复——不用等服务端往返才看到点击生效。 */
+.project-item.pending {
+	background: var(--bg-elev2);
+	color: var(--text);
+}
+.project-item.pending .project-icon {
+	color: var(--accent);
+}
+.project-spinner {
 	flex-shrink: 0;
 }
 
@@ -912,7 +1081,7 @@ body.panel-resizing {
 	align-items: center;
 	gap: 5px;
 	padding: 3px 10px;
-	border: 1px solid rgba(139, 92, 246, 0.4);
+	border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
 	border-radius: 999px;
 	background: var(--accent-soft);
 	color: var(--text);
@@ -1014,7 +1183,7 @@ body.panel-resizing {
 
 .attachcard {
 	margin: 6px 0;
-	border: 1px dashed rgba(139, 92, 246, 0.45);
+	border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
 	border-radius: 8px;
 	background: var(--accent-soft);
 	overflow: hidden;
@@ -1034,7 +1203,7 @@ body.panel-resizing {
 	text-align: left;
 }
 .attachcard-head:hover {
-	background: rgba(139, 92, 246, 0.08);
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .attachcard-icon {
@@ -1083,20 +1252,20 @@ body.panel-resizing {
 }
 .attachcard-mode.lines {
 	color: var(--accent);
-	border-color: rgba(139, 92, 246, 0.4);
+	border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 /* ---- attachcard mode: vision-bridge transcript -------------------------- */
 .attachcard-mode.bridged {
 	color: var(--accent);
-	border-color: rgba(139, 92, 246, 0.4);
+	border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .attachcard-bridgenote {
 	font-size: 11px;
 	color: var(--text-faint);
 	padding: 6px 10px;
 	border-bottom: 1px solid var(--border);
-	background: rgba(139, 92, 246, 0.06);
+	background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .attachcard-refnote {
@@ -1109,7 +1278,7 @@ body.panel-resizing {
 .attachcard-content {
 	margin: 0;
 	padding: 10px 12px;
-	border-top: 1px dashed rgba(139, 92, 246, 0.3);
+	border-top: 1px dashed color-mix(in srgb, var(--accent) 30%, transparent);
 	font-family: var(--mono);
 	font-size: 12px;
 	line-height: 1.55;
@@ -1154,7 +1323,7 @@ body.panel-resizing {
 }
 
 .skillcard-head:hover {
-	background: rgba(139, 92, 246, 0.08);
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .skillcard-icon {
@@ -1552,7 +1721,7 @@ body.panel-resizing {
 }
 .term-tab.active {
 	background: var(--accent-soft);
-	border: 1px solid rgba(139, 92, 246, 0.3);
+	border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 	padding: 3px 5px;
 }
 
@@ -2175,7 +2344,7 @@ body.panel-resizing {
 	width: 9px;
 	height: 9px;
 	border-radius: 50%;
-	border: 2px solid rgba(139, 92, 246, 0.25);
+	border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
 	border-top-color: var(--accent);
 	animation: spin 0.8s linear infinite;
 	flex-shrink: 0;
@@ -2771,7 +2940,7 @@ body.panel-resizing {
 
 .chip.newchat {
 	color: var(--accent);
-	border-color: rgba(139, 92, 246, 0.4);
+	border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .chip.newchat:hover {
 	background: var(--accent-soft);
@@ -3095,7 +3264,7 @@ body.panel-resizing {
 }
 .dd-refresh.accent {
 	color: var(--accent);
-	border-color: rgba(139, 92, 246, 0.4);
+	border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .dd-refresh.accent.armed {
 	color: var(--amber);
@@ -3218,7 +3387,12 @@ body.panel-resizing {
 	.notice-info {
 		border-color: rgba(96, 165, 250, 0.45);
 		border-left-color: #3b82f6;
-		color: var(--text);
+		/* Fixed light-on-dark pairing (like .notice-error/.notice-warning below) —
+		   the background here is a permanently dark navy tint regardless of theme,
+		   so the text must stay a fixed light blue too. var(--text) used to sit
+		   here, which is fine on the dark theme (light text) but turns into
+		   dark-on-dark and disappears on any light theme. */
+		color: #93c5fd;
 		background: #1b2544;
 	}
 	.notice-info .notice-icon {
@@ -3500,7 +3674,7 @@ body.panel-resizing {
 /* 拖拽悬停时整个编辑器高亮 */
 .msg-editor.drag-over .msg-editor-input {
 	border-color: var(--accent);
-	box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 .msg-editor.drag-over::after {
 	content: "📎";
@@ -3535,7 +3709,7 @@ span.msg-editor-hint svg {
 }
 .msg-editor-input:focus {
 	border-color: var(--accent);
-	box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .msg-editor-actions {
@@ -3712,7 +3886,7 @@ span.msg-editor-hint svg {
 	padding: 4px 10px;
 }
 .msg-text a {
-	color: #a78bfa;
+	color: var(--accent);
 }
 .msg-text code {
 	font-family: var(--mono);
@@ -3728,7 +3902,7 @@ span.msg-editor-hint svg {
 	margin: 10px 0;
 }
 .codeblock pre {
-	background: #0b0d12 !important;
+	background: var(--code-bg) !important;
 	border: 1px solid var(--border);
 	border-radius: 8px;
 	padding: 12px 14px;
@@ -3886,36 +4060,36 @@ span.msg-editor-hint svg {
 	border-top: 1px solid var(--border-soft);
 }
 
-/* Animated “…” on the thinking header while reasoning is streaming live. */
-.thinking-live .thinking-toggle {
+/* Spinning ring + brightened label on the thinking header while reasoning
+   is streaming live — was a text "..." tick before; a spinner reads as
+   "actively working" at a glance instead of needing to notice text change.
+   (Selector fixed to match the actual class list on .thinking — it used to
+   be `.thinking-live .thinking-toggle`, which never matched because the
+   element carries "thinking" and "live" as two separate class tokens, not
+   one "thinking-live" token, so this brightening never actually applied.) */
+.thinking.live .thinking-toggle {
 	color: var(--text);
 }
 
 .thinking-live-label {
 	display: inline-flex;
 	align-items: center;
+	gap: 7px;
 }
 
-.thinking-live-label .dots::after {
-	content: "";
-	display: inline-block;
-	width: 1.2em;
-	text-align: left;
-	animation: thinking-dots 1.2s steps(4, end) infinite;
+.thinking-spinner {
+	width: 12px;
+	height: 12px;
+	flex-shrink: 0;
+	border-radius: 50%;
+	border: 1.5px solid var(--accent-soft);
+	border-top-color: var(--accent);
+	animation: thinking-spin 0.7s linear infinite;
 }
 
-@keyframes thinking-dots {
-	0% {
-		content: "";
-	}
-	25% {
-		content: ".";
-	}
-	50% {
-		content: "..";
-	}
-	75% {
-		content: "...";
+@keyframes thinking-spin {
+	to {
+		transform: rotate(360deg);
 	}
 }
 
@@ -4091,7 +4265,8 @@ span.msg-editor-hint svg {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	background: #0b0d12;
+	background: var(--code-bg);
+	color: var(--code-fg);
 	border: 1px solid var(--border-soft);
 	border-radius: 6px;
 	padding: 8px 10px;
@@ -4103,11 +4278,12 @@ span.msg-editor-hint svg {
 	flex-shrink: 0;
 }
 .termline code {
+	color: var(--code-fg);
 	word-break: break-all;
 }
 .termline-timeout {
 	margin-left: auto;
-	color: var(--text-faint);
+	color: color-mix(in srgb, var(--code-fg) 55%, transparent);
 	font-size: 11px;
 	flex-shrink: 0;
 }
@@ -4158,18 +4334,82 @@ span.msg-editor-hint svg {
 	font-size: 13px;
 }
 
+/* `read` on a file whose extension maps to a known language (see
+   readTargetLanguage in ToolCallBlock.tsx) — reuses the exact same
+   Markdown → rehype-highlight → .codeblock pipeline as a fenced code block
+   in chat, so it gets real syntax colors instead of flat monochrome text.
+   .codeblock already supplies its own background/border/padding, so this
+   wrapper only needs the scroll cap. */
+.toolcall-code {
+	max-height: 420px;
+	overflow: auto;
+}
+.toolcall-code .codeblock {
+	margin: 0;
+}
+
+/* `edit` tool result — the diff the tool computed server-side (see
+   EditDiffDetails/DiffView in ToolCallBlock.tsx), rendered as colored +/-
+   lines with each line's code run through the same hljs tokenizer as a
+   regular code block (hljs-lite.ts). Mirrors the green/red convention of
+   the git diff viewer (.scm-diff-line in SCMPanel.tsx) at the line level,
+   plus per-token syntax color on top. */
+.toolcall-diff {
+	max-height: 420px;
+	overflow: auto;
+	background: var(--code-bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 6px 0;
+	font-family: var(--mono);
+	font-size: 12.5px;
+	line-height: 1.55;
+}
+.toolcall-diff-line {
+	display: flex;
+	padding: 0 10px;
+	white-space: pre;
+}
+.toolcall-diff-line.add {
+	background: var(--green-soft);
+}
+.toolcall-diff-line.del {
+	background: var(--red-soft);
+}
+.toolcall-diff-gutter {
+	flex: none;
+	width: 3.5em;
+	margin-right: 10px;
+	color: color-mix(in srgb, var(--code-fg) 55%, transparent);
+	text-align: right;
+	user-select: none;
+}
+.toolcall-diff-line.add .toolcall-diff-gutter {
+	color: var(--green);
+}
+.toolcall-diff-line.del .toolcall-diff-gutter {
+	color: var(--red);
+}
+.toolcall-diff-line .toolcall-diff-code {
+	flex: 1;
+	min-width: 0;
+	color: var(--code-fg);
+	background: transparent;
+	padding: 0;
+}
+
 .toolcall-output pre {
 	margin: 0;
 	max-height: 320px;
 	overflow: auto;
-	background: #0b0d12;
+	background: var(--code-bg);
 	border: 1px solid var(--border-soft);
 	border-radius: 6px;
 	padding: 8px 10px;
 	font-family: var(--mono);
 	font-size: 12px;
 	line-height: 1.5;
-	color: #c9d1d9;
+	color: var(--code-fg);
 	/* terminal-style: keep original line breaks & column layout, scroll horizontally
      instead of wrapping long lines */
 	white-space: pre;
@@ -4177,7 +4417,7 @@ span.msg-editor-hint svg {
 }
 
 .toolcall.err .toolcall-output pre {
-	color: #f0a5a5;
+	color: var(--red);
 }
 
 .toolcall-waiting {
@@ -4269,7 +4509,7 @@ span.msg-editor-hint svg {
 .queued-bubble {
 	max-width: min(85%, 720px);
 	background: var(--accent-soft);
-	border: 1px dashed rgba(139, 92, 246, 0.35);
+	border: 1px dashed color-mix(in srgb, var(--accent) 35%, transparent);
 	border-radius: 12px;
 	padding: 8px 12px;
 	opacity: 0.75;
@@ -4300,9 +4540,26 @@ span.msg-editor-hint svg {
 
 .msg-user .msg-body {
 	background: var(--accent-soft);
-	border: 1px solid rgba(139, 92, 246, 0.25);
+	border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
 	border-radius: 12px;
 	padding: 10px 14px;
+}
+
+/* 乐观本地回显气泡：视觉上等同普通用户消息，但略透明 + 顶部"发送中"标签，
+ * 一旦服务端真正确认（真实气泡落地）就会被 reducer 清掉，两者不会同时出现。 */
+.pending-echo {
+	opacity: 0.62;
+}
+.pending-echo-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--text-faint);
+}
+.pending-echo-tag .thinking-spinner {
+	width: 10px;
+	height: 10px;
 }
 
 .msg-error {
@@ -4343,7 +4600,7 @@ span.msg-editor-hint svg {
 	background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 60%, #4f46e5 100%);
 	border-radius: 20px;
 	box-shadow:
-		0 16px 44px rgba(139, 92, 246, 0.38),
+		0 16px 44px color-mix(in srgb, var(--accent) 38%, transparent),
 		inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
@@ -4355,7 +4612,7 @@ span.msg-editor-hint svg {
 	border-radius: 32px;
 	background: radial-gradient(
 		ellipse at center,
-		rgba(139, 92, 246, 0.28),
+		color-mix(in srgb, var(--accent) 28.000000000000004%, transparent),
 		transparent 70%
 	);
 	z-index: -1;
@@ -4427,11 +4684,11 @@ span.msg-editor-hint svg {
 		box-shadow 0.15s;
 }
 .empty-example:hover {
-	border-color: rgba(139, 92, 246, 0.5);
+	border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 	background: var(--accent-soft);
 	color: var(--text);
 	transform: translateY(-1px);
-	box-shadow: 0 8px 22px rgba(139, 92, 246, 0.16);
+	box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .empty-example-icon {
@@ -4451,6 +4708,17 @@ span.msg-editor-hint svg {
 	color: var(--text-faint);
 	padding: 60px 20px;
 	font-size: 13px;
+}
+
+/* 会话中途"助手正在处理"内联提示（与上面的 .streaming-wait 互补：那个只在
+ * 全新空会话时居中大字出现，这个覆盖其余情况——历史消息之后、真正开始吐字
+ * 之前的空档，避免看起来像卡住）。 */
+.assistant-wait {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 13px;
+	color: var(--text-faint);
 }
 
 .scroll-bottom {
@@ -5208,7 +5476,7 @@ span.msg-editor-hint svg {
 	padding: 0 16px;
 	gap: 5px;
 	font-size: 13px;
-	border-color: rgba(139, 92, 246, 0.45);
+	border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 	color: var(--accent);
 }
 .inputbox .btn.supplement:hover:not(:disabled) {
@@ -5996,7 +6264,7 @@ span.msg-editor-hint svg {
 	gap: 6px;
 	flex: none;
 	padding: 9px 14px;
-	border: 1px solid rgba(139, 92, 246, 0.4);
+	border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
 	border-radius: 8px;
 	background: transparent;
 	color: var(--accent);
@@ -6762,8 +7030,8 @@ span.msg-editor-hint svg {
 	overflow: auto;
 	padding: 22px clamp(18px, 4vw, 48px) 34px;
 	background:
-		radial-gradient(circle at 10% 0%, rgba(139, 92, 246, 0.08), transparent 34%),
-		rgba(0, 0, 0, 0.22);
+		radial-gradient(circle at 10% 0%, var(--accent-soft), transparent 34%),
+		var(--bg);
 	color: var(--text);
 	font-size: 14px;
 	line-height: 1.8;
@@ -6811,7 +7079,7 @@ span.msg-editor-hint svg {
 	font-size: clamp(19px, 2.2vw, 25px);
 }
 .fp-markdown h3 {
-	color: #c4b5fd;
+	color: var(--accent);
 	font-size: 19px;
 }
 .fp-markdown h4,
@@ -6830,24 +7098,24 @@ span.msg-editor-hint svg {
 	margin-bottom: 0;
 }
 .fp-markdown strong {
-	color: #f3f4f6;
+	color: var(--text);
 	font-weight: 720;
 }
 .fp-markdown em {
-	color: #c4b5fd;
+	color: var(--accent);
 }
 .fp-markdown del {
 	color: var(--text-faint);
 }
 .fp-markdown a {
-	color: #a78bfa;
+	color: var(--accent);
 	text-decoration: underline;
-	text-decoration-color: rgba(167, 139, 250, 0.45);
+	text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
 	text-underline-offset: 3px;
 	transition: color 0.12s, text-decoration-color 0.12s;
 }
 .fp-markdown a:hover {
-	color: #c4b5fd;
+	color: var(--text);
 	text-decoration-color: currentColor;
 }
 .fp-markdown ul,
@@ -6869,10 +7137,10 @@ span.msg-editor-hint svg {
 .fp-markdown blockquote {
 	margin: 1.1em 0;
 	padding: 0.7em 1.1em;
-	border: 1px solid rgba(139, 92, 246, 0.2);
+	border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
 	border-left: 4px solid var(--accent);
 	border-radius: 0 10px 10px 0;
-	background: rgba(139, 92, 246, 0.08);
+	background: var(--accent-soft);
 	color: var(--text-dim);
 }
 .fp-markdown blockquote p:last-child {
@@ -6894,7 +7162,7 @@ span.msg-editor-hint svg {
 	font-size: 13px;
 }
 .fp-markdown thead {
-	background: rgba(139, 92, 246, 0.12);
+	background: var(--accent-soft);
 }
 .fp-markdown th,
 .fp-markdown td {
@@ -6911,10 +7179,10 @@ span.msg-editor-hint svg {
 	white-space: nowrap;
 }
 .fp-markdown tbody tr:nth-child(even) {
-	background: rgba(255, 255, 255, 0.025);
+	background: var(--bg-elev2);
 }
 .fp-markdown tbody tr:hover {
-	background: rgba(139, 92, 246, 0.07);
+	background: var(--accent-soft);
 }
 .fp-markdown code {
 	font-family: var(--mono);
@@ -6925,8 +7193,8 @@ span.msg-editor-hint svg {
 	padding: 0.16em 0.42em;
 	border: 1px solid var(--border-soft);
 	border-radius: 5px;
-	background: rgba(139, 92, 246, 0.1);
-	color: #ddd6fe;
+	background: var(--accent-soft);
+	color: var(--accent);
 }
 .fp-markdown .codeblock {
 	max-width: 100%;
@@ -7042,13 +7310,13 @@ span.msg-editor-hint svg {
 	cursor: pointer;
 }
 .fp-line:hover {
-	background: rgba(139, 92, 246, 0.08);
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .fp-line.sel {
-	background: rgba(139, 92, 246, 0.22);
+	background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .fp-code.dragging .fp-line.sel {
-	background: rgba(139, 92, 246, 0.3);
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .fp-num {
@@ -7408,4 +7676,78 @@ span.msg-editor-hint svg {
 	.status-cwd-input {
 		font-size: 12px; /* avoid iOS auto-zoom on focus */
 	}
+}
+
+/* ---- blog-style flourishes: rounded, shadowed code cards + tighter
+   heading tracking, matching the reference blog's Shiki code blocks and
+   Inter headings. Code stays a dark island on the light page, same as the
+   reference site's own dark Shiki theme sitting on a white canvas. ---- */
+.codeblock pre {
+	border-radius: 14px;
+	border-color: rgba(15, 23, 42, 0.12);
+	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+}
+.termline {
+	border-radius: 14px;
+	border-color: rgba(15, 23, 42, 0.12);
+	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+}
+.toolcall-output pre,
+.toolcall-diff {
+	border-radius: 14px;
+	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+}
+.fp-markdown h1,
+.fp-markdown h2,
+.fp-markdown h3 {
+	letter-spacing: -0.02em;
+}
+
+/* ---- blog-style flourishes, round 2: bold solid-fill status pills and a
+   punchier indigo send/stop affordance, echoing the reference blog's
+   homepage badges ("Featured" pill) and "Read article" button (solid fill,
+   heavy weight, generous rounding) rather than the app's usual quiet
+   outline chrome. ---- */
+.toolcall-status {
+	border: none;
+	font-weight: 700;
+	letter-spacing: 0.2px;
+	color: #fff;
+	background: var(--text-faint);
+}
+.toolcall.run .toolcall-status {
+	color: #fff;
+	background: var(--amber);
+}
+.toolcall.ok .toolcall-status {
+	color: #fff;
+	background: var(--green);
+}
+.toolcall.err .toolcall-status {
+	color: #fff;
+	background: var(--red);
+}
+.btn.primary {
+	border-radius: 12px;
+	font-weight: 700;
+	box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.inputbox .btn.send,
+.inputbox .btn.stop {
+	background: var(--accent);
+	border-color: var(--accent);
+	box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.inputbox .btn.send:hover:not(:disabled),
+.inputbox .btn.stop:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--accent) 85%, black);
+	border-color: color-mix(in srgb, var(--accent) 85%, black);
+	box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* ---- blog-style flourishes, round 3: the reference blog's article page is
+   flat white/off-white with no background tint — drop the app's default
+   accent-tinted corner glow on the markdown preview for this theme. ---- */
+.fp-markdown {
+	background: var(--bg);
 }

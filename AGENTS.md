@@ -24,7 +24,7 @@ Windows 计划任务部署。
 | 前端 | React 18 + Vite 6 + react-markdown + highlight.js + xterm.js |
 | 智能体 | `@earendil-works/pi-coding-agent` SDK（进程内，读 `~/.pi/agent` 配置） |
 | 终端 | node-pty（服务端 PTY）+ `@xterm/xterm`（浏览器渲染，经 terminal bridge 转发） |
-| 样式 | 单文件 `web/src/styles.css`（CSS 变量主题，深色） |
+| 样式 | 单文件 `web/src/styles.css`（固定浅色主题，CSS 变量） |
 
 ## 3. 目录结构
 
@@ -46,7 +46,6 @@ pi-web-ui/
 │   ├── model-admin.ts          # 模型/服务商配置管理
 │   ├── attachments.ts          # 附件构建（inline/reference/lines/imageData/fileData + 视觉桥）
 │   ├── webui-context.ts        # 扩展 UI 桥（WebUIContext：widgets/statuses/dialog → 浏览器）
-│   ├── themes.ts               # 主题管理（listThemes/resolveThemeFile）
 │   ├── plugins.ts              # 可选界面组件插件（扫描 <dataDir>/plugins/<id>/）
 │   ├── vision-bridge.ts        # 视觉桥：纯文本主模型看图转写
 │   ├── files-service.ts        # 文件服务（readDirForUI/readFile/searchFiles/watcher）
@@ -62,8 +61,8 @@ pi-web-ui/
 │   │   ├── use-chat.ts         # ★ useChat()：WebSocket 连接管理、reducer 状态机、终端 bridge
 │   │   ├── types.ts            # ★ wire 协议 re-export shim（`export type * from "../../server/protocol"`）
 │   │   ├── i18n.tsx            # ★ 中英文案（zh 默认），新增 key 必须两处都加
-│   │   ├── styles.css          # ★ 全部样式（按组件分区，带注释分隔线）；也是默认深色主题本体
-│   │   ├── theme.ts            # 主题切换（/api/themes 列表 + localStorage 持久化 + applyTheme）
+│   │   ├── styles.css          # ★ 全部样式（按组件分区，带注释分隔线）；唯一/固定的默认主题
+│   │   ├── theme.ts            # CSS 变量 → xterm 终端调色板桥接（THEME_CHANGE_EVENT + buildTermTheme）
 │   │   ├── sounds.ts           # WebAudio 提示音
 │   │   ├── download.ts         # 下载（fetch→blob，绕开 Chrome Safe Browsing）
 │   │   ├── message-delta.ts    # message_delta 增量 patch 纯函数，有单测
@@ -74,7 +73,7 @@ pi-web-ui/
 │   │   ├── image-paste.ts      # 粘贴图片等比缩放 ≤1568px + PNG/JPEG 转码
 │   │   ├── uuid.ts             # randomUuid（crypto 兜底），有单测
 │   │   ├── protocol-version.ts # 协议版本常量
-│   │   ├── main.tsx            # 入口：首帧前应用主题防闪烁 + initAuthToken
+│   │   ├── main.tsx            # 入口：initAuthToken
 │   │   └── components/         # 见下
 │   └── dist/                   # 构建产物（gitignore，但打进 npm 包）
 ├── bin/pi-web-ui.mjs           # CLI：前台启动 / server install|uninstall|start|stop|restart|status
@@ -82,8 +81,6 @@ pi-web-ui/
 ├── electron/                   # 桌面版（Electron 主进程 + preload）
 ├── electron-builder.yml        # electron-builder 打包配置
 ├── .github/workflows/release-desktop.yml  # 桌面版 CI 发布（tag v* 触发）
-├── themes/                     # 内置主题（完整独立 CSS 文件）
-├── make-light-theme.mjs        # 主题生成器
 ├── tests/                      # 全部测试脚本（自包含：独立端口 ≥8900 + 临时 data-dir）
 │   ├── run-smoke.mjs           # 零 token 协议冒烟聚合跑器
 │   ├── unit/                   # vitest 纯函数单测
@@ -95,7 +92,7 @@ pi-web-ui/
 ├── dev/                        # 本地开发辅助（不入 npm 包）
 ├── Dockerfile / docker-compose.yml
 ├── docs/                       # 详细文档（本文件的分拆）
-│   ├── architecture-core.md    # 核心架构：快照驱动、协议单源、安全边界、主题切换、多对话并发
+│   ├── architecture-core.md    # 核心架构：快照驱动、协议单源、安全边界、多对话并发
 │   ├── architecture-attachments.md  # 附件、图片、视觉桥、文件上传/预览/下载
 │   ├── architecture-terminal.md    # 终端架构：PTY 管理、SCM 查询、活力检测、终端接管 bash
 │   ├── architecture-plugins.md     # 插件系统：形态、协议、宿主扩展点、MCP 桥
@@ -140,7 +137,6 @@ pi-web-ui/
 | **快照驱动** | `docs/architecture-core.md` | 服务端是唯一事实源，60ms 节流推快照；增量快照（snapshot_delta）；message_delta 实时增量通道不经 snapshot 通道；WS permessage-deflate 压缩；多标签页序列化共享；协议版本协商 |
 | **协议单源** | `docs/architecture-core.md` | `server/protocol.ts` 是唯一事实源；`web/src/types.ts` 是 `export type *` shim；新增消息只改 protocol.ts，两端 switch 各加分支 |
 | **安全边界** | `docs/architecture-core.md` | 默认只绑 loopback；WS Origin/Host 同权威校验；quiesce 准入控制；控制 socket；provider headers 不下发浏览器 |
-| **主题切换** | `docs/architecture-core.md` | 整文件样式替换（非 CSS 变量）；内置+用户主题；浅色主题由 make-light-theme.mjs 生成；终端跟随主题 |
 | **多对话并发** | `docs/architecture-core.md` | 每对话独立 AgentSessionRuntime；对话按项目归属；set_cwd 切到目标项目对话；8 个上限/项目；共享同一个 ModelRuntime |
 | **附件** | `docs/architecture-attachments.md` | 三种模式（inline/reference/lines）；图片问答（base64 + 缩放）；文件上传（fileData 落盘）；视觉桥（纯文本模型看图转写） |
 | **文件预览** | `docs/architecture-attachments.md` | 512KB 上限 + 内容嗅探（文本/二进制 + GBK 回退）；媒体预览走 HTTP Range；下载绕开 Chrome Safe Browsing |

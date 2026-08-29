@@ -1,6 +1,6 @@
 # 核心架构
 
-> 改代码前必读。本文档覆盖快照驱动、协议单源、安全边界、主题切换、多对话并发等全局架构决策。
+> 改代码前必读。本文档覆盖快照驱动、协议单源、安全边界、多对话并发等全局架构决策。
 
 ## 快照驱动
 
@@ -40,15 +40,9 @@
 - **provider headers 不下发浏览器**（`models_config` 不再携带 `headers` 字段，可能含 Authorization/API key）：`saveModelConfig` 保存时若 config 无 headers 则保留旧值（`prevHeaders`）。`UiProviderConfig.headers` 已从 protocol.ts / types.ts 删除，前端没有任何地方编辑 headers（仅 apiKey 经独立消息 `set_provider_api_key` 走浏览器）。
 - **dev 兼容**：vite :5173 代理 /ws 到 :8788 时 Origin(:5173) ≠ Host(:8788)，靠 `PI_WEB_ALLOW_ORIGINS`（dev:server 内置）放行，勿删。
 
-## 主题切换
+## 主题
 
-- **机制**：每主题 = `web/src/styles.css` 的**完整独立副本**（不同配色），非 CSS 变量覆盖。默认深色主题仍由打包的 `styles.css` 提供；选其他主题时前端注入 `<link id="theme-stylesheet" href="/themes/<id>.css">` 整文件覆盖，选回默认则移除该 link（`web/src/theme.ts` 的 `applyTheme`，localStorage 键 `pi-web-ui:theme`，`main.tsx` 首帧前应用防闪烁）。
-- **服务端**：`GET /api/themes` 列主题（`server/themes.ts` 的 `listThemes`），`GET /themes/:id.css` 发文件（`resolveThemeFile`，用户目录优先）。id 必须匹配 `ID_RE`（`^[A-Za-z0-9_-]+$`）防路径穿越。两个路由在 `server/index.ts` 注册于 SPA catch-all 之前（否则被吞返回 index.html）。dev 模式 Vite 需在 `web/vite.config.ts` 代理 `/themes`（已加）。
-- **主题来源**：内置 `<pkgRoot>/themes/*.css`（随 npm 包分发，`package.json` files 白名单含 `themes/`）；用户自定义直接往 `<dataDir>/themes/` 丢 CSS 文件即可（id 冲突时用户覆盖内置）。`pkgRoot` 经 `resolvePkgRoot()` 向上找含 package.json 的祖先解析，dev(server/) 与 prod(dist/server/) 均正确。
-- **浅色主题**：`themes/light.css`（柔和紫）与 `themes/white.css`（显示名「白色」：纯白底 + GitHub 蓝强调）均由根目录脚本 `make-light-theme.mjs` 从 `styles.css` 生成（`:root` 浅色系 + 硬编码暗色映射 + `.hljs` 语法高亮浅色覆盖 + `--term-*` 终端亮色变量；white 主题额外把紫色系链接映射为蓝色）。**暗色紫晕**：`themes/md-preview.css`（显示名「紫晕」）= 原始暗色直通 + body 加 `.fp-markdown` 同款紫色径向渐变，并把 `.topbar/.panel/.statusbar` 背景**全透明**。styles.css 改动后重跑 `node make-light-theme.mjs`。
-- **主题显示名**：css 首行 `/* theme-name: 中文名 */` 即为下拉里的显示名（`listThemes` 读文件头 300 字节解析），缺省回退文件 id——文件名必须是 ASCII（id 校验 `ID_RE`），中文靠这个标记。
-- **终端跟随主题**：xterm 画布经 `web/src/theme.ts` 的 `buildTermTheme()` 读 `--term-*` 变量，主题切换时 `TermXterm.tsx` 监听 `pi-web-ui:theme-change` 事件用 `term.options.theme` 热更新画布；CSS 容器 `.term-main` / `.term-xterm .xterm-viewport` 用 `var(--term-bg)`，与画布自动融合。styles.css 改动后重跑 `node make-light-theme.mjs` 重新生成。
-- **回归**：`theme-test.mjs`（端口 8937，隔离 data-dir）：列表/内置/用户主题、注入 link、浅色生效、刷新持久、用户主题可应用、回默认移除 link。
+只有一套固定主题，写死在 `web/src/styles.css`（浅色底 + Inter/IBM Plex Mono 自带字体 + 深色代码/终端区块），没有主题选择、切换事件、`/api/themes` 路由或用户自定义主题目录。`web/src/theme.ts` 现在只保留 `buildTermTheme()`（把 `--term-*` CSS 变量转成 xterm 调色板）供 `TermXterm.tsx` 在终端初始化时读取，以及一个未使用的 `THEME_CHANGE_EVENT` 常量占位。
 
 ## 多对话并发
 
