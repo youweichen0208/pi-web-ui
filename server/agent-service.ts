@@ -2539,7 +2539,6 @@ export class ClientSession {
 
 	private async pushSessions(): Promise<void> {
 		if (!this.sessionsRequested) return;
-		if (!this.sessionsRequested) return;
 		try {
 			// Sessions live in the SDK default per-project dir
 			// (<agentDir>/sessions/--<cwd>--/), the same files the pi CLI/TUI
