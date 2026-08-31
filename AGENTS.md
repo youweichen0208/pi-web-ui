@@ -78,9 +78,6 @@ pi-web-ui/
 │   └── dist/                   # 构建产物（gitignore，但打进 npm 包）
 ├── bin/pi-web-ui.mjs           # CLI：前台启动 / server install|uninstall|start|stop|restart|status
 ├── deploy/                     # 部署示例：launchd plist / systemd unit / Windows 任务 XML
-├── electron/                   # 桌面版（Electron 主进程 + preload）
-├── electron-builder.yml        # electron-builder 打包配置
-├── .github/workflows/release-desktop.yml  # 桌面版 CI 发布（tag v* 触发）
 ├── tests/                      # 全部测试脚本（自包含：独立端口 ≥8900 + 临时 data-dir）
 │   ├── run-smoke.mjs           # 零 token 协议冒烟聚合跑器
 │   ├── unit/                   # vitest 纯函数单测
@@ -98,7 +95,7 @@ pi-web-ui/
 │   ├── architecture-plugins.md     # 插件系统：形态、协议、宿主扩展点、MCP 桥
 │   ├── development.md          # 开发工作流、CI、编码约定、测试规范
 │   ├── release.md              # 发布流程（GitHub + npm）
-│   ├── deployment.md           # 部署（Electron 桌面版 / CLI / Docker）
+│   ├── deployment.md           # 部署（CLI / Docker）
 │   └── env-vars.md             # 环境变量参考
 ├── tsconfig.server.json / tsconfig.extensions.json / tsconfig.tests.json / web/tsconfig.json
 ```
@@ -197,7 +194,6 @@ npm publish --access public
 
 > 详细文档见 `docs/deployment.md`
 
-- **桌面版（Electron）**：`npm run start:electron` / `npm run build:electron`
 - **CLI 前台**：`pi-web-ui --port 9000 --cwd /path`
 - **开机自启**：`pi-web-ui server install`（macOS→launchd / Linux→systemd / Windows→计划任务）
 - **Docker**：`docker compose up -d`
