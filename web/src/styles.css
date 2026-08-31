@@ -4455,17 +4455,6 @@ span.msg-editor-hint svg {
 	overflow: auto;
 }
 
-/* Expanded (⌄⌄ in the card header): lift the height caps so a long write /
-   read / diff lays out in full instead of scrolling inside a 320-420px box.
-   Every capped pane inside the body is released together — partially lifting
-   them just moves the clipping somewhere else. */
-.toolcall-body.expanded .toolcall-code,
-.toolcall-body.expanded .toolcall-diff,
-.toolcall-body.expanded .toolcall-markdown,
-.toolcall-body.expanded pre {
-	max-height: none;
-}
-
 /* Zoom modal: same body content in a centered dialog on the shared
    .modal-backdrop (click-outside closes; Esc handled in the component).
    Wider and taller than the usual .modal since the payload is code — but
@@ -4517,15 +4506,6 @@ span.msg-editor-hint svg {
 	overflow: auto;
 	padding: 14px;
 }
-/* Inside the overlay the viewport is the scroller, so the inner panes must
-   not re-introduce their own caps. */
-.toolcall-zoom-body .toolcall-code,
-.toolcall-zoom-body .toolcall-diff,
-.toolcall-zoom-body .toolcall-markdown,
-.toolcall-zoom-body pre {
-	max-height: none;
-}
-
 /* Header affordances sit with copy/collapse and reveal on card hover, so the
    card chrome stays quiet until you reach for it. */
 .toolcall-expand {
@@ -4623,6 +4603,31 @@ span.msg-editor-hint svg {
 
 .toolcall.err .toolcall-output pre {
 	color: var(--red);
+}
+
+/* ---- height-cap releases -------------------------------------------------
+   Every scrollable pane in a tool card is height-capped so one long write or
+   read can't push the conversation off screen: .toolcall-args pre (200px),
+   .toolcall-code / .toolcall-diff / .toolcall-markdown (420px) and
+   .toolcall-output pre (320px). Expanding in place (⌄⌄) or opening the zoom
+   modal has to release ALL of them — releasing only some just moves the
+   clipping somewhere else.
+
+   These rules must sit AFTER every capped rule above and lead with a
+   *compound* class (.toolcall-body.expanded / .toolcall-body.toolcall-zoom-body)
+   rather than a single one. `.toolcall-zoom-body pre` alone ties `.toolcall-output
+   pre` on specificity (0,1,1), so whichever came last in the file won — which
+   is exactly how the modal ended up opening at full size while its output pane
+   stayed clamped at 320px. */
+.toolcall-body.expanded .toolcall-code,
+.toolcall-body.expanded .toolcall-diff,
+.toolcall-body.expanded .toolcall-markdown,
+.toolcall-body.expanded pre,
+.toolcall-body.toolcall-zoom-body .toolcall-code,
+.toolcall-body.toolcall-zoom-body .toolcall-diff,
+.toolcall-body.toolcall-zoom-body .toolcall-markdown,
+.toolcall-body.toolcall-zoom-body pre {
+	max-height: none;
 }
 
 .toolcall-waiting {
