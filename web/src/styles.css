@@ -908,6 +908,144 @@ body.panel-resizing {
 	background: color-mix(in srgb, var(--red) 12%, transparent);
 }
 
+/* ---- workspace picker modal (FolderPickerModal) ---- */
+.fpk-modal {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: 560px;
+	height: min(70vh, 620px);
+	overflow: hidden;
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.fpk-modal-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-shrink: 0;
+	padding: 14px 16px;
+	border-bottom: 1px solid var(--border);
+}
+.fpk-modal-head h2 {
+	margin: 0;
+	font-size: 15px;
+}
+.fpk-modal-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--border-soft);
+	background: var(--bg-elev);
+}
+.fpk-nav-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	flex-shrink: 0;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev2);
+	color: var(--text-dim);
+	cursor: pointer;
+}
+.fpk-nav-btn:hover:not(:disabled) {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.fpk-nav-btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+/* The path can be long; let it scroll rather than wrap the toolbar. */
+.fpk-path {
+	flex: 1;
+	min-width: 0;
+	overflow-x: auto;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: 11.5px;
+	color: var(--text-dim);
+}
+.fpk-list {
+	flex: 1;
+	overflow-y: auto;
+	padding: 6px;
+}
+.fpk-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	border: none;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--text);
+	font-size: 13px;
+	font-family: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.fpk-item:hover {
+	background: var(--bg-elev);
+}
+.fpk-item-icon {
+	flex-shrink: 0;
+	color: var(--text-faint);
+}
+.fpk-item-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fpk-item-go {
+	flex-shrink: 0;
+	color: var(--text-faint);
+	opacity: 0;
+}
+.fpk-item:hover .fpk-item-go {
+	opacity: 1;
+}
+.fpk-modal-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+	padding: 10px 12px;
+	border-top: 1px solid var(--border);
+	background: var(--bg-elev);
+}
+.fpk-open-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+	padding: 7px 12px;
+	border: none;
+	border-radius: 7px;
+	background: var(--accent);
+	color: #fff;
+	font-size: 12.5px;
+	font-family: inherit;
+	font-weight: 600;
+	cursor: pointer;
+}
+.fpk-open-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
 /* "Open folder…" entry point at the head of the recent-project list. */
 .lp-add-project {
 	display: flex;

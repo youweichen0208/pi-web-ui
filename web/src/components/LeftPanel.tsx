@@ -8,7 +8,13 @@ import {
 	FiTrash2,
 	FiX,
 } from "react-icons/fi";
-import type { ConversationSummary, ProjectSummary, SessionSummary } from "../types";
+import type {
+	ConversationSummary,
+	DirBrowse,
+	ProjectSummary,
+	SessionSummary,
+} from "../types";
+import { FolderPickerModal } from "./FolderPickerModal";
 import type { ConnStatus } from "../use-chat";
 import { useT } from "../i18n";
 
@@ -25,6 +31,8 @@ interface LeftPanelProps {
 	conversations: ConversationSummary[];
 	sessions: SessionSummary[];
 	projects: ProjectSummary[];
+	/** Latest workspace-picker listing (drives FolderPickerModal). */
+	dirBrowse: DirBrowse | null;
 	activeConversationId: string;
 	send: (
 		msg:
@@ -36,7 +44,8 @@ interface LeftPanelProps {
 			| { type: "set_cwd"; path: string }
 			| { type: "remove_project"; path: string }
 			| { type: "delete_session"; path: string }
-			| { type: "rename_session"; path: string; name: string },
+			| { type: "rename_session"; path: string; name: string }
+			| { type: "browse_dirs"; path?: string },
 	) => boolean;
 	/** True while the panel is actually on screen (desktop: always; mobile:
 	 *  only while the drawer is open). Drives lazy loading of the session
@@ -54,7 +63,7 @@ function formatModified(ts: number): string {
 	return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFile, conversations, sessions, projects, activeConversationId, send, active }: LeftPanelProps) {
+export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFile, conversations, sessions, projects, dirBrowse, activeConversationId, send, active }: LeftPanelProps) {
 	const t = useT();
 	const currentFile = sessionFile;
 	const currentCwd = cwd;
@@ -67,11 +76,11 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 	const [renaming, setRenaming] = useState<string | null>(null);
 	const [renameDraft, setRenameDraft] = useState("");
 
-	// Inline "open folder": the recent-project list only ever grew as a
-	// side effect of the /cwd slash command — this is the panel's own entry
-	// point. Holds the typed absolute path while the input is open.
-	const [addingProject, setAddingProject] = useState(false);
-	const [projectDraft, setProjectDraft] = useState("");
+	// "Open folder": the recent-project list only ever grew as a side effect
+	// of the /cwd slash command — this is the panel's own entry point. Opens
+	// a server-driven directory picker (see FolderPickerModal for why a
+	// native OS dialog can't work here).
+	const [picking, setPicking] = useState(false);
 
 	// 乐观项目切换反馈：点击后立即高亮 + 转圈，等 cwd 真正变过来再清掉。
 	// "warm" 切换很快，这段几乎一闪而过；"cold" 切换（需要真正恢复会话运行时）
@@ -138,59 +147,14 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 		<aside className="panel panel-left">
 			<div className="panel-projects">
 				<div className="panel-section-title">{t("recentProjects")}</div>
-				{addingProject ? (
-					<form
-						className="lp-inline-form"
-						onSubmit={(e) => {
-							e.preventDefault();
-							const path = projectDraft.trim();
-							if (path) {
-								setPendingCwd(path);
-								send({ type: "set_cwd", path });
-							}
-							setAddingProject(false);
-							setProjectDraft("");
-						}}
-					>
-						{/* biome-ignore lint/a11y/noAutofocus: opened by an explicit click */}
-						<input
-							autoFocus
-							className="lp-inline-input"
-							placeholder={t("openFolderPlaceholder")}
-							value={projectDraft}
-							onChange={(e) => setProjectDraft(e.target.value)}
-							onKeyDown={(e) => {
-								if (e.key === "Escape") {
-									setAddingProject(false);
-									setProjectDraft("");
-								}
-							}}
-						/>
-						<button type="submit" className="lp-inline-ok" title={t("confirm")}>
-							<FiCheck />
-						</button>
-						<button
-							type="button"
-							className="lp-inline-cancel"
-							title={t("cancel")}
-							onClick={() => {
-								setAddingProject(false);
-								setProjectDraft("");
-							}}
-						>
-							<FiX />
-						</button>
-					</form>
-				) : (
-					<button
-						type="button"
-						className="lp-add-project"
-						onClick={() => setAddingProject(true)}
-					>
-						<FiFolderPlus className="project-icon" />
-						<span>{t("openFolder")}</span>
-					</button>
-				)}
+				<button
+					type="button"
+					className="lp-add-project"
+					onClick={() => setPicking(true)}
+				>
+					<FiFolderPlus className="project-icon" />
+					<span>{t("openFolder")}</span>
+				</button>
 				<div className="projects-scroll">
 					{projects.map((p) => {
 						const active = currentCwd === p.path;
@@ -376,6 +340,18 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 					})}
 				</div>
 			</div>
+			{picking && (
+				<FolderPickerModal
+					dirBrowse={dirBrowse}
+					onBrowse={(path) => send({ type: "browse_dirs", path })}
+					onPick={(path) => {
+						setPendingCwd(path);
+						send({ type: "set_cwd", path });
+						setPicking(false);
+					}}
+					onClose={() => setPicking(false)}
+				/>
+			)}
 		</aside>
 	);
 });

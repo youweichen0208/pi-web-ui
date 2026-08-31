@@ -11,6 +11,7 @@ import type {
 	FileSearchResult,
 	GoalStatus,
 	ModelInfo,
+	DirBrowse,
 	ProjectSummary,
 	ProviderStatus,
 	ServerMessage,
@@ -67,6 +68,8 @@ export interface ChatState {
 	activeConversationId: string;
 	/** Recent workspaces this client opened (left panel project picker). */
 	projects: ProjectSummary[];
+	/** Latest workspace-picker listing (see browse_dirs), null until opened. */
+	dirBrowse: DirBrowse | null;
 	/** Workspace file listing for the right panel. */
 	files: FileListing | null;
 	/** Latest file content fetched for the preview panel (path-matched in the modal). */
@@ -203,6 +206,7 @@ type Action =
 			activeId: string;
 	  }
 	| { type: "projects"; projects: ProjectSummary[] }
+	| { type: "dir_browse"; dirBrowse: DirBrowse }
 	| { type: "files"; files: FileListing }
 
 	| { type: "file_changed"; path: string }
@@ -526,6 +530,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			};
 		case "projects":
 			return { ...state, projects: action.projects };
+		case "dir_browse":
+			return { ...state, dirBrowse: action.dirBrowse };
 		case "files":
 			return { ...state, files: action.files };
 		case "file_changed":
@@ -675,6 +681,7 @@ export function useChat() {
 		conversations: [],
 		activeConversationId: "",
 		projects: [],
+		dirBrowse: null,
 		files: null,
 
 		fileChanged: null,
@@ -887,6 +894,17 @@ export function useChat() {
 					break;
 				case "projects":
 					dispatch({ type: "projects", projects: msg.projects });
+					break;
+				case "dir_browse":
+					dispatch({
+						type: "dir_browse",
+						dirBrowse: {
+							path: msg.path,
+							parent: msg.parent,
+							dirs: msg.dirs,
+							truncated: msg.truncated,
+						},
+					});
 					break;
 				case "files":
 					dispatch({ type: "files", files: msg });

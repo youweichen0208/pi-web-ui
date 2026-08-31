@@ -158,7 +158,13 @@ const zh = {
 	renameSession: "重命名该对话",
 	renameSessionPlaceholder: "对话名称（留空则显示首条提问）",
 	openFolder: "打开文件夹…",
-	openFolderPlaceholder: "输入文件夹绝对路径，回车打开",
+	openFolderPlaceholder: "或直接粘贴绝对路径",
+	openThisFolder: "打开当前文件夹",
+	openTypedPath: "打开输入的路径",
+	parentFolder: "上一级",
+	home: "主目录",
+	noSubfolders: "这里没有子文件夹",
+	listTruncated: "目录过多，列表已截断",
 	emptyChat: "空对话",
 
 	/* message edit */
@@ -739,7 +745,13 @@ const en: Record<keyof typeof zh, string> = {
 	renameSession: "Rename this chat",
 	renameSessionPlaceholder: "Chat name (empty falls back to first message)",
 	openFolder: "Open folder…",
-	openFolderPlaceholder: "Absolute folder path, press Enter to open",
+	openFolderPlaceholder: "Or paste an absolute path",
+	openThisFolder: "Open this folder",
+	openTypedPath: "Open typed path",
+	parentFolder: "Parent folder",
+	home: "Home",
+	noSubfolders: "No subfolders here",
+	listTruncated: "Too many folders — list truncated",
 	emptyChat: "Empty chat",
 
 	/* message edit */

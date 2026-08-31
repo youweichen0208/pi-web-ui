@@ -2608,6 +2608,53 @@ export class ClientSession {
 		}
 	}
 
+	/** List subdirectories for the workspace picker (`browse_dirs`).
+	 *
+	 * Deliberately NOT routed through FilesService.listFiles(), which pins
+	 * every listing inside the current workspace — choosing a new workspace
+	 * is exactly the case that has to look outside it. Scope is kept narrow
+	 * instead: directory *names* only, never file contents, and the same
+	 * loopback binding + PI_WEB_TOKEN auth as every other message guards it.
+	 * (The agent can already shell out with bash, so this exposes nothing it
+	 * could not already reach — it just makes it clickable.)
+	 */
+	async browseDirs(path?: string): Promise<void> {
+		const { homedir } = await import("node:os");
+		const fs = await import("node:fs/promises");
+		const { dirname } = await import("node:path");
+		const MAX = 500;
+		const target = resolve(path?.trim() || homedir());
+		try {
+			const dirents = await fs.readdir(target, { withFileTypes: true });
+			const dirs: string[] = [];
+			for (const d of dirents) {
+				// Symlinked directories are worth following (project checkouts
+				// are often symlinked), but a broken link must not abort the
+				// whole listing — isDirectory() is false for those, which is
+				// the behaviour we want anyway.
+				if (!d.isDirectory()) continue;
+				if (d.name.startsWith(".")) continue; // dotfolders: noise here
+				dirs.push(d.name);
+				if (dirs.length >= MAX) break;
+			}
+			dirs.sort((a, b) => a.localeCompare(b));
+			const parent = dirname(target);
+			this.emit({
+				type: "dir_browse",
+				path: target,
+				parent: parent === target ? null : parent,
+				dirs,
+				truncated: dirs.length >= MAX,
+			});
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `无法读取目录：${(err as Error).message}`,
+			});
+		}
+	}
+
 	/** Rename a persisted session (history list ✎).
 	 *
 	 * The display name lives in the transcript itself as a `session_info`
