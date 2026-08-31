@@ -827,6 +827,109 @@ body.panel-resizing {
 	background: var(--red);
 }
 
+/* Rename (✎) sits just left of the delete button, same hover-reveal rule.
+   Both are absolutely positioned, so the offsets have to stay in sync with
+   .lp-del's `right` above. */
+.lp-row .lp-rename {
+	position: absolute;
+	right: 32px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: none;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border-radius: 5px;
+	border: none;
+	background: transparent;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+.lp-row .lp-rename svg {
+	width: 13px;
+	height: 13px;
+}
+.lp-row:hover .lp-rename {
+	display: inline-flex;
+}
+.lp-row .lp-rename:hover {
+	color: var(--accent);
+	background: var(--accent-soft);
+}
+
+/* Inline editor shared by session rename and "open folder" — replaces the
+   row in place rather than opening a modal, so the list never jumps. */
+.lp-inline-form {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+}
+.lp-inline-input {
+	flex: 1;
+	min-width: 0;
+	padding: 5px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--accent);
+	background: var(--bg-elev);
+	color: var(--text);
+	font-size: 12.5px;
+	font-family: inherit;
+	outline: none;
+}
+.lp-inline-ok,
+.lp-inline-cancel {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+.lp-inline-ok svg,
+.lp-inline-cancel svg {
+	width: 14px;
+	height: 14px;
+}
+.lp-inline-ok:hover {
+	color: var(--green);
+	background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.lp-inline-cancel:hover {
+	color: var(--red);
+	background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+/* "Open folder…" entry point at the head of the recent-project list. */
+.lp-add-project {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	border: 1px dashed var(--border);
+	border-radius: 8px;
+	background: transparent;
+	color: var(--text-dim);
+	font-size: 12.5px;
+	font-family: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.lp-add-project:hover {
+	color: var(--accent);
+	border-color: var(--accent);
+	background: var(--accent-soft);
+}
+
 /* --------------------------------------------------------------------- files */
 
 .panel-crumbs {
@@ -4350,6 +4453,91 @@ span.msg-editor-hint svg {
 .toolcall-code {
 	max-height: 420px;
 	overflow: auto;
+}
+
+/* Expanded (⌄⌄ in the card header): lift the height caps so a long write /
+   read / diff lays out in full instead of scrolling inside a 320-420px box.
+   Every capped pane inside the body is released together — partially lifting
+   them just moves the clipping somewhere else. */
+.toolcall-body.expanded .toolcall-code,
+.toolcall-body.expanded .toolcall-diff,
+.toolcall-body.expanded .toolcall-markdown,
+.toolcall-body.expanded pre {
+	max-height: none;
+}
+
+/* Full-screen zoom overlay: same body content, given the whole viewport. */
+.toolcall-zoom {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	display: flex;
+	flex-direction: column;
+	background: var(--bg);
+}
+.toolcall-zoom-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--border);
+	background: var(--bg-elev);
+	font-size: 13px;
+}
+.toolcall-zoom-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+.toolcall-zoom-close:hover {
+	color: var(--text);
+	background: var(--bg-elev2);
+}
+.toolcall-zoom-body {
+	flex: 1;
+	overflow: auto;
+	padding: 14px;
+}
+/* Inside the overlay the viewport is the scroller, so the inner panes must
+   not re-introduce their own caps. */
+.toolcall-zoom-body .toolcall-code,
+.toolcall-zoom-body .toolcall-diff,
+.toolcall-zoom-body .toolcall-markdown,
+.toolcall-zoom-body pre {
+	max-height: none;
+}
+
+/* Header affordances sit with copy/collapse and reveal on card hover, so the
+   card chrome stays quiet until you reach for it. */
+.toolcall-expand {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+.toolcall-expand svg {
+	width: 13px;
+	height: 13px;
+}
+.toolcall-expand:hover {
+	color: var(--accent);
+	background: var(--accent-soft);
 }
 .toolcall-code .codeblock {
 	margin: 0;

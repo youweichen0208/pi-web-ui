@@ -150,6 +150,15 @@ const zh = {
 	deleteProjectConfirm: "确认移出",
 	deleteSession: "删除该对话记录（不可恢复）",
 	deleteSessionConfirm: "确认删除",
+	confirm: "确认",
+	expandCode: "展开完整内容",
+	collapseCode: "收起",
+	zoomCode: "全屏查看",
+	closeZoom: "关闭全屏",
+	renameSession: "重命名该对话",
+	renameSessionPlaceholder: "对话名称（留空则显示首条提问）",
+	openFolder: "打开文件夹…",
+	openFolderPlaceholder: "输入文件夹绝对路径，回车打开",
 	emptyChat: "空对话",
 
 	/* message edit */
@@ -722,6 +731,15 @@ const en: Record<keyof typeof zh, string> = {
 	deleteProjectConfirm: "Confirm remove",
 	deleteSession: "Delete this chat transcript permanently",
 	deleteSessionConfirm: "Confirm delete",
+	confirm: "Confirm",
+	expandCode: "Expand full content",
+	collapseCode: "Collapse",
+	zoomCode: "View full screen",
+	closeZoom: "Close full screen",
+	renameSession: "Rename this chat",
+	renameSessionPlaceholder: "Chat name (empty falls back to first message)",
+	openFolder: "Open folder…",
+	openFolderPlaceholder: "Absolute folder path, press Enter to open",
 	emptyChat: "Empty chat",
 
 	/* message edit */

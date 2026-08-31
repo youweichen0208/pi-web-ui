@@ -461,7 +461,11 @@ export type ClientMessage =
 	 *  only — nothing on disk is touched). */
 	| { type: "remove_project"; path: string }
 	/** Permanently delete a persisted session transcript file (history list). */
-	| { type: "delete_session"; path: string };
+	| { type: "delete_session"; path: string }
+	/** Set a persisted session's display name (history list ✎). Stored as a
+	 *  `session_info` entry inside the transcript; an empty name clears it and
+	 *  the list falls back to the first user message. */
+	| { type: "rename_session"; path: string; name: string };
 
 // ---------------------------------------------------------------------------
 // Server -> Client

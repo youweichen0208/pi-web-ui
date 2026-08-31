@@ -2609,6 +2609,49 @@ export class ClientSession {
 		}
 	}
 
+	/** Rename a persisted session (history list ✎).
+	 *
+	 * The display name lives in the transcript itself as a `session_info`
+	 * entry, so renaming means appending one via the SDK rather than touching
+	 * any sidecar state — `SessionManager.list()` already surfaces the latest
+	 * one as `SessionInfo.name`, which is what the panel renders. An empty
+	 * name clears it and the list falls back to the first user message.
+	 */
+	async renameSession(path: string, name: string): Promise<void> {
+		try {
+			const abs = resolve(path);
+			// Same guardrail as deleteSession: only transcripts under the
+			// shared sessions root may be written, never arbitrary files.
+			const sessionsRoot = resolve(this.agentDir, "sessions");
+			if (!abs.startsWith(sessionsRoot + sep)) {
+				this.emit({
+					type: "notice",
+					level: "error",
+					text: "只能重命名会话目录中的对话记录",
+				});
+				return;
+			}
+			const trimmed = name.trim().slice(0, 120);
+			// A live conversation holds its own SessionManager on this file;
+			// append through that one so the two don't fight over the tail.
+			const liveConv = [...this.convs.values()].find(
+				(conv) => conv.session.sessionFile === abs,
+			);
+			if (liveConv) {
+				liveConv.session.sessionManager.appendSessionInfo(trimmed);
+			} else {
+				SessionManager.open(abs).appendSessionInfo(trimmed);
+			}
+			await this.refreshSessions();
+		} catch (err) {
+			this.emit({
+				type: "notice",
+				level: "error",
+				text: `重命名会话失败：${(err as Error).message}`,
+			});
+		}
+	}
+
 	/** Open a persisted session as the active conversation (from listSessions).
 	 *
 	 * A persisted-session click must follow the same ownership rule as

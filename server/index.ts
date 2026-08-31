@@ -585,6 +585,9 @@ wss.on("connection", (ws) => {
 			case "delete_session":
 				void cs.deleteSession(msg.path);
 				break;
+			case "rename_session":
+				void cs.renameSession(msg.path, msg.name);
+				break;
 			case "switch_session":
 				void cs.switchSession(msg.path);
 				break;
