@@ -4466,14 +4466,23 @@ span.msg-editor-hint svg {
 	max-height: none;
 }
 
-/* Full-screen zoom overlay: same body content, given the whole viewport. */
+/* Zoom modal: same body content in a centered dialog on the shared
+   .modal-backdrop (click-outside closes; Esc handled in the component).
+   Wider and taller than the usual .modal since the payload is code — but
+   still a panel, not an edge-to-edge takeover, so the conversation stays
+   visible behind it. */
 .toolcall-zoom {
-	position: fixed;
-	inset: 0;
-	z-index: 60;
+	position: relative;
 	display: flex;
 	flex-direction: column;
-	background: var(--bg);
+	width: 100%;
+	max-width: 1040px;
+	max-height: 86vh;
+	overflow: hidden;
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
 }
 .toolcall-zoom-head {
 	display: flex;
@@ -4483,6 +4492,7 @@ span.msg-editor-hint svg {
 	padding: 10px 14px;
 	border-bottom: 1px solid var(--border);
 	background: var(--bg-elev);
+	border-radius: 12px 12px 0 0;
 	font-size: 13px;
 }
 .toolcall-zoom-close {

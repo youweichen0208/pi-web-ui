@@ -467,21 +467,30 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 				</div>
 			)}
 			{zoomed && (
-				<div className="toolcall-zoom" role="dialog" aria-modal="true">
-					<div className="toolcall-zoom-head">
-						<span className="toolcall-icon">{toolIcon(block.name)}</span>
-						<span className="toolcall-name">{block.name}</span>
-						<span className="toolcall-spacer" />
-						<button
-							type="button"
-							className="toolcall-zoom-close"
-							title={t("closeZoom")}
-							onClick={() => setZoomed(false)}
-						>
-							<FiX />
-						</button>
+				// biome-ignore lint/a11y/useKeyWithClickEvents: Esc is handled on window
+				<div className="modal-backdrop" onClick={() => setZoomed(false)}>
+					{/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop-only affordance */}
+					<div
+						className="toolcall-zoom"
+						role="dialog"
+						aria-modal="true"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="toolcall-zoom-head">
+							<span className="toolcall-icon">{toolIcon(block.name)}</span>
+							<span className="toolcall-name">{block.name}</span>
+							<span className="toolcall-spacer" />
+							<button
+								type="button"
+								className="toolcall-zoom-close"
+								title={t("closeZoom")}
+								onClick={() => setZoomed(false)}
+							>
+								<FiX />
+							</button>
+						</div>
+						<div className="toolcall-body toolcall-zoom-body">{bodyContent}</div>
 					</div>
-					<div className="toolcall-body toolcall-zoom-body">{bodyContent}</div>
 				</div>
 			)}
 		</div>
