@@ -63,4 +63,18 @@ describe("splitLeakedThinking", () => {
 		expect(r!.leaked).toBe("foo </antThinking> bar </think>");
 		expect(r!.visible).toBe("最终答案");
 	});
+
+	it("真实回复后面跟着一串孤立标签：回复保留可见，标签折叠（截图里的场景）", () => {
+		const r = splitLeakedThinking(
+			"English reasoning...\n</think>\n\n提交成功了，再创建 PR：\n\n</antThinking></think></think>",
+		);
+		expect(r).not.toBeNull();
+		expect(r!.visible).toBe("提交成功了，再创建 PR：");
+		expect(r!.leaked).toContain("English reasoning");
+		expect(r!.leaked).toContain("</antThinking>");
+	});
+
+	it("流式中半截标签不误判", () => {
+		expect(splitLeakedThinking("partial tag mid-stream </thin")).toBeNull();
+	});
 });

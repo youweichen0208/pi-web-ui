@@ -715,20 +715,22 @@ function Block({
 	const text = asText(block);
 	if (text) {
 		const live = streaming && isLast;
-		// Still streaming: a </think> the model hasn't finished emitting yet
-		// would false-split on a truncated tag, so only apply the leaked-
-		// reasoning guard once the block is done.
-		const leak = !live ? splitLeakedThinking(text.text) : null;
+		// Applied while streaming too: a half-emitted tag (`</thin`) simply
+		// doesn't match the regex, so there is nothing to false-split on —
+		// it folds away the moment the tag completes. Skipping this during
+		// streaming meant the leak sat in plain view for the whole turn,
+		// which is precisely when the user is watching.
+		const leak = splitLeakedThinking(text.text);
+		const body = leak ? leak.visible : text.text;
 		return (
 			<div className="msg-text">
 				{leak && <LeakedThinkingBlock text={leak.leaked} />}
-				{leak ? (
-					leak.visible && <Markdown text={leak.visible} />
-				) : live ? (
-					<StreamMarkdown text={text.text} />
-				) : (
-					<Markdown text={text.text} />
-				)}
+				{body &&
+					(live ? (
+						<StreamMarkdown text={body} />
+					) : (
+						<Markdown text={body} />
+					))}
 				{text.truncated && <div className="trunc-note">{t("truncated")}</div>}
 			</div>
 		);
