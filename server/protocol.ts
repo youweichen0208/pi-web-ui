@@ -461,7 +461,16 @@ export type ClientMessage =
 	 *  only — nothing on disk is touched). */
 	| { type: "remove_project"; path: string }
 	/** Permanently delete a persisted session transcript file (history list). */
-	| { type: "delete_session"; path: string };
+	| { type: "delete_session"; path: string }
+	/** Set a persisted session's display name (history list ✎). Stored as a
+	 *  `session_info` entry inside the transcript; an empty name clears it and
+	 *  the list falls back to the first user message. */
+	| { type: "rename_session"; path: string; name: string }
+	/** List the SUBDIRECTORIES of `path` for the workspace picker. Distinct
+	 *  from `list_files`, which is deliberately confined to the current
+	 *  workspace — picking a *new* workspace has to look outside it. Omit
+	 *  `path` to start at the user's home directory. */
+	| { type: "browse_dirs"; path?: string };
 
 // ---------------------------------------------------------------------------
 // Server -> Client
@@ -487,6 +496,19 @@ export interface ProjectSummary {
 	/** Last time this workspace was used (ms epoch) — drives the sort order. */
 	lastUsed: number;
 }
+
+/** One directory listing for the workspace picker (see `browse_dirs`).
+ *  Names only, directories only — never file contents. */
+export type DirBrowse = {
+	/** Absolute path that was listed. */
+	path: string;
+	/** Absolute parent path, or null at the filesystem root. */
+	parent: string | null;
+	/** Subdirectory names (not full paths), sorted. */
+	dirs: string[];
+	/** Listing hit the entry cap and was cut short. */
+	truncated: boolean;
+};
 
 /** A background server the agent left running (listening-port diff around a
  *  bash tool run). Keyed by port. Managed from the 后台任务 panel: each entry
@@ -928,6 +950,8 @@ export type ServerMessage =
 			truncated?: boolean;
 	  }
 	| { type: "projects"; projects: ProjectSummary[] }
+	/** Directory listing for the workspace picker (see `browse_dirs`). */
+	| ({ type: "dir_browse" } & DirBrowse)
 	| {
 			type: "files";
 			path: string;

@@ -827,6 +827,247 @@ body.panel-resizing {
 	background: var(--red);
 }
 
+/* Rename (✎) sits just left of the delete button, same hover-reveal rule.
+   Both are absolutely positioned, so the offsets have to stay in sync with
+   .lp-del's `right` above. */
+.lp-row .lp-rename {
+	position: absolute;
+	right: 32px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: none;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border-radius: 5px;
+	border: none;
+	background: transparent;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+.lp-row .lp-rename svg {
+	width: 13px;
+	height: 13px;
+}
+.lp-row:hover .lp-rename {
+	display: inline-flex;
+}
+.lp-row .lp-rename:hover {
+	color: var(--accent);
+	background: var(--accent-soft);
+}
+
+/* Inline editor shared by session rename and "open folder" — replaces the
+   row in place rather than opening a modal, so the list never jumps. */
+.lp-inline-form {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+}
+.lp-inline-input {
+	flex: 1;
+	min-width: 0;
+	padding: 5px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--accent);
+	background: var(--bg-elev);
+	color: var(--text);
+	font-size: 12.5px;
+	font-family: inherit;
+	outline: none;
+}
+.lp-inline-ok,
+.lp-inline-cancel {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+.lp-inline-ok svg,
+.lp-inline-cancel svg {
+	width: 14px;
+	height: 14px;
+}
+.lp-inline-ok:hover {
+	color: var(--green);
+	background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.lp-inline-cancel:hover {
+	color: var(--red);
+	background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+/* ---- workspace picker modal (FolderPickerModal) ---- */
+.fpk-modal {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: 560px;
+	height: min(70vh, 620px);
+	overflow: hidden;
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.fpk-modal-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-shrink: 0;
+	padding: 14px 16px;
+	border-bottom: 1px solid var(--border);
+}
+.fpk-modal-head h2 {
+	margin: 0;
+	font-size: 15px;
+}
+.fpk-modal-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--border-soft);
+	background: var(--bg-elev);
+}
+.fpk-nav-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	flex-shrink: 0;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev2);
+	color: var(--text-dim);
+	cursor: pointer;
+}
+.fpk-nav-btn:hover:not(:disabled) {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.fpk-nav-btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+/* The path can be long; let it scroll rather than wrap the toolbar. */
+.fpk-path {
+	flex: 1;
+	min-width: 0;
+	overflow-x: auto;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: 11.5px;
+	color: var(--text-dim);
+}
+.fpk-list {
+	flex: 1;
+	overflow-y: auto;
+	padding: 6px;
+}
+.fpk-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	border: none;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--text);
+	font-size: 13px;
+	font-family: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.fpk-item:hover {
+	background: var(--bg-elev);
+}
+.fpk-item-icon {
+	flex-shrink: 0;
+	color: var(--text-faint);
+}
+.fpk-item-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fpk-item-go {
+	flex-shrink: 0;
+	color: var(--text-faint);
+	opacity: 0;
+}
+.fpk-item:hover .fpk-item-go {
+	opacity: 1;
+}
+.fpk-modal-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+	padding: 10px 12px;
+	border-top: 1px solid var(--border);
+	background: var(--bg-elev);
+}
+.fpk-open-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+	padding: 7px 12px;
+	border: none;
+	border-radius: 7px;
+	background: var(--accent);
+	color: #fff;
+	font-size: 12.5px;
+	font-family: inherit;
+	font-weight: 600;
+	cursor: pointer;
+}
+.fpk-open-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* "Open folder…" entry point at the head of the recent-project list. */
+.lp-add-project {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	border: 1px dashed var(--border);
+	border-radius: 8px;
+	background: transparent;
+	color: var(--text-dim);
+	font-size: 12.5px;
+	font-family: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.lp-add-project:hover {
+	color: var(--accent);
+	border-color: var(--accent);
+	background: var(--accent-soft);
+}
+
 /* --------------------------------------------------------------------- files */
 
 .panel-crumbs {
@@ -4351,6 +4592,81 @@ span.msg-editor-hint svg {
 	max-height: 420px;
 	overflow: auto;
 }
+
+/* Zoom modal: same body content in a centered dialog on the shared
+   .modal-backdrop (click-outside closes; Esc handled in the component).
+   Wider and taller than the usual .modal since the payload is code — but
+   still a panel, not an edge-to-edge takeover, so the conversation stays
+   visible behind it. */
+.toolcall-zoom {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: 1040px;
+	max-height: 86vh;
+	overflow: hidden;
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.toolcall-zoom-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--border);
+	background: var(--bg-elev);
+	border-radius: 12px 12px 0 0;
+	font-size: 13px;
+}
+.toolcall-zoom-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+.toolcall-zoom-close:hover {
+	color: var(--text);
+	background: var(--bg-elev2);
+}
+.toolcall-zoom-body {
+	flex: 1;
+	overflow: auto;
+	padding: 14px;
+}
+/* Header affordances sit with copy/collapse and reveal on card hover, so the
+   card chrome stays quiet until you reach for it. */
+.toolcall-expand {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+.toolcall-expand svg {
+	width: 13px;
+	height: 13px;
+}
+.toolcall-expand:hover {
+	color: var(--accent);
+	background: var(--accent-soft);
+}
 .toolcall-code .codeblock {
 	margin: 0;
 }
@@ -4425,6 +4741,31 @@ span.msg-editor-hint svg {
 
 .toolcall.err .toolcall-output pre {
 	color: var(--red);
+}
+
+/* ---- height-cap releases -------------------------------------------------
+   Every scrollable pane in a tool card is height-capped so one long write or
+   read can't push the conversation off screen: .toolcall-args pre (200px),
+   .toolcall-code / .toolcall-diff / .toolcall-markdown (420px) and
+   .toolcall-output pre (320px). Expanding in place (⌄⌄) or opening the zoom
+   modal has to release ALL of them — releasing only some just moves the
+   clipping somewhere else.
+
+   These rules must sit AFTER every capped rule above and lead with a
+   *compound* class (.toolcall-body.expanded / .toolcall-body.toolcall-zoom-body)
+   rather than a single one. `.toolcall-zoom-body pre` alone ties `.toolcall-output
+   pre` on specificity (0,1,1), so whichever came last in the file won — which
+   is exactly how the modal ended up opening at full size while its output pane
+   stayed clamped at 320px. */
+.toolcall-body.expanded .toolcall-code,
+.toolcall-body.expanded .toolcall-diff,
+.toolcall-body.expanded .toolcall-markdown,
+.toolcall-body.expanded pre,
+.toolcall-body.toolcall-zoom-body .toolcall-code,
+.toolcall-body.toolcall-zoom-body .toolcall-diff,
+.toolcall-body.toolcall-zoom-body .toolcall-markdown,
+.toolcall-body.toolcall-zoom-body pre {
+	max-height: none;
 }
 
 .toolcall-waiting {

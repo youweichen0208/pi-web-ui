@@ -1,52 +1,5 @@
 # 部署
 
-## 桌面版（Electron）
-
-桌面版是 pi-web-ui 的 Electron 壳：**主进程 fork 一个隐藏子进程跑 server**（`ELECTRON_RUN_AS_NODE=1`，使用 Electron 内置 Node 运行时），**BrowserWindow 加载 `http://127.0.0.1:{PORT}`**。
-
-```bash
-npm run start:electron          # 启动 Electron 桌面版
-npm run build:electron          # 构建当前平台安装包
-npm run build:electron:mac      # macOS dmg
-npm run build:electron:win      # Windows nsis
-npm run build:electron:linux    # Linux AppImage/deb
-npm run publish:electron        # 构建并上传到 GitHub Releases
-```
-
-### 架构要点
-
-| 层 | 技术 |
-| --- | --- |
-| 主进程 | `electron/main.mjs`（~430 行）—— 启动 server、管理窗口/托盘/自动更新 |
-| 子进程 | `dist/server/index.js`（`ELECTRON_RUN_AS_NODE=1`），**零改动跑现有 server** |
-| 打包 | `electron-builder.yml` —— `extraResources` 把 `dist/`/`web/dist/`/`themes/`/`extensions/` 拷到 `resources/` |
-| 原生模块 | `electron-builder install-app-deps` 自动 rebuild node-pty 为 Electron ABI（VS Code 同款方案） |
-| 自动更新 | `electron-updater` + GitHub Releases（`publish:electron` 构建时自动上传 `latest.yml`） |
-
-### 关键路径
-
-- `server/index.ts` 的 `resolvePkgRoot` 已支持 `PI_WEB_PKG_ROOT` env var（Electron 主进程设置它指向 `process.resourcesPath`）
-- `package.json` 的 `main` 已改为 `electron/main.mjs`（`npm start` 不受影响——仍直接跑 `node dist/server/index.js`）
-- Node ≥22.19 要求：Electron 39+（Node 22.20）✅，当前最新 Electron 40+（Node 24）✅
-
-### CI 发布
-
-`.github/workflows/release-desktop.yml`：tag `v*` 推送时触发，三平台并行构建并上传到 GitHub Releases。签名/公证需在 GitHub Secrets 中配置（见文件头部注释）。
-
-### 开发流程
-
-```bash
-npm run build          # 先构建 web + server（必须）
-npm run start:electron # 启动 Electron（本地开发）
-```
-
-### 注意事项
-
-- 每次 `npm run build` 后 `npm run start:electron` 才能加载最新代码
-- 开发模式会自动打开 DevTools
-- `electron-builder.yml` 的 `extraResources` 不会把文件打包进 asar——子进程通过 `process.resourcesPath` 访问它们
-- 如需修改打包配置，改 `electron-builder.yml` 即可，无需动 Electron 主进程代码
-
 ## CLI
 
 ```bash

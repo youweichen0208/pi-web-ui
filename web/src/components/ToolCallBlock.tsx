@@ -1,11 +1,15 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import {
 	FiCheckCircle,
 	FiChevronDown,
 	FiChevronRight,
+	FiChevronsDown,
+	FiChevronsUp,
 	FiCopy,
+	FiMaximize2,
 	FiSquare,
 	FiTerminal,
+	FiX,
 } from "react-icons/fi";
 import type { ToolStatus, UiMessage, UiToolCallBlock } from "../types";
 import { useT } from "../i18n";
@@ -253,6 +257,20 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 	// Markdown files read by the `read` tool default to rendered preview,
 	// same convention as the file preview panel (see FilePreview.tsx).
 	const [markdownPreview, setMarkdownPreview] = useState(true);
+	// Code/diff panes are height-capped (see .toolcall-code / .toolcall-diff /
+	// .toolcall-output pre in styles.css) so a long write or read can't push
+	// the whole conversation off screen. `expanded` lifts the cap in place;
+	// `zoomed` throws the same content into a full-screen overlay.
+	const [expanded, setExpanded] = useState(false);
+	const [zoomed, setZoomed] = useState(false);
+	useEffect(() => {
+		if (!zoomed) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") setZoomed(false);
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [zoomed]);
 
 	const running = !view.result && view.streaming && !view.status;
 	const isBashRunning = block.name === "bash" && running;
@@ -310,6 +328,84 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 		}
 	};
 
+	// Rendered in place *and* inside the zoom overlay — kept as one value so
+	// the two views can never drift apart.
+	const bodyContent = (
+		<>
+			{block.argumentsText && (
+				<div className="toolcall-args">
+					{block.name === "bash" && block.argumentsText.startsWith("{") ? (
+						<TerminalCommand args={block.argumentsText} />
+					) : writePreview ? (
+						writePreview.lang ? (
+							<div className="toolcall-code">
+								<Markdown text={fenceCodeBlock(writePreview.content, writePreview.lang)} />
+							</div>
+						) : (
+							<pre>{writePreview.content}</pre>
+						)
+					) : (
+						<pre>{block.argumentsText}</pre>
+					)}
+				</div>
+			)}
+			{output.length > 0 && (
+				<div className="toolcall-output">
+					<div className="toolcall-output-label">
+						{isError ? t("errorOutput") : t("output")}
+						{(running || waitingModel) && (
+							<span className="thinking-spinner" aria-hidden="true" />
+						)}
+						<span className="toolcall-output-spacer" />
+						{isMarkdown && !isError && (
+							<button
+								type="button"
+								className="toolcall-md-toggle"
+								title={
+									markdownPreview
+										? t("showMarkdownSource")
+										: t("showMarkdownPreview")
+								}
+								onClick={() => setMarkdownPreview((v) => !v)}
+							>
+								{markdownPreview ? t("showMarkdownSource") : t("showMarkdownPreview")}
+							</button>
+						)}
+					</div>
+					{editDiff ? (
+						<DiffView diff={editDiff} lang={editLang} />
+					) : isMarkdown && markdownPreview && !isError ? (
+						<div className="toolcall-markdown">
+							<Markdown text={output} />
+						</div>
+					) : codeLang ? (
+						<div className="toolcall-code">
+							<Markdown text={fenceCodeBlock(output, codeLang)} />
+						</div>
+					) : (
+						<pre>{output}</pre>
+					)}
+				</div>
+			)}
+			{running && output.length === 0 && (
+				<div className="toolcall-waiting">
+					<span className="thinking-live-label">
+						<span className="thinking-spinner" aria-hidden="true" />
+						{t("waitingOutput")}
+					</span>
+				</div>
+			)}
+			{waitingModel && output.length === 0 && (
+				<div className="toolcall-waiting">
+					<span className="thinking-live-label">
+						<span className="thinking-spinner" aria-hidden="true" />
+						{t("waitingModel")}
+					</span>
+				</div>
+			)}
+		</>
+	);
+
 	return (
 		<div className={`toolcall ${statusClass}`}>
 			<div className="toolcall-head">
@@ -331,6 +427,24 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 						<span>{t("stopBash")}</span>
 					</button>
 				)}
+				{open && (
+					<button
+						type="button"
+						className="toolcall-expand"
+						title={expanded ? t("collapseCode") : t("expandCode")}
+						onClick={() => setExpanded((v) => !v)}
+					>
+						{expanded ? <FiChevronsUp /> : <FiChevronsDown />}
+					</button>
+				)}
+				<button
+					type="button"
+					className="toolcall-expand"
+					title={t("zoomCode")}
+					onClick={() => setZoomed(true)}
+				>
+					<FiMaximize2 />
+				</button>
 				<button
 					type="button"
 					className="toolcall-copy"
@@ -348,78 +462,35 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 				</button>
 			</div>
 			{open && (
-				<div className="toolcall-body">
-					{block.argumentsText && (
-						<div className="toolcall-args">
-							{block.name === "bash" && block.argumentsText.startsWith("{") ? (
-								<TerminalCommand args={block.argumentsText} />
-							) : writePreview ? (
-								writePreview.lang ? (
-									<div className="toolcall-code">
-										<Markdown text={fenceCodeBlock(writePreview.content, writePreview.lang)} />
-									</div>
-								) : (
-									<pre>{writePreview.content}</pre>
-								)
-							) : (
-								<pre>{block.argumentsText}</pre>
-							)}
+				<div className={`toolcall-body ${expanded ? "expanded" : ""}`}>
+					{bodyContent}
+				</div>
+			)}
+			{zoomed && (
+				// biome-ignore lint/a11y/useKeyWithClickEvents: Esc is handled on window
+				<div className="modal-backdrop" onClick={() => setZoomed(false)}>
+					{/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop-only affordance */}
+					<div
+						className="toolcall-zoom"
+						role="dialog"
+						aria-modal="true"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="toolcall-zoom-head">
+							<span className="toolcall-icon">{toolIcon(block.name)}</span>
+							<span className="toolcall-name">{block.name}</span>
+							<span className="toolcall-spacer" />
+							<button
+								type="button"
+								className="toolcall-zoom-close"
+								title={t("closeZoom")}
+								onClick={() => setZoomed(false)}
+							>
+								<FiX />
+							</button>
 						</div>
-					)}
-					{output.length > 0 && (
-						<div className="toolcall-output">
-							<div className="toolcall-output-label">
-								{isError ? t("errorOutput") : t("output")}
-								{(running || waitingModel) && (
-									<span className="thinking-spinner" aria-hidden="true" />
-								)}
-								<span className="toolcall-output-spacer" />
-								{isMarkdown && !isError && (
-									<button
-										type="button"
-										className="toolcall-md-toggle"
-										title={
-											markdownPreview
-												? t("showMarkdownSource")
-												: t("showMarkdownPreview")
-										}
-										onClick={() => setMarkdownPreview((v) => !v)}
-									>
-										{markdownPreview ? t("showMarkdownSource") : t("showMarkdownPreview")}
-									</button>
-								)}
-							</div>
-							{editDiff ? (
-								<DiffView diff={editDiff} lang={editLang} />
-							) : isMarkdown && markdownPreview && !isError ? (
-								<div className="toolcall-markdown">
-									<Markdown text={output} />
-								</div>
-							) : codeLang ? (
-								<div className="toolcall-code">
-									<Markdown text={fenceCodeBlock(output, codeLang)} />
-								</div>
-							) : (
-								<pre>{output}</pre>
-							)}
-						</div>
-					)}
-					{running && output.length === 0 && (
-						<div className="toolcall-waiting">
-							<span className="thinking-live-label">
-								<span className="thinking-spinner" aria-hidden="true" />
-								{t("waitingOutput")}
-							</span>
-						</div>
-					)}
-					{waitingModel && output.length === 0 && (
-						<div className="toolcall-waiting">
-							<span className="thinking-live-label">
-								<span className="thinking-spinner" aria-hidden="true" />
-								{t("waitingModel")}
-							</span>
-						</div>
-					)}
+						<div className="toolcall-body toolcall-zoom-body">{bodyContent}</div>
+					</div>
 				</div>
 			)}
 		</div>

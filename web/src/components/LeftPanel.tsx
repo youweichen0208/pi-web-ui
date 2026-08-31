@@ -1,6 +1,20 @@
 import { memo, useEffect, useState } from "react";
-import { FiCheck, FiFolder, FiMessageSquare, FiTrash2 } from "react-icons/fi";
-import type { ConversationSummary, ProjectSummary, SessionSummary } from "../types";
+import {
+	FiCheck,
+	FiEdit2,
+	FiFolder,
+	FiFolderPlus,
+	FiMessageSquare,
+	FiTrash2,
+	FiX,
+} from "react-icons/fi";
+import type {
+	ConversationSummary,
+	DirBrowse,
+	ProjectSummary,
+	SessionSummary,
+} from "../types";
+import { FolderPickerModal } from "./FolderPickerModal";
 import type { ConnStatus } from "../use-chat";
 import { useT } from "../i18n";
 
@@ -17,6 +31,8 @@ interface LeftPanelProps {
 	conversations: ConversationSummary[];
 	sessions: SessionSummary[];
 	projects: ProjectSummary[];
+	/** Latest workspace-picker listing (drives FolderPickerModal). */
+	dirBrowse: DirBrowse | null;
 	activeConversationId: string;
 	send: (
 		msg:
@@ -27,7 +43,9 @@ interface LeftPanelProps {
 			| { type: "switch_conversation"; id: string }
 			| { type: "set_cwd"; path: string }
 			| { type: "remove_project"; path: string }
-			| { type: "delete_session"; path: string },
+			| { type: "delete_session"; path: string }
+			| { type: "rename_session"; path: string; name: string }
+			| { type: "browse_dirs"; path?: string },
 	) => boolean;
 	/** True while the panel is actually on screen (desktop: always; mobile:
 	 *  only while the drawer is open). Drives lazy loading of the session
@@ -45,13 +63,24 @@ function formatModified(ts: number): string {
 	return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFile, conversations, sessions, projects, activeConversationId, send, active }: LeftPanelProps) {
+export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFile, conversations, sessions, projects, dirBrowse, activeConversationId, send, active }: LeftPanelProps) {
 	const t = useT();
 	const currentFile = sessionFile;
 	const currentCwd = cwd;
 	// Two-step delete confirm: which row ("proj:<path>" / "sess:<path>") is
 	// awaiting its second click. Mirrors the settings-panel uninstall pattern.
 	const [confirmDel, setConfirmDel] = useState<string | null>(null);
+
+	// Inline session rename: which transcript path is being edited, and the
+	// draft text. Empty draft clears the name (list falls back to first message).
+	const [renaming, setRenaming] = useState<string | null>(null);
+	const [renameDraft, setRenameDraft] = useState("");
+
+	// "Open folder": the recent-project list only ever grew as a side effect
+	// of the /cwd slash command — this is the panel's own entry point. Opens
+	// a server-driven directory picker (see FolderPickerModal for why a
+	// native OS dialog can't work here).
+	const [picking, setPicking] = useState(false);
 
 	// 乐观项目切换反馈：点击后立即高亮 + 转圈，等 cwd 真正变过来再清掉。
 	// "warm" 切换很快，这段几乎一闪而过；"cold" 切换（需要真正恢复会话运行时）
@@ -116,57 +145,63 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 
 	return (
 		<aside className="panel panel-left">
-			{projects.length > 0 && (
-				<div className="panel-projects">
-					<div className="panel-section-title">{t("recentProjects")}</div>
-					<div className="projects-scroll">
-						{projects.map((p) => {
-							const active = currentCwd === p.path;
-							const pending = !active && pendingCwd === p.path;
-							return (
-								<div
-									className="lp-row"
-									key={p.path}
-									onMouseLeave={() =>
-										setConfirmDel((k) => (k === `proj:${p.path}` ? null : k))
-									}
+			<div className="panel-projects">
+				<div className="panel-section-title">{t("recentProjects")}</div>
+				<button
+					type="button"
+					className="lp-add-project"
+					onClick={() => setPicking(true)}
+				>
+					<FiFolderPlus className="project-icon" />
+					<span>{t("openFolder")}</span>
+				</button>
+				<div className="projects-scroll">
+					{projects.map((p) => {
+						const active = currentCwd === p.path;
+						const pending = !active && pendingCwd === p.path;
+						return (
+							<div
+								className="lp-row"
+								key={p.path}
+								onMouseLeave={() =>
+									setConfirmDel((k) => (k === `proj:${p.path}` ? null : k))
+								}
+							>
+								<button
+									type="button"
+									className={`project-item ${active ? "active" : ""} ${pending ? "pending" : ""}`}
+									title={p.path}
+									onClick={() => {
+										if (!active) {
+											setPendingCwd(p.path);
+											send({ type: "set_cwd", path: p.path });
+										}
+									}}
 								>
-									<button
-										type="button"
-										className={`project-item ${active ? "active" : ""} ${pending ? "pending" : ""}`}
-										title={p.path}
-										onClick={() => {
-											if (!active) {
-												setPendingCwd(p.path);
-												send({ type: "set_cwd", path: p.path });
-											}
-										}}
-									>
-										<FiFolder className="project-icon" />
-										<span className="project-info">
-											<span className="project-name">{projectName(p.path)}</span>
-											<span className="project-path">{p.path}</span>
+									<FiFolder className="project-icon" />
+									<span className="project-info">
+										<span className="project-name">{projectName(p.path)}</span>
+										<span className="project-path">{p.path}</span>
+									</span>
+									{pending ? (
+										<span className="thinking-spinner project-spinner" aria-hidden="true" />
+									) : (
+										<span className="project-time">
+											{formatModified(p.lastUsed)}
 										</span>
-										{pending ? (
-											<span className="thinking-spinner project-spinner" aria-hidden="true" />
-										) : (
-											<span className="project-time">
-												{formatModified(p.lastUsed)}
-											</span>
-										)}
-									</button>
-									{delButton(
-										`proj:${p.path}`,
-										t("deleteProject"),
-										t("deleteProjectConfirm"),
-										() => send({ type: "remove_project", path: p.path }),
 									)}
-								</div>
-							);
-						})}
-					</div>
+								</button>
+								{delButton(
+									`proj:${p.path}`,
+									t("deleteProject"),
+									t("deleteProjectConfirm"),
+									() => send({ type: "remove_project", path: p.path }),
+								)}
+							</div>
+						);
+					})}
 				</div>
-			)}
+			</div>
 			{conversations.length > 0 && (
 				<div className="panel-convs">
 					<div className="panel-section-title">{t("runningConversations")}</div>
@@ -208,6 +243,46 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 					)}
 					{sessions.map((s) => {
 						const active = currentFile === s.path;
+						if (renaming === s.path) {
+							return (
+								<form
+									className="lp-inline-form"
+									key={s.path}
+									onSubmit={(e) => {
+										e.preventDefault();
+										send({
+											type: "rename_session",
+											path: s.path,
+											name: renameDraft.trim(),
+										});
+										setRenaming(null);
+									}}
+								>
+									{/* biome-ignore lint/a11y/noAutofocus: opened by an explicit click */}
+									<input
+										autoFocus
+										className="lp-inline-input"
+										placeholder={t("renameSessionPlaceholder")}
+										value={renameDraft}
+										onChange={(e) => setRenameDraft(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === "Escape") setRenaming(null);
+										}}
+									/>
+									<button type="submit" className="lp-inline-ok" title={t("confirm")}>
+										<FiCheck />
+									</button>
+									<button
+										type="button"
+										className="lp-inline-cancel"
+										title={t("cancel")}
+										onClick={() => setRenaming(null)}
+									>
+										<FiX />
+									</button>
+								</form>
+							);
+						}
 						return (
 							<div
 								className="lp-row"
@@ -242,6 +317,18 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 										{formatModified(s.modified)}
 									</span>
 								</button>
+								<button
+									type="button"
+									className="lp-rename"
+									title={t("renameSession")}
+									onClick={(e) => {
+										e.stopPropagation();
+										setRenameDraft(s.name ?? "");
+										setRenaming(s.path);
+									}}
+								>
+									<FiEdit2 />
+								</button>
 								{delButton(
 									`sess:${s.path}`,
 									t("deleteSession"),
@@ -253,6 +340,18 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 					})}
 				</div>
 			</div>
+			{picking && (
+				<FolderPickerModal
+					dirBrowse={dirBrowse}
+					onBrowse={(path) => send({ type: "browse_dirs", path })}
+					onPick={(path) => {
+						setPendingCwd(path);
+						send({ type: "set_cwd", path });
+						setPicking(false);
+					}}
+					onClose={() => setPicking(false)}
+				/>
+			)}
 		</aside>
 	);
 });
