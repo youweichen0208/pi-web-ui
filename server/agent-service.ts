@@ -2645,6 +2645,7 @@ export class ClientSession {
 				parent: parent === target ? null : parent,
 				dirs,
 				truncated: dirs.length >= MAX,
+				drives: await listWindowsDrives(),
 			});
 		} catch (err) {
 			this.emit({
@@ -3267,6 +3268,36 @@ export class ClientSession {
 			}
 		}
 	}
+}
+
+/**
+ * Windows drive roots that currently exist ("C:\\", "D:\\", …); empty on
+ * POSIX (where "/" already reaches everything).
+ *
+ * Needed because Windows has no unified filesystem root: dirname("C:\\") is
+ * "C:\\", so the picker's walk-up hits a ceiling on the boot drive and can
+ * never reach D:. Probing A–Z with access() avoids shelling out to wmic /
+ * PowerShell (both slow to spawn, and wmic is gone on recent Windows).
+ * Missing/empty drives simply reject, so they drop out.
+ */
+async function listWindowsDrives(): Promise<string[] | undefined> {
+	if (process.platform !== "win32") return undefined;
+	const fs = await import("node:fs/promises");
+	const letters = Array.from({ length: 26 }, (_, i) =>
+		String.fromCharCode(65 + i),
+	);
+	const found = await Promise.all(
+		letters.map(async (letter) => {
+			const root = `${letter}:\\`;
+			try {
+				await fs.access(root);
+				return root;
+			} catch {
+				return null;
+			}
+		}),
+	);
+	return found.filter((d): d is string => d !== null);
 }
 
 export class AgentService {
