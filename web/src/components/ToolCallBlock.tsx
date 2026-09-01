@@ -14,7 +14,7 @@ import {
 import type { ToolStatus, UiMessage, UiToolCallBlock } from "../types";
 import { useT } from "../i18n";
 import { Markdown } from "./Markdown";
-import { highlightLine } from "../hljs-lite";
+import { highlightLine, langFromPath } from "../hljs-lite";
 
 export interface ToolView {
 	/** Tool result message if the tool already finished. */
@@ -57,66 +57,6 @@ function isMarkdownReadTarget(block: UiToolCallBlock): boolean {
 	} catch {
 		return false;
 	}
-}
-
-/** Extension → highlight.js language alias, for coloring a `read` tool's
- *  raw dump the same way a fenced code block in chat gets colored (only
- *  covers languages bundled by rehype-highlight's "common" set — anything
- *  else falls through unhighlighted via `ignoreMissing: true`, never errors). */
-const EXT_LANG: Record<string, string> = {
-	json: "json",
-	jsonc: "json",
-	ts: "typescript",
-	mts: "typescript",
-	cts: "typescript",
-	tsx: "typescript",
-	js: "javascript",
-	mjs: "javascript",
-	cjs: "javascript",
-	jsx: "javascript",
-	py: "python",
-	rb: "ruby",
-	go: "go",
-	rs: "rust",
-	java: "java",
-	kt: "kotlin",
-	kts: "kotlin",
-	swift: "swift",
-	c: "c",
-	h: "c",
-	cpp: "cpp",
-	cc: "cpp",
-	hpp: "cpp",
-	cs: "csharp",
-	php: "php",
-	sql: "sql",
-	css: "css",
-	scss: "scss",
-	less: "less",
-	html: "xml",
-	htm: "xml",
-	xml: "xml",
-	svg: "xml",
-	yml: "yaml",
-	yaml: "yaml",
-	sh: "bash",
-	bash: "bash",
-	zsh: "bash",
-	toml: "ini",
-	ini: "ini",
-	graphql: "graphql",
-	gql: "graphql",
-	lua: "lua",
-	r: "r",
-	makefile: "makefile",
-	diff: "diff",
-	patch: "diff",
-};
-
-/** hljs language for a file path by extension, or null when unrecognized. */
-function langFromPath(path: string): string | null {
-	const ext = path.split(/[\\/]/).pop()?.split(".").pop()?.toLowerCase();
-	return (ext && EXT_LANG[ext]) || null;
 }
 
 /** hljs language for a `read` tool call's target path, or null when the

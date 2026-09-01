@@ -17,6 +17,7 @@ import {
 } from "react-icons/fi";
 import type { ClientMessage, FileContent } from "../types";
 import { Markdown } from "./Markdown";
+import { highlightLines, langFromPath } from "../hljs-lite";
 import { useT } from "../i18n";
 import { getClientId } from "../use-chat";
 import { withToken } from "../auth-token";
@@ -145,6 +146,17 @@ export function FilePreview({
 		if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
 		return parts.slice(0, MAX_PREVIEW_LINES);
 	}, [loaded]);
+
+	// Syntax colors for the plain-text view. Highlighting the file in one
+	// pass (rather than per line) keeps block comments and multi-line strings
+	// colored across every line they span — see highlightLines(). Memoized
+	// because this runs over up to MAX_PREVIEW_LINES lines and the panel
+	// re-renders on every line-selection drag.
+	const codeHtml = useMemo(() => {
+		const lang = langFromPath(file.name);
+		if (!lang || lines.length === 0) return null;
+		return highlightLines(lines.join("\n"), lang);
+	}, [lines, file.name]);
 
 	const lineCount = loaded?.lines ?? 0;
 	const truncatedLines = lineCount > MAX_PREVIEW_LINES;
@@ -476,7 +488,18 @@ export function FilePreview({
 									}}
 								>
 									<span className="fp-num">{n}</span>
-									<span className="fp-code-text">{text}</span>
+									{codeHtml ? (
+										<span
+											className="fp-code-text hljs"
+											// biome-ignore lint: highlightLines only ever returns
+											// hljs's own escaped/span-wrapped output, never raw input.
+											dangerouslySetInnerHTML={{
+												__html: codeHtml[i] || "\u200b",
+											}}
+										/>
+									) : (
+										<span className="fp-code-text">{text}</span>
+									)}
 								</div>
 							);
 						})}
