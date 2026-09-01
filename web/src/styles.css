@@ -173,6 +173,12 @@
 	--amber: #d97706;
 	--code-bg: #1b1f24;
 	--code-fg: var(--term-fg);
+	/* Hover tooltips are a deliberate dark chip even on this light page
+	   (same convention as the code islands). They need their own foreground:
+	   --text is the *page's* text color, which on a light theme is dark and
+	   therefore invisible on a dark bubble. */
+	--tooltip-bg: #232733;
+	--tooltip-fg: #e6e8ef;
 	/* Terminal ANSI palette — kept as a dark "island" like the reference
 	   blog's own Shiki code cards, even though the page chrome is light. */
 	--term-bg: #1b1f24;
@@ -1217,8 +1223,8 @@ body.panel-resizing {
 	position: absolute;
 	bottom: calc(100% + 8px);
 	right: 0;
-	background: #232733;
-	color: var(--text);
+	background: var(--tooltip-bg);
+	color: var(--tooltip-fg);
 	border: 1px solid var(--border);
 	border-radius: 6px;
 	padding: 4px 9px;
@@ -1237,7 +1243,7 @@ body.panel-resizing {
 	bottom: calc(100% + 3px);
 	right: 6px; /* arrow centered on the 22px-wide button */
 	border: 5px solid transparent;
-	border-top-color: #232733;
+	border-top-color: var(--tooltip-bg);
 	pointer-events: none;
 	opacity: 0;
 	transition: opacity 0.09s ease;
@@ -1257,8 +1263,8 @@ body.panel-resizing {
 	position: absolute;
 	top: calc(100% + 8px);
 	right: 0;
-	background: #232733;
-	color: var(--text);
+	background: var(--tooltip-bg);
+	color: var(--tooltip-fg);
 	border: 1px solid var(--border);
 	border-radius: 6px;
 	padding: 4px 9px;
@@ -7245,8 +7251,8 @@ span.msg-editor-hint svg {
 	position: absolute;
 	top: calc(100% + 8px);
 	right: 0;
-	background: #232733;
-	color: var(--text);
+	background: var(--tooltip-bg);
+	color: var(--tooltip-fg);
 	border: 1px solid var(--border);
 	border-radius: 6px;
 	padding: 4px 9px;
