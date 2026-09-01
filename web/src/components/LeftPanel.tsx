@@ -114,6 +114,21 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 	const projectName = (path: string): string =>
 		path.split(/[\\/]/).pop() || path;
 
+	/** The directory the project SITS IN, for the row's second line.
+	 *
+	 *  Showing the full absolute path there repeated the project name (its
+	 *  own last segment) on every row, spending the wider line on the least
+	 *  distinguishing part of the path — two sibling checkouts looked
+	 *  identical until the very end of a string that had already been
+	 *  ellipsized. Empty for roots ("/" or "C:\\") and for top-level entries
+	 *  like /Users, where the parent adds nothing and the row renders as a
+	 *  single line instead of repeating itself. */
+	const projectParent = (path: string): string => {
+		const norm = path.replace(/[\\/]+$/, "");
+		const idx = Math.max(norm.lastIndexOf("/"), norm.lastIndexOf("\\"));
+		return idx <= 0 ? "" : norm.slice(0, idx);
+	};
+
 	/** Hover-revealed delete button with two-step confirm (the .lp-row wrapper
 	 *  positions it; stopPropagation keeps the row click from firing). */
 	const delButton = (
@@ -181,7 +196,11 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 									<FiFolder className="project-icon" />
 									<span className="project-info">
 										<span className="project-name">{projectName(p.path)}</span>
-										<span className="project-path">{p.path}</span>
+										{projectParent(p.path) && (
+											<span className="project-path">
+												{projectParent(p.path)}
+											</span>
+										)}
 									</span>
 									{pending ? (
 										<span className="thinking-spinner project-spinner" aria-hidden="true" />

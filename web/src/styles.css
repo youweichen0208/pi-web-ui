@@ -618,6 +618,8 @@ body.panel-resizing {
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
+	gap: 2px;
+	line-height: 1.35;
 }
 
 .session-title {
@@ -647,6 +649,9 @@ body.panel-resizing {
 	font-size: 10.5px;
 	color: var(--text-faint);
 	flex-shrink: 0;
+	align-self: flex-start;
+	margin-top: 1px;
+	font-variant-numeric: tabular-nums;
 }
 
 /* ------------------------------------------------------- recent projects */
@@ -751,6 +756,11 @@ body.panel-resizing {
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
+	/* The two lines were touching, which is what made a row read as one
+	   run-on string. Rows with no parent line (roots) keep a single line and
+	   stay vertically centred by .project-item's align-items. */
+	gap: 2px;
+	line-height: 1.35;
 }
 
 .project-name {
@@ -773,6 +783,11 @@ body.panel-resizing {
 	font-size: 10.5px;
 	color: var(--text-faint);
 	flex-shrink: 0;
+	/* Two-line rows: sit level with the name rather than floating in the
+	   middle between the two lines. */
+	align-self: flex-start;
+	margin-top: 1px;
+	font-variant-numeric: tabular-nums;
 }
 
 /* 乐观项目切换反馈：点击后立即高亮，右侧时间换成转圈，等 cwd 真正切换过来
