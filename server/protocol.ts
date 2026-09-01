@@ -508,6 +508,13 @@ export type DirBrowse = {
 	dirs: string[];
 	/** Listing hit the entry cap and was cut short. */
 	truncated: boolean;
+	/** Windows only: available drive roots ("C:\\", "D:\\", …).
+	 *
+	 *  Windows has no single filesystem root — walking up from C:\Users\me
+	 *  stops dead at C:\, and D:\ is not reachable from it at all (POSIX
+	 *  always bottoms out at "/", which contains everything). Without this
+	 *  the picker can never leave the boot drive. Absent on POSIX. */
+	drives?: string[];
 };
 
 /** A background server the agent left running (listening-port diff around a

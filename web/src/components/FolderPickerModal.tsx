@@ -4,6 +4,7 @@ import {
 	FiChevronRight,
 	FiCornerLeftUp,
 	FiFolder,
+	FiHardDrive,
 	FiHome,
 	FiX,
 } from "react-icons/fi";
@@ -48,8 +49,14 @@ export function FolderPickerModal({
 	}, [onClose]);
 
 	const here = dirBrowse?.path ?? "";
+	// Join with the separator the server's own path uses: on Windows `here`
+	// comes back as C:\Users\me, and appending "/" would build a mixed
+	// C:\Users\me/foo. (resolve() would normalize it, but the path is shown
+	// to the user.)
+	const sep = here.includes("\\") && !here.includes("/") ? "\\" : "/";
 	const join = (name: string) =>
-		here.endsWith("/") ? `${here}${name}` : `${here}/${name}`;
+		here.endsWith(sep) ? `${here}${name}` : `${here}${sep}${name}`;
+	const drives = dirBrowse?.drives ?? [];
 
 	return (
 		// biome-ignore lint/a11y/useKeyWithClickEvents: Esc is handled on window
@@ -97,6 +104,22 @@ export function FolderPickerModal({
 						{here || "…"}
 					</code>
 				</div>
+
+				{drives.length > 0 && (
+					<div className="fpk-drives">
+						{drives.map((d) => (
+							<button
+								type="button"
+								key={d}
+								className={`fpk-drive ${here.toUpperCase().startsWith(d.toUpperCase()) ? "active" : ""}`}
+								onClick={() => onBrowse(d)}
+							>
+								<FiHardDrive />
+								<span>{d.replace(/\\$/, "")}</span>
+							</button>
+						))}
+					</div>
+				)}
 
 				<div className="fpk-list">
 					{dirBrowse && dirBrowse.dirs.length === 0 && (
