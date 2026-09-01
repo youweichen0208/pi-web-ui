@@ -2516,6 +2516,13 @@ export class ClientSession {
 				cwd: conv.cwd,
 				messageCount,
 				isStreaming,
+				// resolve() so it is byte-comparable with the paths
+				// SessionManager.list() reports to the client — the two are
+				// compared as plain strings there, and an unnormalized form
+				// here would make the dedup silently miss.
+				sessionFile: conv.session.sessionFile
+					? resolve(conv.session.sessionFile)
+					: undefined,
 			});
 		}
 		this.emit({
@@ -2547,8 +2554,14 @@ export class ClientSession {
 
 			const sessions = new Map<string, SessionSummary>();
 			for (const s of infos) {
-				sessions.set(s.path, {
-					path: s.path,
+				// Normalized to the same form as ConversationSummary.sessionFile:
+				// the client compares the two as plain strings to hide a running
+				// conversation from this list. resolve() only makes absolute and
+				// collapses ./.. — it does not follow symlinks, so identity is
+				// unchanged for switch/delete/rename, which resolve() anyway.
+				const path = resolve(s.path);
+				sessions.set(path, {
+					path,
 					name: s.name,
 					firstMessage: s.firstMessage,
 					messageCount: s.messageCount,

@@ -111,6 +111,20 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 		return title.length > 0 ? title : t("emptyChat");
 	};
 
+	// A running conversation's transcript is on disk too, and list_sessions
+	// does not filter open ones out — so the same conversation was listed in
+	// BOTH sections, keyed differently (runtime id vs. file path) and with no
+	// way to tell they were one thing. Worse, the history row sent
+	// switch_session, which resumes from disk and rebuilds the runtime — on a
+	// conversation that already had a live one. The running section shows
+	// these with richer state (streaming dot), so history drops them.
+	const runningFiles = new Set(
+		conversations
+			.map((conv) => conv.sessionFile)
+			.filter((f): f is string => typeof f === "string" && f.length > 0),
+	);
+	const historySessions = sessions.filter((s) => !runningFiles.has(s.path));
+
 	const projectName = (path: string): string =>
 		path.split(/[\\/]/).pop() || path;
 
@@ -257,10 +271,10 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 			<div className="panel-sessions">
 				<div className="panel-section-title">{t("historySessions")}</div>
 				<div className="sessions-scroll">
-					{sessions.length === 0 && (
+					{historySessions.length === 0 && (
 						<div className="panel-empty">{t("noHistory")}</div>
 					)}
-					{sessions.map((s) => {
+					{historySessions.map((s) => {
 						const active = currentFile === s.path;
 						if (renaming === s.path) {
 							return (

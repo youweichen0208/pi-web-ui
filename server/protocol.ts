@@ -753,6 +753,14 @@ export interface ConversationSummary {
 	cwd: string;
 	messageCount: number;
 	isStreaming: boolean;
+	/** Absolute path of this conversation's transcript, when it has one.
+	 *
+	 *  The join key between this list and the persisted-session list: the two
+	 *  are keyed differently (runtime id vs. file path), so without it the UI
+	 *  cannot tell that a running conversation and a history entry are the
+	 *  same conversation — and `list_sessions` does not filter open ones out,
+	 *  so it lists both. Absent for a conversation with no session file yet. */
+	sessionFile?: string;
 }
 
 // ---------------------------------------------------------------------------
