@@ -91,3 +91,132 @@ export function highlightLine(code: string, lang: string | null): string {
 		return escapeHtml(code);
 	}
 }
+
+/** Extension → highlight.js language alias. Lives here (next to the hljs
+ *  registration list it must stay in sync with) rather than in a component,
+ *  so the tool-call cards and the file-preview panel share one map. */
+const EXT_LANG: Record<string, string> = {
+	json: "json",
+	jsonc: "json",
+	ts: "typescript",
+	mts: "typescript",
+	cts: "typescript",
+	tsx: "typescript",
+	js: "javascript",
+	mjs: "javascript",
+	cjs: "javascript",
+	jsx: "javascript",
+	py: "python",
+	rb: "ruby",
+	go: "go",
+	rs: "rust",
+	java: "java",
+	kt: "kotlin",
+	kts: "kotlin",
+	swift: "swift",
+	c: "c",
+	h: "c",
+	cpp: "cpp",
+	cc: "cpp",
+	hpp: "cpp",
+	cs: "csharp",
+	php: "php",
+	sql: "sql",
+	css: "css",
+	scss: "scss",
+	less: "less",
+	html: "xml",
+	htm: "xml",
+	xml: "xml",
+	svg: "xml",
+	yml: "yaml",
+	yaml: "yaml",
+	sh: "bash",
+	bash: "bash",
+	zsh: "bash",
+	toml: "ini",
+	ini: "ini",
+	graphql: "graphql",
+	gql: "graphql",
+	lua: "lua",
+	r: "r",
+	makefile: "makefile",
+	diff: "diff",
+	patch: "diff",
+};
+
+/** hljs language for a file path by extension, or null when unrecognized. */
+export function langFromPath(path: string): string | null {
+	const ext = path.split(/[\\/]/).pop()?.split(".").pop()?.toLowerCase();
+	return (ext && EXT_LANG[ext]) || null;
+}
+
+/**
+ * Highlight a whole file and return it split into per-line HTML.
+ *
+ * Not simply `highlightLine()` per line: constructs that span lines — block
+ * comments, template/multi-line strings — are not valid on their own, so
+ * line-by-line highlighting silently fails to color them (a file whose
+ * header is one big block comment would come out entirely plain). Instead
+ * the file is highlighted in one pass and the resulting HTML is split on
+ * newlines, closing every open `<span>` at the end of each line and
+ * reopening the same stack on the next, which is what keeps a construct
+ * spanning N lines colored on all N.
+ *
+ * hljs output is limited to `<span class="...">`, `</span>` and escaped
+ * text, so the tiny scanner below is sufficient. If it ever drifts out of
+ * step with the raw line count, the plain escaped text is returned instead
+ * of shipping mismatched markup.
+ */
+export function highlightLines(code: string, lang: string | null): string[] {
+	const raw = code.split("\n");
+	if (!lang || !hljs.getLanguage(lang)) return raw.map(escapeHtml);
+
+	let html: string;
+	try {
+		html = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+	} catch {
+		return raw.map(escapeHtml);
+	}
+
+	const out: string[] = [];
+	const open: string[] = [];
+	let cur = "";
+	let i = 0;
+	while (i < html.length) {
+		if (html[i] === "<") {
+			const end = html.indexOf(">", i);
+			if (end === -1) {
+				cur += html.slice(i);
+				break;
+			}
+			const tag = html.slice(i, end + 1);
+			if (tag.startsWith("</")) open.pop();
+			else if (!tag.endsWith("/>")) open.push(tag);
+			cur += tag;
+			i = end + 1;
+			continue;
+		}
+		const nl = html.indexOf("\n", i);
+		const lt = html.indexOf("<", i);
+		const stop = Math.min(
+			nl === -1 ? Number.POSITIVE_INFINITY : nl,
+			lt === -1 ? Number.POSITIVE_INFINITY : lt,
+		);
+		if (stop === Number.POSITIVE_INFINITY) {
+			cur += html.slice(i);
+			break;
+		}
+		cur += html.slice(i, stop);
+		if (stop === nl) {
+			out.push(cur + "</span>".repeat(open.length));
+			cur = open.join("");
+			i = stop + 1;
+		} else {
+			i = stop;
+		}
+	}
+	out.push(cur + "</span>".repeat(open.length));
+
+	return out.length === raw.length ? out : raw.map(escapeHtml);
+}
