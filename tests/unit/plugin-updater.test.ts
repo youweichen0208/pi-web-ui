@@ -59,6 +59,25 @@ describe("备份 / 回滚", () => {
 		expect(listBackups(dataDir, "p1").length).toBe(BACKUP_KEEP ?? 3);
 	});
 
+	it("同一毫秒内连续备份不会互相覆盖（stamp 单调递增）", () => {
+		// 备份目录名就是它的唯一标识。stamp() 只到毫秒，而连续调用快到足以
+		// 落在同一毫秒里——曾经因此让第二次 cpSync 合并进第一次的目录，
+		// 静默丢掉一份备份，prune 保留的份数也随之少于 keep。这里刻意不留
+		// 任何间隔地连拍，撞不撞得上毫秒边界都必须拿到互不相同的时间戳。
+		installPlugin("p1", "v1");
+		const stamps = [
+			ensureBackup(dataDir, "p1"),
+			ensureBackup(dataDir, "p1"),
+			ensureBackup(dataDir, "p1"),
+		];
+		expect(stamps.every((s) => typeof s === "string" && s.length > 0)).toBe(true);
+		expect(new Set(stamps).size).toBe(3);
+		// listBackups 用 /^<id>-\d{8}-\d{9}$/ 严格匹配：加后缀去重会让备份
+		// 对它不可见（也就永远不会被 prune），所以格式必须原样保持。
+		for (const s of stamps) expect(s).toMatch(/^\d{8}-\d{9}$/);
+		expect(listBackups(dataDir, "p1").length).toBe(3);
+	});
+
 	it("备份不包含 node_modules/.git；目标不存在返回 null", () => {
 		const d = installPlugin("p1", "v1");
 		mkdirSync(join(d, "node_modules"), { recursive: true });

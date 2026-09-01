@@ -226,8 +226,28 @@ export async function checkPluginUpdates(
 	return out;
 }
 
+/** Last stamp handed out, so the next one is always strictly greater. */
+let lastStampMs = 0;
+
+/**
+ * Backup directory name: `YYYYMMDD-HHMMSSmmm`.
+ *
+ * Monotonic on purpose. The name is the backup's only identity — two calls
+ * landing in the same millisecond produced the same directory, so the second
+ * cpSync() merged into the first instead of creating a new backup, silently
+ * losing one and leaving pruneBackups() keeping fewer than `keep`. Taking
+ * several backups in a row is fast enough that this is not theoretical: eight
+ * consecutive calls routinely share a millisecond.
+ *
+ * Colliding calls are pushed to the next millisecond rather than given a
+ * disambiguating suffix, because listBackups() matches names against a strict
+ * `\d{8}-\d{9}$` pattern — a suffixed backup would be invisible to it, and
+ * therefore never pruned either.
+ */
 function stamp(): string {
-	const d = new Date();
+	const now = Math.max(Date.now(), lastStampMs + 1);
+	lastStampMs = now;
+	const d = new Date(now);
 	const p = (x: number, n = 2) => String(x).padStart(n, "0");
 	return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${p(d.getMilliseconds(), 3)}`;
 }
