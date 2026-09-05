@@ -519,9 +519,6 @@ export const Message = memo(function Message({
 								<span className="dot" />
 							</div>
 						)}
-						{streaming && isLast && message.role !== "user" && !isEmptyStreaming && (
-							<span className="thinking-spinner" aria-hidden="true" />
-						)}
 					</>
 				)}
 			</div>

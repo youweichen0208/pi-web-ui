@@ -4416,16 +4416,6 @@ span.msg-editor-hint svg {
 	animation: stream-blink 1s steps(2, start) infinite;
 }
 
-/* Spinner shown inline while the assistant message is streaming (same
-   .thinking-spinner as everywhere else, just aligned for inline text). */
-.msg-text .thinking-spinner {
-	display: inline-block;
-	vertical-align: -1px;
-	margin-left: 5px;
-	width: 11px;
-	height: 11px;
-}
-
 @keyframes stream-blink {
 	0%,
 	100% {
