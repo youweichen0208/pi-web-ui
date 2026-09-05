@@ -4416,16 +4416,14 @@ span.msg-editor-hint svg {
 	animation: stream-blink 1s steps(2, start) infinite;
 }
 
-/* Blinking caret shown while the assistant message is streaming. */
-.stream-cursor {
+/* Spinner shown inline while the assistant message is streaming (same
+   .thinking-spinner as everywhere else, just aligned for inline text). */
+.msg-text .thinking-spinner {
 	display: inline-block;
-	width: 2px;
-	height: 1em;
-	margin-left: 4px;
-	vertical-align: text-bottom;
-	border-radius: 1px;
-	background: var(--accent);
-	animation: stream-blink 1s ease-in-out infinite;
+	vertical-align: -1px;
+	margin-left: 5px;
+	width: 11px;
+	height: 11px;
 }
 
 @keyframes stream-blink {

@@ -520,7 +520,7 @@ export const Message = memo(function Message({
 							</div>
 						)}
 						{streaming && isLast && message.role !== "user" && !isEmptyStreaming && (
-							<span className="stream-cursor" />
+							<span className="thinking-spinner" aria-hidden="true" />
 						)}
 					</>
 				)}
