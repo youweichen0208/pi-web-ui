@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import { FolderPickerModal } from "./FolderPickerModal";
 import type { ConnStatus } from "../use-chat";
+import { skillAwarePreview } from "../skill-block";
 import { useT } from "../i18n";
 
 /** Props are deliberately NARROW (no whole-ChatState object): every field is
@@ -107,7 +108,11 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 	}, [active, ready, status, cwd, send]);
 
 	const displayName = (s: SessionSummary): string => {
-		const title = s.name || s.firstMessage.trim();
+		// s.name is a user rename (kept verbatim); the fallback is the SDK's
+		// raw first-user-message, which for a skill invocation is the entire
+		// expanded SKILL.md body — collapse that to "skill:name · args"
+		// instead of dumping (and truncating mid-sentence) the raw text.
+		const title = s.name || skillAwarePreview(s.firstMessage);
 		return title.length > 0 ? title : t("emptyChat");
 	};
 

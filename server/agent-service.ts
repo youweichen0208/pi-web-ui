@@ -428,6 +428,24 @@ const TOOL_WATCHDOG_TIMEOUT_MS = (() => {
 const MAX_OPEN_CONVERSATIONS = 8;
 const DEFAULT_CONV_TITLE = "新对话";
 
+// Mirrors web/src/skill-block.ts's parseSkillBlock (which itself mirrors the
+// pi SDK's dist/core/agent-session.js) — kept in sync by hand, server and
+// web can't share a module across the tsconfig split. When the user sends
+// /skill:name args, the SDK expands the prompt into
+// `<skill name="..." location="...">\n...SKILL.md body...\n</skill>\n\n<args>`;
+// using that raw text as a conversation title would dump (and mid-sentence
+// truncate) the entire skill body instead of something readable.
+const SKILL_BLOCK_TITLE_RE =
+	/^<skill name="([^"]+)" location="[^"]+">\n[\s\S]*?\n<\/skill>(?:\n\n([\s\S]+))?$/;
+
+function skillAwareTitleText(text: string): string {
+	const m = text.match(SKILL_BLOCK_TITLE_RE);
+	if (!m) return text;
+	const name = m[1];
+	const args = m[2]?.trim();
+	return `skill:${name}` + (args ? ` · ${args}` : "");
+}
+
 
 /** First user text in a session, truncated for the conversation list. */
 function conversationTitle(session: AgentSession): string {
@@ -451,7 +469,7 @@ function conversationTitle(session: AgentSession): string {
 					}
 				}
 			}
-			const trimmed = text.trim().replace(/\s+/g, " ");
+			const trimmed = skillAwareTitleText(text).trim().replace(/\s+/g, " ");
 			if (trimmed.length > 0) {
 				return trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
 			}
@@ -2434,9 +2452,20 @@ export class ClientSession {
 	 * - still streaming → it becomes a background run: ensure it is listed;
 	 * - idle + listed + continued → keep it (the user did continue it);
 	 * - any retained terminal state → keep it listed until the terminals are closed;
-	 * - idle + listed + opened-but-not-continued, or never listed at all → the
-	 *   caller must drop it (returns it so removal happens only after the
-	 *   active conversation has been switched away).
+	 * - idle + just-viewed (never prompted this visit) → ALSO kept listed, as
+	 *   long as the owning project is under its MAX_OPEN_CONVERSATIONS cap.
+	 *   Disposing on every glance meant switching back to a project you'd only
+	 *   looked at (not typed into) paid a full cold restart — a fresh
+	 *   AgentSessionRuntime + SessionManager.continueRecent() disk resume +
+	 *   TerminalManager — every single time. That cost is real on any
+	 *   platform but lands hardest on Windows (slower fs I/O, AV scanning
+	 *   every spawned process/file, ConPTY init), which is what made "project
+	 *   switching" itself feel slow rather than just the first visit. Idle
+	 *   conversations are cheap to hold (no streaming, no PTYs) — bounding by
+	 *   the existing per-project cap keeps memory use where it already was
+	 *   allowed to go, just makes it more likely to actually get there.
+	 * - only over-cap does the caller now actually drop it (returns it so
+	 *   removal happens after the active conversation has been switched away).
 	 */
 	private displaceActive(): Conversation | null {
 		const conv = this.conv;
@@ -2458,6 +2487,16 @@ export class ClientSession {
 			return null;
 		}
 		if (conv.listed && conv.promptedSinceActive) return null;
+		// Idle and never continued this visit — still worth keeping warm
+		// (see above) unless doing so would push this project over its cap,
+		// in which case free the slot the old way.
+		const openInProject = [...this.convs.values()].filter(
+			(c) => c.cwd === conv.cwd,
+		).length;
+		if (openInProject < MAX_OPEN_CONVERSATIONS) {
+			conv.listed = true;
+			return null;
+		}
 		return conv;
 	}
 

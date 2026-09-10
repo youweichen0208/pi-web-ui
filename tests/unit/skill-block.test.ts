@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSkillBlock } from "../../web/src/skill-block.js";
+import { parseSkillBlock, skillAwarePreview } from "../../web/src/skill-block.js";
 
 const BODY = `---
 name: demo
@@ -27,5 +27,22 @@ describe("parseSkillBlock", () => {
 
 	it("非 skill 文本返回 null", () => {
 		expect(parseSkillBlock("普通消息")).toBeNull();
+	});
+});
+
+describe("skillAwarePreview", () => {
+	it("skill 块折叠成 skill:name · args", () => {
+		const text =
+			`<skill name="demo" location="/tmp/demo/SKILL.md">\n${BODY}\n</skill>\n\n帮我做 X`;
+		expect(skillAwarePreview(text)).toBe("skill:demo · 帮我做 X");
+	});
+
+	it("无 args 的 skill 块只留 skill:name", () => {
+		const text = `<skill name="a" location="/l">\nbody\n</skill>`;
+		expect(skillAwarePreview(text)).toBe("skill:a");
+	});
+
+	it("非 skill 文本原样返回（折叠空白）", () => {
+		expect(skillAwarePreview("  hello   world  \n")).toBe("hello world");
 	});
 });

@@ -200,9 +200,6 @@ export class FilesService {
 		// always use "/", but relative() returns "\\" on Windows.
 		const rel = rawRel.split(sep).join("/");
 		const { entries, truncated, error } = await readDirForUI(target, rel);
-		// Watch the listed directory (only after a successful read — a missing
-		// dir throws above and must not create a watcher on a phantom path).
-		this.watchDir(target, rel);
 		if (error) {
 			// Windows-only: unreadable system dirs degrade to an empty list
 			// with a warning instead of a hard error — the panel stays usable.
@@ -224,6 +221,14 @@ export class FilesService {
 			entries,
 			truncated,
 		});
+		// Watch the listed directory — deferred until AFTER the response is on
+		// the wire. On win32, fs.watch(root, {recursive:true}) registering over
+		// a big tree (node_modules et al) can itself take a noticeable moment
+		// (ReadDirectoryChangesW setup cost scales with tree size, unlike
+		// macOS's FSEvents); doing it inline before the emit made every
+		// project switch wait on that registration instead of just seeing the
+		// file list immediately and having the watcher arm a beat later.
+		this.watchDir(target, rel);
 	}
 
 	/**

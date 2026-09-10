@@ -15,6 +15,7 @@ import {
 	FiX,
 } from "react-icons/fi";
 import type { ClientMessage, FileSearchResult, ProjectSummary, SessionSummary } from "../types";
+import { skillAwarePreview } from "../skill-block";
 import { useT } from "../i18n";
 
 interface GlobalSearchModalProps {
@@ -253,7 +254,7 @@ export function GlobalSearchModal({
 											{s.name || s.path.split(/[\\/]/).pop()}
 											<em className="gs-item-meta">{s.messageCount}</em>
 										</span>
-										<span className="gs-item-sub">{s.firstMessage}</span>
+										<span className="gs-item-sub">{skillAwarePreview(s.firstMessage)}</span>
 									</button>
 								);
 							})}

@@ -34,3 +34,22 @@ export function parseSkillBlock(text: string): SkillBlock | null {
 		userMessage: m[4]?.trim() || undefined,
 	};
 }
+
+/**
+ * One-line, skill-aware preview of a user message — used anywhere a raw
+ * first-user-message string would otherwise get shown verbatim (history
+ * list, running-conversation list, global search). A skill invocation's raw
+ * text is the entire expanded SKILL.md body, which is useless (and ugly,
+ * ends up truncated mid-sentence) as a title — collapse it to the same
+ * `skill:name · args` form CollapsedMessage already uses for the chat view.
+ */
+export function skillAwarePreview(text: string): string {
+	const sb = parseSkillBlock(text);
+	if (sb) {
+		return (
+			`skill:${sb.name}` +
+			(sb.userMessage ? ` · ${sb.userMessage.replace(/\s+/g, " ").trim()}` : "")
+		);
+	}
+	return text.replace(/\s+/g, " ").trim();
+}

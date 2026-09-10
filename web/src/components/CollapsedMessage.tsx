@@ -11,7 +11,7 @@ import {
 	roleLabel,
 } from "./Message";
 
-import { parseSkillBlock } from "../skill-block";
+import { skillAwarePreview } from "../skill-block";
 
 interface CollapsedMessageProps {
 	message: UiMessage;
@@ -37,14 +37,7 @@ export const CollapsedMessage = memo(function CollapsedMessage({
 		if (text && text.text.trim()) {
 			// Skill invocations collapse to a `skill:name · <args>` chip instead
 			// of the raw SKILL.md dump.
-			const sb = parseSkillBlock(text.text);
-			if (sb) {
-				preview =
-					`skill:${sb.name}` +
-					(sb.userMessage ? ` · ${sb.userMessage.replace(/\s+/g, " ").trim()}` : "");
-			} else {
-				preview = text.text.replace(/\s+/g, " ").trim();
-			}
+			preview = skillAwarePreview(text.text);
 			break;
 		}
 	}
