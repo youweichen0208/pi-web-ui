@@ -3,7 +3,7 @@
 # （发布到 GitHub Releases 的 CI 流程当前未接，需要时再补 publish 配置）
 
 appId: com.youweichen.pi-web-ui
-productName: pi-web-ui
+productName: pi
 copyright: Copyright © 2026 youweichen
 
 directories:
@@ -77,7 +77,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: pi-web-ui
+  shortcutName: pi
   artifactName: "${productName}-${version}-setup-x64.${ext}"
 
 # Linux

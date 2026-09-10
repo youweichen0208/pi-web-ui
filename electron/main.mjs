@@ -86,7 +86,7 @@ async function startServer() {
 
 	if (!existsSync(serverPath)) {
 		dialog.showErrorBox(
-			"pi-web-ui 启动失败",
+			"pi 启动失败",
 			`找不到 server 入口：${serverPath}\n\n请先执行 npm run build，然后重试。`,
 		);
 		app.quit();
@@ -167,7 +167,7 @@ function createWindow() {
 		height: 800,
 		minWidth: 800,
 		minHeight: 600,
-		title: "pi-web-ui",
+		title: "pi",
 		show: false,
 		webPreferences: {
 			preload: join(__dirname, "preload.mjs"),
@@ -210,7 +210,7 @@ function createTray() {
 	const iconPath = join(__dirname, "icon.png");
 	const icon = existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
 	tray = new Tray(icon.isEmpty() ? icon : icon.resize({ width: 16, height: 16 }));
-	tray.setToolTip("pi-web-ui");
+	tray.setToolTip("pi");
 
 	const contextMenu = Menu.buildFromTemplate([
 		{
@@ -224,12 +224,12 @@ function createTray() {
 		},
 		{ type: "separator" },
 		{
-			label: "关于 pi-web-ui",
+			label: "关于 pi",
 			click: () => {
 				dialog.showMessageBox({
 					type: "info",
-					title: "关于 pi-web-ui",
-					message: `pi-web-ui v${app.getVersion()}`,
+					title: "关于 pi",
+					message: `pi v${app.getVersion()}`,
 					detail: "Web chat interface for the pi coding agent.",
 				});
 			},
@@ -264,15 +264,15 @@ function createTray() {
 function createAppMenu() {
 	const template = [
 		{
-			label: "pi-web-ui",
+			label: "pi",
 			submenu: [
 				{
-					label: "关于 pi-web-ui",
+					label: "关于 pi",
 					click: () => {
 						dialog.showMessageBox({
 							type: "info",
-							title: "关于 pi-web-ui",
-							message: `pi-web-ui v${app.getVersion()}`,
+							title: "关于 pi",
+							message: `pi v${app.getVersion()}`,
 							detail: "Web chat interface for the pi coding agent.",
 						});
 					},
@@ -347,7 +347,7 @@ function setupAutoUpdater() {
 
 	autoUpdater.on("update-available", (info) => {
 		const notification = new Notification({
-			title: "pi-web-ui 更新可用",
+			title: "pi 更新可用",
 			body: `版本 ${info.version} 可下载（当前 ${app.getVersion()}）`,
 		});
 		notification.on("click", () => {
@@ -391,7 +391,7 @@ app.whenReady().then(async () => {
 	try {
 		await startServer();
 	} catch (err) {
-		dialog.showErrorBox("pi-web-ui 启动失败", err instanceof Error ? err.message : String(err));
+		dialog.showErrorBox("pi 启动失败", err instanceof Error ? err.message : String(err));
 		app.quit();
 		return;
 	}
