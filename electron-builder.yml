@@ -46,8 +46,14 @@ mac:
   category: public.app-category.developer-tools
   hardenedRuntime: false
   gatekeeperAssess: false
-  identity: null  # 不签名也可构建，但 macOS 会提示「无法验证开发者」
+  identity: null  # 没有 Apple 开发者证书，不做正式签名/公证
   artifactName: "${productName}-${version}-mac-${arch}.${ext}"
+
+# 没有正式签名证书时，arm64 (Apple Silicon) 完全不签名的 app 会被系统判定为
+# 「已损坏」，比「无法验证开发者」更严重——右键打开都绕不过，只能让用户手动
+# `xattr -cr`。用 afterPack 钩子做一次免费的 ad-hoc 签名（不需要开发者账号），
+# 把体验降级成常见的「无法验证开发者」，用户右键打开就能用。见 build/afterPack.cjs。
+afterPack: build/afterPack.cjs
 
 # Windows
 win:
