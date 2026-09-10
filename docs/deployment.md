@@ -23,3 +23,56 @@ pi-web-ui server status|restart|stop|uninstall
 ```
 
 > uninstall 会自动移除桌面图标；未装服务时桌面快捷方式启动的实例在 status/stop 中单独报告（PS1 前台+记录 PID）。
+
+## 桌面版（Electron）
+
+本地源码构建，不进 npm 发布包（`package.json` `files` 不含 `electron/`/`build/`），
+也暂未接 GitHub Releases 自动发布 CI（`electron-builder.yml` 里 `publish:` 段先注释掉了）：
+
+```bash
+npm install                    # 会装 electron / electron-builder / electron-updater（devDeps）
+npm run build                  # build:web + build:server（打包前必须先构建）
+npm run dev:electron           # 直接跑 electron .，加载本地构建，走 dev 模式（自动开 DevTools）
+npm run build:electron:mac     # 产出 dmg/zip（release/），需要在真机 macOS 上跑（原生模块要 rebuild）
+npm run build:electron:win     # 产出 nsis 安装包 + portable 绿色版 + zip
+npm run build:electron:win -- --win zip --x64 -c.npmRebuild=false
+                                # 只出 zip，能在 mac/Linux 上交叉构建（不需要 wine）；
+                                # nsis/portable 两个目标要跑 makensis，非 Windows 机器上必须装 wine，
+                                # 否则只能在真机 Windows 或 GitHub Actions windows runner 上出
+npm run build:electron:linux   # 产出 AppImage + deb
+npm run publish:electron       # 同 build，但 --publish always（当前没配 publish provider，先别用）
+```
+
+架构（`electron/main.mjs`）：
+
+- 主进程 `fork()` 一个隐藏子进程跑 `dist/server/index.js`（`ELECTRON_RUN_AS_NODE=1`，
+  即用 Electron 自带的 Node 运行时跑纯 Node 代码，不是渲染进程）。
+- 通过 stdout 里的 `⚡ pi-web-ui` 标记（见 `server/index.ts` 的 `httpServer.listen` 回调）
+  判断 server 就绪，再让 `BrowserWindow` 加载 `http://127.0.0.1:{随机空闲端口}`。
+- `PI_WEB_PKG_ROOT` 告诉 server 去哪找 `web/dist`（打包后指向
+  `process.resourcesPath`，即 `electron-builder.yml` 里 `extraResources` 复制的
+  `dist/`、`web/dist/`、`extensions/`）。
+- `PI_WEB_DATA_DIR` 桌面版单独用 `~/.pi-web-desktop`，和命令行版的 `~/.pi-web` 分开，
+  避免两边同时跑时抢 `client-state.json` 等运行时状态；对话历史本身走 SDK 的
+  `~/.pi/agent`，两边共享，不受影响。
+- 关闭窗口 → 最小化到托盘（不退出）；托盘菜单可重新打开 / 退出。
+- 原生模块（`node-pty`）：`electron-builder.yml` 里 `npmRebuild: true`，打包时自动
+  rebuild 成 Electron 的 Node ABI，不需要手动 `electron-rebuild`；本机需要装好
+  Xcode Command Line Tools（mac）/ Visual Studio Build Tools（win）。
+- 图标：`build/icon.png`（1024×1024，从 `web/public/favicon.svg` 派生）+
+  `build/icon.ico`；electron-builder 打包时自动生成各平台格式，不需要手动出
+  `.icns`。
+- 自动更新：预留了 `electron-updater`，但没配 `publish:` provider，
+  `checkForUpdates()` 找不到 feed 会静默失败，不影响正常使用——以后接
+  GitHub Releases 自动发布时再打开。
+
+注意：这个 Electron 壳子和 CLI 共用同一份 `server/index.ts`，改 server 端代码
+时两边都要重新验证——尤其是 `resolvePkgRoot()`（`PI_WEB_PKG_ROOT` 覆盖逻辑）和
+启动就绪标记（`⚡ pi-web-ui` 字符串），main.mjs 依赖这两处约定。
+
+交叉构建 Windows 版的坑：
+
+- `npmRebuild: true` 会触发 `@electron/rebuild` 用 node-gyp 从源码重编译 `node-pty`；node-gyp **不支持跨平台编译**，在 mac/Linux 上给 Windows target 跑会直接报错 `node-gyp does not support cross-compiling native modules from source`。在真机 Windows 上构建，或者 CI 用 windows runner 时不受影响，正常走 `npmRebuild: true` 即可。
+- 在非 Windows 机器上要出 zip（`-c.npmRebuild=false`）时，跳过的是重编译这一步，实际用的是 `node-pty` 包自带的 `prebuilds/win32-x64/pty.node`（跟 mac 版同理，不是本项目编译的，是 node-pty 官方发布时带的预编译产物）。electron-builder 会自动把 `.node` 原生模块解到 `app.asar.unpacked/`（不进 asar 压缩包），不需要手动配 `asarUnpack`。这条路径下**终端功能在 Windows 上是否正常没有用真机验证过**，其余功能（聊天/文件树/模型管理）不依赖 node-pty，应该没问题。
+- `npm run build:electron:win` 默认的 `nsis`/`portable` 两个 target 要跑 `makensis`，在非 Windows 机器上必须装 `wine`（本仓库开发用的沙箱环境没有 root 权限装不了）——要出正式的安装包，得在真机 Windows 上跑，或者接 GitHub Actions 的 `windows-latest` runner。
+- `artifactName` 模板别用 `${name}`——`package.json` 的 `name` 是 `@youweichen/pi-web-ui`（带 npm scope），`${name}` 里那个斜杠会被当成路径分隔符，实际文件会跑到 `release/@youweichen/` 子目录里而不是 `release/` 根目录，CI 里按 `release/*.exe` 收集产物会直接漏掉。已经全部改成 `${productName}`（就是 `pi-web-ui`，干净的，不带 scope）。

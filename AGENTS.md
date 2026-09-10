@@ -86,6 +86,9 @@ pi-web-ui/
 ├── scripts/check-protocol-sync.mjs  # 守护 types.ts shim 单源机制 + protocol.ts 纯类型约束
 ├── .github/workflows/ci.yml    # CI：协议同步 → typecheck → build → vitest → 冒烟
 ├── extensions/                 # pi 扩展：webui.ts（/webui 命令启动本机服务并打开浏览器）
+├── electron/                   # Electron 桌面版壳子（main.mjs 主进程 + preload.mjs），本地构建，不进 npm 包
+├── electron-builder.yml        # Electron 打包配置（mac dmg/zip、win nsis/portable、linux AppImage/deb）
+├── build/                      # electron-builder 用的图标源文件（icon.png 1024x1024 + icon.ico）
 ├── dev/                        # 本地开发辅助（不入 npm 包）
 ├── Dockerfile / docker-compose.yml
 ├── docs/                       # 详细文档（本文件的分拆）
@@ -197,6 +200,7 @@ npm publish --access public
 - **CLI 前台**：`pi-web-ui --port 9000 --cwd /path`
 - **开机自启**：`pi-web-ui server install`（macOS→launchd / Linux→systemd / Windows→计划任务）
 - **Docker**：`docker compose up -d`
+- **桌面版（Electron）**：`npm run build && npm run dev:electron` 本地跑；`npm run build:electron:mac/:win/:linux` 出安装包（`release/`，未发布，需真机构建）；详见 `docs/deployment.md`
 
 ## 9. 常见坑
 
@@ -209,6 +213,9 @@ npm publish --access public
 - **预览与附件行号**：`countLines` 不算尾随换行；前端 `split("\n")` 后也要 pop 掉末尾空串。
 - **Windows 老中文文件乱码**：预览/内联附件/行附件统一走 `decodeText`（严格 UTF-8 失败 → GBK → latin1）。
 - **Playwright 脚本**：headless shell 路径写死在本机，CI/换机需要改 `HEADLESS` 常量。
+
+- **Electron `fork()` 必须显式带 `ipc`**：`child_process.fork()` 传自定义 `stdio` 数组时，不含 `'ipc'` 会直接抛 `ERR_CHILD_PROCESS_IPC_REQUIRED`（`electron/main.mjs` 里是 `stdio: ["ignore", "pipe", "pipe", "ipc"]`，别漏了最后一项）。
+- **node-pty 没有 linux 预编译包**：`node_modules/node-pty/prebuilds/` 只有 darwin-arm64/x64 和 win32-arm64/x64，本项目目标平台是 mac/win 桌面机；在纯 Linux 环境（比如某些 CI/沙箱）直接跑 server 会在加载终端功能时崩，与 Electron 改动无关，是环境限制。
 
 ---
 *结构/流程变更时同步更新本文件及相关 `docs/` 文档。修改后运行 `/reload` 生效。*

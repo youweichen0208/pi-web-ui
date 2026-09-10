@@ -1,0 +1,95 @@
+# pi-web-ui Electron 打包配置
+# 构建：npm run build:electron 或 npm run build:electron:mac / :win / :linux
+# （发布到 GitHub Releases 的 CI 流程当前未接，需要时再补 publish 配置）
+
+appId: com.youweichen.pi-web-ui
+productName: pi-web-ui
+copyright: Copyright © 2026 youweichen
+
+directories:
+  output: release
+  buildResources: build
+
+# Electron 主进程入口（已在 package.json main 中指定）
+# 默认行为：打包所有文件，排除常见开发文件
+
+# extraResources：server 子进程需要访问的文件
+# 这些文件放在 resources/ 目录下（不进 asar），子进程通过 process.resourcesPath 访问
+extraResources:
+  - from: dist
+    to: dist
+  - from: web/dist
+    to: web/dist
+  - from: extensions
+    to: extensions
+
+asar: true
+asarUnpack: []
+
+# 原生模块：electron-builder 自动 rebuild（node-pty 等）
+# 不需要额外配置，默认行为就是 rebuild
+npmRebuild: true
+
+# 图标：build/icon.png（1024x1024）。electron-builder 会自动为各平台生成
+# .icns / .ico，不需要手动提供平台专属格式。
+icon: build/icon.png
+
+# macOS
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+  category: public.app-category.developer-tools
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null  # 不签名也可构建，但 macOS 会提示「无法验证开发者」
+  artifactName: "${productName}-${version}-mac-${arch}.${ext}"
+
+# Windows
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+    - target: zip       # 不需要 wine 就能在非 Windows 机器上交叉构建（已验证）；nsis/portable 需要真机 Windows 或装了 wine 的机器
+      arch:
+        - x64
+  icon: build/icon.ico
+  # 不签名
+  signAndEditExecutable: false
+  artifactName: "${productName}-${version}-win-x64.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: pi-web-ui
+  artifactName: "${productName}-${version}-setup-x64.${ext}"
+
+# Linux
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Development
+  artifactName: "${productName}-${version}-linux-${arch}.${ext}"
+
+# 发布：暂未接 CI，先注释掉。以后要恢复 GitHub Releases 自动发布时取消注释
+# 并在仓库 secrets 里配置 GH_TOKEN。
+# publish:
+#   provider: github
+#   owner: youweichen0208
+#   repo: pi-web-ui
+#   releaseType: release
