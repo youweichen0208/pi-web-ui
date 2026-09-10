@@ -180,6 +180,8 @@ npm publish --access public
 
 注意事项：版本号必须高于 npm registry；提交信息不要带 `Co-authored-by`；升级后需手动重启服务 `pi-web-ui server restart`；发布前检查示例文件不泄密。
 
+桌面版发布是独立的一条线（跟 npm 发布不绑在一起）：打一个 `v*` tag push 上去，`.github/workflows/release-desktop.yml` 会在 mac/win/linux 三个真机 runner 上各自构建安装包并传到 GitHub Releases（`electron-builder.yml` 里 `publish: provider: github` 生效，不需要额外配置 secrets，用的是 GitHub 自带的 `GITHUB_TOKEN`）。当前不签名，mac 首次打开需要右键「打开」跳过 Gatekeeper。要单独重跑某个平台可以在 Actions 页手动触发这个 workflow 并选平台。
+
 ## 7. 环境变量
 
 > 完整列表见 `docs/env-vars.md`

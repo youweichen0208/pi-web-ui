@@ -26,8 +26,11 @@ pi-web-ui server status|restart|stop|uninstall
 
 ## 桌面版（Electron）
 
-本地源码构建，不进 npm 发布包（`package.json` `files` 不含 `electron/`/`build/`），
-也暂未接 GitHub Releases 自动发布 CI（`electron-builder.yml` 里 `publish:` 段先注释掉了）：
+不进 npm 发布包（`package.json` `files` 不含 `electron/`/`build/`）——桌面版走自己的发布渠道：
+push 一个 `v*` tag，`.github/workflows/release-desktop.yml` 会在 mac/win/linux 真机 runner 上
+各自构建并 `--publish always` 传到 [GitHub Releases](https://github.com/youweichen0208/pi-web-ui/releases)
+（`electron-builder.yml` 里 `publish: provider: github` 已经配好，用的是 CI 自带的
+`GITHUB_TOKEN`，不需要额外配 secrets；当前不签名）。本地手动构建命令如下：
 
 ```bash
 npm install                    # 会装 electron / electron-builder / electron-updater（devDeps）
@@ -40,7 +43,8 @@ npm run build:electron:win -- --win zip --x64 -c.npmRebuild=false
                                 # nsis/portable 两个目标要跑 makensis，非 Windows 机器上必须装 wine，
                                 # 否则只能在真机 Windows 或 GitHub Actions windows runner 上出
 npm run build:electron:linux   # 产出 AppImage + deb
-npm run publish:electron       # 同 build，但 --publish always（当前没配 publish provider，先别用）
+npm run publish:electron       # 同 build，但 --publish always——本地跑这个会真的发到 GitHub Releases，
+                                # 平时发布走 push tag 让 CI 做，这个命令是给手动补发/重发用的
 ```
 
 架构（`electron/main.mjs`）：
@@ -62,9 +66,9 @@ npm run publish:electron       # 同 build，但 --publish always（当前没配
 - 图标：`build/icon.png`（1024×1024，从 `web/public/favicon.svg` 派生）+
   `build/icon.ico`；electron-builder 打包时自动生成各平台格式，不需要手动出
   `.icns`。
-- 自动更新：预留了 `electron-updater`，但没配 `publish:` provider，
-  `checkForUpdates()` 找不到 feed 会静默失败，不影响正常使用——以后接
-  GitHub Releases 自动发布时再打开。
+- 自动更新：`electron-updater` 已经接上 GitHub Releases 作为 feed
+  （`publish:` provider 配好了）——装了旧版本的用户，新 tag 发布后应该能收到
+  更新通知。没网络/没新版本时 `checkForUpdates()` 静默失败，不影响正常使用。
 
 注意：这个 Electron 壳子和 CLI 共用同一份 `server/index.ts`，改 server 端代码
 时两边都要重新验证——尤其是 `resolvePkgRoot()`（`PI_WEB_PKG_ROOT` 覆盖逻辑）和

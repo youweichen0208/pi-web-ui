@@ -31,7 +31,10 @@ import { createServer } from "node:net";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { autoUpdater } from "electron-updater";
+// electron-updater 是 CJS 包，Node ESM 下不能直接 named import，
+// 得走默认导出再解构（Node 的 CJS→ESM 互操作不会自动分析 named exports）。
+import electronUpdaterPkg from "electron-updater";
+const { autoUpdater } = electronUpdaterPkg;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");

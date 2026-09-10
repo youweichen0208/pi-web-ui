@@ -1,0 +1,112 @@
+# pi-web-ui Electron 桌面版发布 CI
+# 在 tag（v*）推送时触发：三平台各自构建安装包并上传到 GitHub Releases
+# （electron-builder.yml 里的 publish: provider: github 配置生效）。
+# 也支持手动触发（workflow_dispatch），比如某个平台构建失败要单独重跑。
+#
+# 当前不签名（Mac / Windows 都没配证书）：
+#   - macOS：用户首次打开会被 Gatekeeper 拦「无法验证开发者」，右键选
+#     「打开」即可跳过，不影响正常使用。
+#   - Windows：SmartScreen 可能会有一次「未知发布者」提示，点「仍要运行」即可。
+# 以后要签名的话，mac 端加 APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD /
+# APPLE_TEAM_ID / CSC_LINK / CSC_KEY_PASSWORD 几个 repo secrets，
+# electron-builder 会自动识别并签名+公证，不需要改这个 workflow。
+#
+# Reference: https://www.electron.build/configuration/publish
+
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "构建平台"
+        type: choice
+        options:
+          - all
+          - mac
+          - win
+          - linux
+        default: all
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    if: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'mac' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web + server
+        run: npm run build
+
+      - name: Build + publish Electron (macOS)
+        run: npx electron-builder build --mac --arm64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS 签名（可选）——上面几个 secrets 没配的话就是未签名构建
+
+  build-win:
+    if: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'win' }}
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web + server
+        run: npm run build
+
+      # 跟 verify-windows-desktop.yml 一样，真机跑一遍终端冒烟测试再打包，
+      # 出了问题 release 阶段就能发现，不用等用户下载了才报告 bug。
+      - name: Terminal smoke test (plain Node)
+        run: node tests/terminal-smoke-test.mjs
+
+      - name: Build + publish Electron (Windows)
+        run: npx electron-builder build --win --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Windows 签名（可选）——CSC_LINK/CSC_KEY_PASSWORD 没配的话就是未签名构建
+
+  build-linux:
+    if: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'linux' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web + server
+        run: npm run build
+
+      - name: Build + publish Electron (Linux)
+        run: npx electron-builder build --linux --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

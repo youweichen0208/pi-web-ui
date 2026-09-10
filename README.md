@@ -40,8 +40,14 @@ pi-web-ui server status     # start | stop | restart | uninstall also available
 ## Desktop app (Electron)
 
 There's also an Electron shell around the same server/UI — a native window
-with a tray icon instead of a browser tab. It's built locally from source
-(not published as an npm package or a GitHub release yet):
+with a tray icon instead of a browser tab.
+
+**Download**: prebuilt installers (mac dmg/zip, Windows nsis/portable/zip,
+Linux AppImage/deb) are published to [GitHub Releases](https://github.com/youweichen0208/pi-web-ui/releases)
+whenever a `v*` tag is pushed. Unsigned, so macOS Gatekeeper will refuse the
+first launch — right-click the app and choose "Open" to bypass it once.
+
+Or build it yourself from source:
 
 ```bash
 npm install
@@ -68,7 +74,7 @@ See `docs/deployment.md` for details.
 
 pi 编码智能体的 Web 聊天界面：浏览器对话、文件树、附件、内置终端、模型管理、声音提醒、中英文切换。全局安装后一条命令启动，支持开机自启（launchd / systemd / Windows 计划任务）。
 
-也有一个 Electron 桌面版壳子（原生窗口 + 托盘，不用开浏览器标签页），目前需要本地源码构建（`npm run build:electron:mac/:win/:linux`），还没发到 npm / GitHub Releases，见 `docs/deployment.md`。
+也有一个 Electron 桌面版壳子（原生窗口 + 托盘，不用开浏览器标签页）——打 `v*` tag 后 CI 会自动把 mac/win/linux 安装包发到 [GitHub Releases](https://github.com/youweichen0208/pi-web-ui/releases)，未签名，mac 首次打开需要右键「打开」跳过 Gatekeeper；也可以自己本地源码构建（`npm run build:electron:mac/:win/:linux`），见 `docs/deployment.md`。
 
 ## License
 

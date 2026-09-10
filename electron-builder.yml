@@ -86,10 +86,11 @@ linux:
   category: Development
   artifactName: "${productName}-${version}-linux-${arch}.${ext}"
 
-# 发布：暂未接 CI，先注释掉。以后要恢复 GitHub Releases 自动发布时取消注释
-# 并在仓库 secrets 里配置 GH_TOKEN。
-# publish:
-#   provider: github
-#   owner: youweichen0208
-#   repo: pi-web-ui
-#   releaseType: release
+# 发布：push v* tag 时由 .github/workflows/release-desktop.yml 触发，
+# 三平台各自 electron-builder build --publish always 上传到 GitHub Releases
+# （GITHUB_TOKEN 自带，workflow 里已经给了 contents: write 权限，不用额外配置）。
+publish:
+  provider: github
+  owner: youweichen0208
+  repo: pi-web-ui
+  releaseType: release
