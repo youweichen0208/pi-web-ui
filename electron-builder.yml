@@ -6,6 +6,12 @@ appId: com.youweichen.pi-web-ui
 productName: pi
 copyright: Copyright © 2026 youweichen
 
+# electron-builder 26.x 起，没有显式配置时 executableName 会从 package.json 的
+# "name" 字段推导（不是 productName），而我们的 "name" 是带 scope 的 npm 包名
+# "@youweichen/pi-web-ui" —— 25.x 之前没这个问题，是这次升级到 26.15.3 才炸出来的。
+# 显式指定成 productName 同一个值，避免再从 package.json 的 name 推导。
+executableName: pi
+
 directories:
   output: release
   buildResources: build
@@ -91,6 +97,8 @@ linux:
         - x64
   category: Development
   artifactName: "${productName}-${version}-linux-${arch}.${ext}"
+  desktopName: pi.desktop
+  syncDesktopName: true
 
 # 发布：push v* tag 时由 .github/workflows/release-desktop.yml 触发，
 # 三平台各自 electron-builder build --publish always 上传到 GitHub Releases
