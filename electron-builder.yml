@@ -97,8 +97,6 @@ linux:
         - x64
   category: Development
   artifactName: "${productName}-${version}-linux-${arch}.${ext}"
-  desktopName: pi.desktop
-  syncDesktopName: true
 
 # 发布：push v* tag 时由 .github/workflows/release-desktop.yml 触发，
 # 三平台各自 electron-builder build --publish always 上传到 GitHub Releases
