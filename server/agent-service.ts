@@ -41,6 +41,11 @@ import {
 	type Theme,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+// pi-coding-agent 自己压缩历史消息（agent-session.js 的 compact()）走的也是这两个
+// 调用，不是我们临时拼出来的私活。声明成显式依赖、锁成跟 pi-coding-agent 完全
+// 一致的版本号，保证两边用的是同一份实现。
+import { contentText } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { Type } from "typebox";
 import { BgServerTracker } from "./bg-servers.js";
 import type { PluginAgentTool, PluginCommandDef, PluginToolEvent } from "./plugins.js";
@@ -478,6 +483,77 @@ function conversationTitle(session: AgentSession): string {
 		// best-effort
 	}
 	return DEFAULT_CONV_TITLE;
+}
+
+/** AgentSession 私有方法 `_getSummarizationRequestAuth` 的返回结构。
+ *  动它之前先看下面 generateAiTitle() 上的注意事项。 */
+type SummarizationAuth = {
+	model: NonNullable<AgentSession["model"]>;
+	apiKey?: string;
+	headers?: Record<string, string | null>;
+	env?: Record<string, string>;
+};
+
+/**
+ * 用当前会话的模型给对话起一个短标题。
+ *
+ * 注意：这里踩了两块 SDK 的非公开地面，都是有意为之、也都做了兜底——
+ *   1. `_getSummarizationRequestAuth` 是 AgentSession 的私有方法（下划线开头，
+ *      .d.ts 里只 declare、不给类型）。SDK 自己的 compact() 就是靠它解析
+ *      summarization 请求要用的 { model, apiKey, headers, env }，我们复用同一条
+ *      路径，省得自己再拼一遍 auth / baseUrl 解析。
+ *   2. `@earendil-works/pi-ai/compat` 这个入口，它自己的 .d.ts 里就写着是临时
+ *      兼容层，将来会随 ModelManager 迁移一起删掉。
+ *
+ * 所以整个函数包在 try/catch 里，方法不存在时用 typeof 判掉直接返回 null。任何
+ * 一步失败都只是「拿不到 AI 标题」，调用方会保留截断的兜底标题，用户侧看不到任何
+ * 报错。将来 SDK 把这两个口子改了，表现就是标题退回截断版本，不会崩。
+ */
+async function generateAiTitle(
+	session: AgentSession,
+	userText: string,
+	signal: AbortSignal,
+): Promise<string | null> {
+	try {
+		const model = session.model;
+		if (!model) return null;
+
+		const authFn = (
+			session as unknown as {
+				_getSummarizationRequestAuth?: (
+					m: typeof model,
+				) => Promise<SummarizationAuth>;
+			}
+		)._getSummarizationRequestAuth;
+		if (typeof authFn !== "function") return null;
+		const {
+			model: requestModel,
+			apiKey,
+			headers,
+			env,
+		} = await authFn.call(session, model);
+
+		const prompt =
+			"Summarize the user's request below into a short, specific conversation " +
+			"title. Rules: 4-10 words, same language as the request, no quotes, no " +
+			"trailing punctuation, plain text only (no markdown). Output ONLY the " +
+			`title and nothing else.\n\nRequest:\n${userText.slice(0, 4000)}`;
+
+		const reply = await completeSimple(
+			requestModel,
+			{ messages: [{ role: "user", content: prompt, timestamp: Date.now() }] },
+			{ apiKey, headers, env, maxTokens: 60, signal },
+		);
+
+		const title = contentText(reply.content)
+			.trim()
+			.replace(/^["'“”「」]+|["'“”「」]+$/g, "")
+			.replace(/\s+/g, " ");
+		if (!title) return null;
+		return title.length > 60 ? `${title.slice(0, 60)}…` : title;
+	} catch {
+		return null;
+	}
 }
 
 export class ClientSession {
@@ -2156,9 +2232,30 @@ export class ClientSession {
 		// Name the conversation after its first user prompt.
 		const conv = this.conv;
 		if (conv.title === DEFAULT_CONV_TITLE && text.trim()) {
-			const trimmed = text.trim().replace(/\s+/g, " ");
-			conv.title = trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
+			// 先用截断的首句顶上，列表立刻就有名字；AI 标题异步回来再替换。
+			const cleaned = skillAwareTitleText(text).trim().replace(/\s+/g, " ");
+			const trimmed = cleaned || text.trim().replace(/\s+/g, " ");
+			const fallbackTitle =
+				trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
+			conv.title = fallbackTitle;
 			this.emitConversations();
+
+			// 20s 上限：起标题只是锦上添花，不值得为它一直挂着一个请求。
+			const convId = conv.id;
+			const titleAbort = new AbortController();
+			const titleTimeout = setTimeout(() => titleAbort.abort(), 20_000);
+			void generateAiTitle(conv.runtime.session, trimmed, titleAbort.signal)
+				.then((aiTitle) => {
+					if (!aiTitle) return;
+					// 只在这期间没人改过标题时才覆盖。
+					const current = this.convs.get(convId);
+					if (current && current.title === fallbackTitle) {
+						current.title = aiTitle;
+						this.emitConversations();
+					}
+				})
+				.catch(() => {})
+				.finally(() => clearTimeout(titleTimeout));
 		}
 		// The active conversation has been continued since it was opened — it
 		// must not be dismissed when the user switches away. (Also bumps the
