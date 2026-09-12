@@ -551,7 +551,10 @@ async function generateAiTitle(
 			.replace(/\s+/g, " ");
 		if (!title) return null;
 		return title.length > 60 ? `${title.slice(0, 60)}…` : title;
-	} catch {
+	} catch (err) {
+		// 静默降级成截断标题，但留一行 stderr——这条路径踩了两个 SDK 非公开
+		// 接口，哪天上游改了，没有这行日志就只能看到"标题怎么不生成了"。
+		console.error("[title] AI 标题生成失败：", err);
 		return null;
 	}
 }
@@ -2249,9 +2252,20 @@ export class ClientSession {
 					if (!aiTitle) return;
 					// 只在这期间没人改过标题时才覆盖。
 					const current = this.convs.get(convId);
-					if (current && current.title === fallbackTitle) {
-						current.title = aiTitle;
-						this.emitConversations();
+					if (!current || current.title !== fallbackTitle) return;
+					current.title = aiTitle;
+					this.emitConversations();
+					// 光改 conv.title 不够：侧栏的历史对话列表读的是会话文件里的
+					// name（没有就退回第一条用户消息），不是运行时的 conv.title。
+					// 不落盘的话 AI 起的标题只在内存里活着，列表里看到的还是
+					// "hello" 这种首句，重启之后更是什么都不剩。这里走的是跟手动
+					// 重命名同一条路径（appendSessionInfo），所以之后用户自己改名
+					// 会正常覆盖掉它。
+					try {
+						current.session.sessionManager.appendSessionInfo(aiTitle);
+						void this.refreshSessions();
+					} catch {
+						// 起名字是锦上添花，写不进去就维持内存里的标题
 					}
 				})
 				.catch(() => {})

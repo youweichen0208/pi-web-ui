@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
-import { remarkCjkAutolink } from "../../web/src/remark-cjk-autolink";
+import { remarkCjkAutolink } from "../../web/src/remark-cjk-autolink.js";
 
 interface Node {
 	type: string;
