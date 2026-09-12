@@ -2812,6 +2812,7 @@ body.panel-resizing {
 	row-gap: 6px;
 	/* 真的换行时，第二行贴右边跟上面对齐，而不是甩到最左边孤零零一个。 */
 	justify-content: flex-end;
+	gap: 6px;
 }
 
 	/* Background-task chip + badge — AI-started servers. The chip is a plain
@@ -3214,7 +3215,7 @@ body.panel-resizing {
 .topbar-desktop {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
 	min-width: 0;
 }
 /* Mobile-only "⋯" panel — hidden on desktop where each item has its own chip. */
@@ -3225,8 +3226,8 @@ body.panel-resizing {
 .chip {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
-	padding: 5px 10px;
+	gap: 5px;
+	padding: 5px 9px;
 	border: 1px solid var(--border);
 	border-radius: 999px;
 	background: var(--bg-elev2);
@@ -3256,22 +3257,24 @@ body.panel-resizing {
 }
 
 .chip-sub {
-	color: var(--text-faint);
-	font-size: 11px;
+	/* 原来是 --text-faint，比图标淡一大截，"后台任务""设置"这些看着像被禁用了；
+	   而同一条栏里 对话/终端/Git 和 新对话 的文字又是正常色，一条栏三种深浅。
+	   统一到 --text-dim。 */
+	color: var(--text-dim);
+	font-size: 11.5px;
 	/* 单个标签不许把整条工具栏顶到换行。模型名是常见的元凶，
 	   "GLM 5.3 Flash (Volc) volc-glm" 这种一条就能顶掉两个按钮的位置。 */
-	max-width: 16ch;
+	max-width: 14ch;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.chip.newchat {
+/* 新对话原来是整颗靛蓝描边 + 靛蓝字，在一排灰 chip 里跳得厉害。收成跟其他
+   chip 同款，强调色只留在 + 图标上——它仍然是这排里唯一带颜色的图标，找得到，
+   但不再喧宾夺主。 */
+.chip.newchat svg {
 	color: var(--accent);
-	border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-}
-.chip.newchat:hover {
-	background: var(--accent-soft);
 }
 /* GitHub repo link (top-right corner) — perfect circle. */
 .chip.github {
