@@ -151,7 +151,17 @@ async function startServer() {
 		serverProcess.on("exit", (code) => {
 			clearTimeout(timeout);
 			if (code !== 0) {
-				rejectPromise(new Error(`Server 退出了 (exit code=${code})`));
+				// 把 server 自己最后的输出带上。只报一个 exit code=1 的话，用户在
+				// 弹窗里看到的就只有「启动失败」四个字，真正的原因（模块缺失、
+				// 端口被占、配置读不了）全留在没人看得到的 stdout 里——超时那条
+				// 分支早就是这么做的，退出这条漏了。
+				const tail = serverOut.trim().slice(-800);
+				rejectPromise(
+					new Error(
+						`Server 退出了 (exit code=${code})` +
+							(tail ? `\n\n最后输出：\n${tail}` : ""),
+					),
+				);
 			}
 		});
 	});
