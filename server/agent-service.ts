@@ -516,7 +516,10 @@ async function generateAiTitle(
 ): Promise<string | null> {
 	try {
 		const model = session.model;
-		if (!model) return null;
+		if (!model) {
+			console.error("[title] session.model 为空，跳过");
+			return null;
+		}
 
 		const authFn = (
 			session as unknown as {
@@ -525,7 +528,12 @@ async function generateAiTitle(
 				) => Promise<SummarizationAuth>;
 			}
 		)._getSummarizationRequestAuth;
-		if (typeof authFn !== "function") return null;
+		if (typeof authFn !== "function") {
+			console.error(
+				"[title] SDK 上找不到 _getSummarizationRequestAuth，跳过（上游可能改了私有方法）",
+			);
+			return null;
+		}
 		const {
 			model: requestModel,
 			apiKey,
@@ -545,6 +553,7 @@ async function generateAiTitle(
 			{ apiKey, headers, env, maxTokens: 60, signal },
 		);
 
+		console.error("[title] 模型调用完成，stopReason=", reply.stopReason);
 		const title = contentText(reply.content)
 			.trim()
 			.replace(/^["'“”「」]+|["'“”「」]+$/g, "")
@@ -2243,6 +2252,11 @@ export class ClientSession {
 			conv.title = fallbackTitle;
 			this.emitConversations();
 
+			// 这条链路排查过几轮都停在"到底有没有执行"上，所以三个关键节点各留
+			// 一行 stderr：进入分支、拿到标题、写盘。dev 下直接能看到走到哪一步，
+			// 不用再靠猜。
+			console.error(`[title] 开始生成，兜底标题="${fallbackTitle}"`);
+
 			// 20s 上限：起标题只是锦上添花，不值得为它一直挂着一个请求。
 			const convId = conv.id;
 			const titleAbort = new AbortController();
@@ -2251,8 +2265,14 @@ export class ClientSession {
 				.then((aiTitle) => {
 					if (!aiTitle) return;
 					// 只在这期间没人改过标题时才覆盖。
+					console.error(`[title] 模型返回："${aiTitle}"`);
 					const current = this.convs.get(convId);
-					if (!current || current.title !== fallbackTitle) return;
+					if (!current || current.title !== fallbackTitle) {
+						console.error(
+							`[title] 期间标题已被改过（现在是 "${current?.title}"），放弃覆盖`,
+						);
+						return;
+					}
 					current.title = aiTitle;
 					this.emitConversations();
 					// 光改 conv.title 不够：侧栏的历史对话列表读的是会话文件里的
@@ -2264,8 +2284,12 @@ export class ClientSession {
 					try {
 						current.session.sessionManager.appendSessionInfo(aiTitle);
 						void this.refreshSessions();
-					} catch {
+						console.error(
+							`[title] 已写入会话文件：${current.session.sessionFile ?? "(无)"}`,
+						);
+					} catch (err) {
 						// 起名字是锦上添花，写不进去就维持内存里的标题
+						console.error("[title] 写入会话文件失败：", err);
 					}
 				})
 				.catch(() => {})
