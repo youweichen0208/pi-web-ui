@@ -52,16 +52,19 @@ let serverPort = 0;
 
 // ── 路径 ──
 
-/** 打包后 server 在 resources/dist/server/index.js */
+// asar 关掉之后（见 electron-builder.yml 里的长注释），打包后的目录结构跟开发
+// 时是同构的：__dirname 是 <app>/electron，ROOT 就是 <app>——开发时是仓库根，
+// 打包后是 Resources/app。dist / web/dist / extensions / node_modules 全都平铺
+// 在 ROOT 下面，所以这两个函数不再需要分打包和开发两种情况。
+
+/** server 入口：<root>/dist/server/index.js */
 function getServerPath() {
-	if (isDev) return join(ROOT, "dist", "server", "index.js");
-	return join(process.resourcesPath, "dist", "server", "index.js");
+	return join(ROOT, "dist", "server", "index.js");
 }
 
-/** 打包后 web/dist、extensions 在 resources/ 下（见 electron-builder.yml extraResources） */
+/** server 找 web/dist、extensions 的根目录 */
 function getPkgRoot() {
-	if (isDev) return ROOT;
-	return process.resourcesPath;
+	return ROOT;
 }
 
 // ── 端口 ──

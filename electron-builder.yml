@@ -19,18 +19,46 @@ directories:
 # Electron 主进程入口（已在 package.json main 中指定）
 # 默认行为：打包所有文件，排除常见开发文件
 
-# extraResources：server 子进程需要访问的文件
-# 这些文件放在 resources/ 目录下（不进 asar），子进程通过 process.resourcesPath 访问
-extraResources:
-  - from: dist
-    to: dist
-  - from: web/dist
-    to: web/dist
-  - from: extensions
-    to: extensions
+# 不用 asar。两个原因，都是实打实踩过的：
+#
+# 1. server 是 fork 出去的独立 Node 进程（ELECTRON_RUN_AS_NODE=1），它 import
+#    express / ws 这些依赖时走的是 Node 自己的 ESM 解析器——从入口文件往上逐层
+#    找 node_modules。而 ESM 解析器读不进 asar 包里（asar 是靠给 fs 打补丁实现
+#    的，ESM 的内部解析绕过了那层补丁）。原来 dist 走 extraResources 放在
+#    Resources/dist，node_modules 却在 Resources/app.asar 里，两者根本不在同一
+#    条向上查找的路径上，于是 app 一启动就是
+#    "Cannot find package 'express'"。
+# 2. node-pty 是原生模块，.node 文件也得是磁盘上的真文件才能 dlopen——原来
+#    asarUnpack 是空的，等于没给它留出口。
+#
+# 关掉 asar 之后，所有东西（dist、web/dist、extensions、剪枝过的生产依赖）都平
+# 铺在 Resources/app/ 下，server 从 Resources/app/dist/server/index.js 往上找一
+# 层就是 Resources/app/node_modules，Node 原生的解析规则直接就通了，不需要任何
+# 额外的路径拼接。代价是文件数量多一些、源码没打包，对这个项目无所谓。
+asar: false
 
-asar: true
-asarUnpack: []
+# 默认会把整个项目目录带上，这里去掉运行时用不到的部分（源码、测试、CI 配置）。
+# 生产依赖 node_modules 由 electron-builder 自己剪枝并始终包含，不用在这里列。
+files:
+  - "**/*"
+  - "!release/**"
+  - "!server/**"
+  - "!tests/**"
+  - "!scripts/**"
+  - "!docs/**"
+  - "!web/src/**"
+  - "!web/public/**"
+  - "!.github/**"
+  - "!deploy/**"
+  - "!dev/**"
+  - "!assets/**"
+  - "!Dockerfile"
+  - "!docker-compose.yml"
+  - "!.dockerignore"
+  - "!AGENTS.md"
+  - "!file-upload-browser-test.mjs"
+  # Cowork 在仓库根建的目录，可能装着随手生成的文件，别跟着 app 发出去
+  - "!Claude outputs/**"
 
 # 原生模块：electron-builder 自动 rebuild（node-pty 等）
 # 不需要额外配置，默认行为就是 rebuild

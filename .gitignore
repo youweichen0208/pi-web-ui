@@ -24,3 +24,5 @@ tests/scratch/
 
 # pi-web-ui Electron 桌面版构建产物
 release/
+# Cowork 在仓库根建的输出目录
+Claude outputs/
