@@ -77,6 +77,14 @@ mac:
     - target: zip
       arch:
         - arm64
+  # 直接给现成的 .icns。electron-builder 只有在源文件扩展名跟目标格式不一致时
+  # 才会去调它的图标转换工具，而那个工具是现下载的（GitHub 上的
+  # electron-builder-binaries，icons@1.1.0/icons-bundle.tar.gz）——国内网络下
+  # 这一步会静默卡十几分钟然后 ETIMEDOUT，卡在"复制完了但还没改名"的位置，看
+  # 起来就像构建挂死。给了 .icns 就直接原样用，一个字节都不用下。
+  # （Windows 那边 win.icon 已经是 build/icon.ico，同理短路；Linux 需要生成
+  #  多尺寸 png 图标集，还是会走下载，但 Linux 只在 CI 里构建，GitHub 通畅。）
+  icon: build/icon.icns
   category: public.app-category.developer-tools
   hardenedRuntime: false
   gatekeeperAssess: false
