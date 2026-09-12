@@ -27,9 +27,9 @@ export function buildTermTheme(): Record<string, string> {
 	return {
 		background: v("--term-bg", "#1b1f24"),
 		foreground: v("--term-fg", "#e6e8ef"),
-		cursor: v("--term-cursor", "#3b49df"),
+		cursor: v("--term-cursor", "#c2663f"),
 		cursorAccent: v("--term-cursor-accent", "#1b1f24"),
-		selectionBackground: v("--term-selection", "rgba(59, 73, 223, 0.35)"),
+		selectionBackground: v("--term-selection", "rgba(194, 102, 63, 0.35)"),
 		black: v("--term-black", "#2a2f37"),
 		red: v("--term-red", "#f87171"),
 		green: v("--term-green", "#34d399"),

@@ -166,8 +166,12 @@
 	--text: #23211e;
 	--text-dim: #55514a;
 	--text-faint: #868076;
-	--accent: #3b49df;
-	--accent-soft: rgba(59, 73, 223, 0.12);
+	--accent: #c2663f;
+	--accent-soft: rgba(194, 102, 63, 0.12);
+	/* 正文链接单独留一份蓝：强调色变成陶土色之后，链接如果也跟着变暖，就会跟
+	   行内代码的暖红（--code-chip-fg）糊成一片，而且「链接是蓝的」这个约定本身
+	   也值钱。强调色管选中/焦点/按钮，链接只管链接，两件事分开。 */
+	--link: #3b49df;
 	/* 左右侧栏底色 —— 比主区暗一档的暖白 */
 	--sidebar-bg: #f2f0eb;
 	/* 列表选中态：中性暖灰，不再用强调色染整行（强调色只点在图标/圆点上） */
@@ -194,9 +198,9 @@
 	   blog's own Shiki code cards, even though the page chrome is light. */
 	--term-bg: #1b1f24;
 	--term-fg: #e6e8ef;
-	--term-cursor: #3b49df;
+	--term-cursor: #c2663f;
 	--term-cursor-accent: #1b1f24;
-	--term-selection: rgba(59, 73, 223, 0.35);
+	--term-selection: rgba(194, 102, 63, 0.35);
 	--term-black: #2a2f37;
 	--term-red: #f87171;
 	--term-green: #34d399;
@@ -4195,7 +4199,7 @@ span.msg-editor-hint svg {
 	padding: 4px 10px;
 }
 .msg-text a {
-	color: var(--accent);
+	color: var(--link);
 }
 .msg-text code {
 	font-family: var(--mono);
@@ -7505,9 +7509,9 @@ span.msg-editor-hint svg {
 	color: var(--text-faint);
 }
 .fp-markdown a {
-	color: var(--accent);
+	color: var(--link);
 	text-decoration: underline;
-	text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+	text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent);
 	text-underline-offset: 3px;
 	transition: color 0.12s, text-decoration-color 0.12s;
 }
