@@ -115,19 +115,25 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 		return title.length > 0 ? title : t("emptyChat");
 	};
 
-	// A running conversation's transcript is on disk too, and list_sessions
-	// does not filter open ones out — so the same conversation was listed in
-	// BOTH sections, keyed differently (runtime id vs. file path) and with no
-	// way to tell they were one thing. Worse, the history row sent
-	// switch_session, which resumes from disk and rebuilds the runtime — on a
-	// conversation that already had a live one. The running section shows
-	// these with richer state (streaming dot), so history drops them.
-	const runningFiles = new Set(
-		conversations
-			.map((conv) => conv.sessionFile)
-			.filter((f): f is string => typeof f === "string" && f.length > 0),
+	// 运行中的对话原来单独列一段，放在历史对话上面。问题是它平时是空的，一新建
+	// 对话就突然冒出来一段带标题的区块，看起来像侧栏多了个列表；而那条对话的
+	// transcript 其实已经在磁盘上、也在 list_sessions 的返回里，只是被过滤掉了。
+	//
+	// 现在合成一段。运行中的状态不靠分区表达，靠历史行自己的圆点（绿色脉冲）。
+	// 要紧的是点击行为得跟着分流：有活运行时的那条必须走 switch_conversation
+	// （按运行时 id 切过去），不能走 switch_session——后者会从磁盘重新恢复一个
+	// 已经有活运行时的对话，等于把它重建一遍。
+	const convByFile = new Map<string, ConversationSummary>();
+	for (const conv of conversations) {
+		if (conv.sessionFile) convByFile.set(conv.sessionFile, conv);
+	}
+	// 刚新建、还没落盘（或者 list_sessions 还没刷新到）的对话，在 sessions 里
+	// 找不到对应项。这些单独补在列表最前面，否则新建的对话会从侧栏里整个消失
+	// ——这正是「新建会话不立刻出现在历史对话列表」的成因。
+	const sessionPaths = new Set(sessions.map((sess) => sess.path));
+	const pendingConvs = conversations.filter(
+		(conv) => !conv.sessionFile || !sessionPaths.has(conv.sessionFile),
 	);
-	const historySessions = sessions.filter((s) => !runningFiles.has(s.path));
 
 	const projectName = (path: string): string =>
 		path.split(/[\\/]/).pop() || path;
@@ -239,10 +245,13 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 					})}
 				</div>
 			</div>
-			{conversations.length > 0 && (
-				<div className="panel-convs">
-					<div className="panel-section-title">{t("runningConversations")}</div>
-					{conversations.map((c) => {
+			<div className="panel-sessions">
+				<div className="panel-section-title">{t("historySessions")}</div>
+				<div className="sessions-scroll">
+					{sessions.length === 0 && pendingConvs.length === 0 && (
+						<div className="panel-empty">{t("noHistory")}</div>
+					)}
+					{pendingConvs.map((c) => {
 						const active = activeConversationId === c.id;
 						return (
 							<button
@@ -266,17 +275,11 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 							</button>
 						);
 					})}
-					<div className="panel-section-divider" />
-				</div>
-			)}
-			<div className="panel-sessions">
-				<div className="panel-section-title">{t("historySessions")}</div>
-				<div className="sessions-scroll">
-					{historySessions.length === 0 && (
-						<div className="panel-empty">{t("noHistory")}</div>
-					)}
-					{historySessions.map((s) => {
-						const active = currentFile === s.path;
+					{sessions.map((s) => {
+						const conv = convByFile.get(s.path);
+						const active = conv
+							? activeConversationId === conv.id
+							: currentFile === s.path;
 						if (renaming === s.path) {
 							return (
 								<form
@@ -334,10 +337,18 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 											: t("messageCount", { n: s.messageCount })
 									}`}
 									onClick={() => {
-										if (!active) send({ type: "switch_session", path: s.path });
+										if (active) return;
+										send(
+											conv
+												? { type: "switch_conversation", id: conv.id }
+												: { type: "switch_session", path: s.path },
+										);
 									}}
 								>
-									<span className="session-dot" />
+									<span
+										className={`session-dot${conv?.isStreaming ? " streaming" : ""}`}
+										title={conv?.isStreaming ? t("streaming") : undefined}
+									/>
 									<span className="session-info">
 										<span className="session-title">{displayName(s)}</span>
 									</span>
