@@ -156,31 +156,32 @@
 
 :root {
 	color-scheme: light;
-	/* 中性色：不带色相偏向的灰白。之前试过整体调暖（暖白侧边栏 + 暖灰边框），
-	   改回来了——界面底一律纯白/中性灰，暖色只留在强调色上。 */
-	--bg: #ffffff;
+	/* 取自 blog.youwei-agent.com：冷调 slate 中性色 + 靛蓝强调。
+	   正文 #334155、标题 #18202a、边框偏 slate，卡片纯白浮在近白的页底上。 */
+	--bg: #fbfbfd;
 	--bg-elev: #ffffff;
-	--bg-elev2: #f2f2f4;
-	--border: #e3e3e6;
-	--border-soft: #eeeef0;
-	--text: #1f2024;
-	--text-dim: #55565c;
-	--text-faint: #8b8c93;
-	--accent: #c2663f;
-	--accent-soft: rgba(194, 102, 63, 0.12);
-	/* 正文链接单独留一份蓝：强调色变成陶土色之后，链接如果也跟着变暖，就会跟
-	   行内代码的暖红（--code-chip-fg）糊成一片，而且「链接是蓝的」这个约定本身
-	   也值钱。强调色管选中/焦点/按钮，链接只管链接，两件事分开。 */
+	--bg-elev2: #f1f3f8;
+	--border: #e3e7ee;
+	--border-soft: #edf0f5;
+	--text: #334155;
+	--text-dim: #64748b;
+	--text-faint: #94a3b8;
+	/* 标题比正文更深更重——博客上 h1/h2 是 #18202a、800 字重，是它辨识度的
+	   主要来源，正文全用一个灰的话整篇会摊平。 */
+	--heading: #18202a;
+	--accent: #3b49df;
+	--accent-soft: rgba(59, 73, 223, 0.12);
+	/* 链接单独留一个 token：现在它跟强调色同为靛蓝，但语义不同——强调色管
+	   选中/焦点/按钮，--link 只管链接，以后强调色再动不会牵连链接。 */
 	--link: #3b49df;
-	/* 左右侧栏底色。跟主区一样是纯白，靠 .panel 的 1px 边框分栏 */
+	/* 侧栏是纯白卡片，浮在 --bg 那层近白的页底上，跟博客里白卡片的关系一致 */
 	--sidebar-bg: #ffffff;
-	/* 列表选中态：中性灰，不用强调色染整行（强调色只点在图标/圆点上） */
-	--row-active: #e9e9ed;
+	/* 列表选中态：淡淡一层靛蓝，不加边框 */
+	--row-active: rgba(59, 73, 223, 0.1);
 	/* 用户消息气泡 */
-	--bubble-bg: #f7f7f9;
-	/* 正文里的行内代码：浅灰底 + 红字，跟深色代码块区分开 */
-	--code-chip-bg: #f2f2f4;
-	--code-chip-fg: #a83f27;
+	--bubble-bg: #f1f3f8;
+	/* 行内代码：浅灰底，字色跟正文一致——博客整体很克制，不额外加一种红 */
+	--code-chip-bg: #f1f3f8;
 	--green: #16a34a;
 	--green-soft: rgba(22, 163, 74, 0.12);
 	--red: #dc2626;
@@ -198,9 +199,9 @@
 	   blog's own Shiki code cards, even though the page chrome is light. */
 	--term-bg: #1b1f24;
 	--term-fg: #e6e8ef;
-	--term-cursor: #c2663f;
+	--term-cursor: #3b49df;
 	--term-cursor-accent: #1b1f24;
-	--term-selection: rgba(194, 102, 63, 0.35);
+	--term-selection: rgba(59, 73, 223, 0.35);
 	--term-black: #2a2f37;
 	--term-red: #f87171;
 	--term-green: #34d399;
@@ -218,13 +219,6 @@
 	--term-bright-cyan: #22d3ee;
 	--term-bright-white: #ffffff;
 	--mono: "IBM Plex Mono", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-	/* 正文衬线栈。刻意只列西文衬线 + 中文黑体：西文走衬线，中文因为这些衬线
-	   字体没有汉字字形会自然回落到 PingFang / 雅黑，不会掉进宋体——宋体在屏幕
-	   上做正文偏旧。跟 --sans 一样全用系统字体、不引 Google Fonts，保持离线
-	   可用（桌面版尤其需要）。 */
-	--serif:
-		"Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
-		"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", serif;
 	--sans:
 		Inter, "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI",
 		"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
@@ -4184,9 +4178,46 @@ span.msg-editor-hint svg {
 }
 .msg-text {
 	color: var(--text);
-	font-family: var(--serif);
-	font-size: 15.5px;
-	line-height: 1.72;
+	/* 跟博客一样全程 Inter + Noto Sans SC（--sans），不混衬线 */
+	font-size: 15px;
+	line-height: 1.7;
+}
+
+/* 标题吃重：博客的层级感几乎全靠标题的深色和字重撑起来 */
+.msg-text h1,
+.msg-text h2,
+.msg-text h3,
+.msg-text h4 {
+	color: var(--heading);
+	line-height: 1.3;
+	margin: 18px 0 8px;
+}
+.msg-text h1 {
+	font-size: 24px;
+	font-weight: 800;
+	letter-spacing: -0.01em;
+}
+.msg-text h2 {
+	font-size: 20px;
+	font-weight: 700;
+	letter-spacing: -0.005em;
+}
+.msg-text h3 {
+	font-size: 17px;
+	font-weight: 700;
+}
+.msg-text h4 {
+	font-size: 15px;
+	font-weight: 600;
+}
+.msg-text h1:first-child,
+.msg-text h2:first-child,
+.msg-text h3:first-child {
+	margin-top: 0;
+}
+.msg-text strong {
+	color: var(--heading);
+	font-weight: 600;
 }
 
 .msg-text p {
@@ -4229,8 +4260,7 @@ span.msg-editor-hint svg {
 	font-family: var(--mono);
 	font-size: 0.86em;
 	background: var(--code-chip-bg);
-	color: var(--code-chip-fg);
-	border: 1px solid transparent;
+	border: 1px solid var(--border-soft);
 	border-radius: 4px;
 	padding: 1px 5px;
 }
@@ -5770,8 +5800,8 @@ span.msg-editor-hint svg {
 	outline: none;
 	background: transparent;
 	color: var(--text);
-	font-family: var(--serif);
-	font-size: 15.5px;
+	font-family: var(--sans);
+	font-size: 15px;
 	line-height: 1.65;
 	max-height: 220px;
 	padding: 6px 2px;
