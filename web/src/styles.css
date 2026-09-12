@@ -2747,9 +2747,13 @@ body.panel-resizing {
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
+	/* 不跟右边的工具栏抢空间：工具栏本来就会换行，让它换，别把项目名挤成
+	   "pi-w…"。名字自己有 max-width 兜底，不会无限撑宽。 */
+	flex-shrink: 0;
 }
 
 .brand-logo {
+	flex-shrink: 0;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -2765,9 +2769,17 @@ body.panel-resizing {
 .brand-name {
 	font-weight: 600;
 	letter-spacing: 0.2px;
+	/* 空间不够时截断，不要在词中间断行。之前 "pi-web-ui" 会折成 "pi-web-" 和
+	   "ui" 两行，整条顶栏跟着高一截。 */
+	min-width: 0;
+	max-width: 22ch;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .conn-dot {
+	flex-shrink: 0;
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
@@ -2785,6 +2797,10 @@ body.panel-resizing {
 }
 
 .conn-label {
+	flex-shrink: 0;
+	/* "已连接" 三个字被折成 "已连" / "接" 过——中文没有词边界，容器一窄就会
+	   逐字换行。 */
+	white-space: nowrap;
 	color: var(--text-faint);
 	font-size: 12px;
 }
@@ -2800,6 +2816,8 @@ body.panel-resizing {
 	 * viewport. Wrapping grows the bar a row instead: never overlaps. */
 	flex-wrap: wrap;
 	row-gap: 6px;
+	/* 真的换行时，第二行贴右边跟上面对齐，而不是甩到最左边孤零零一个。 */
+	justify-content: flex-end;
 }
 
 	/* Background-task chip + badge — AI-started servers. The chip is a plain
@@ -3246,6 +3264,12 @@ body.panel-resizing {
 .chip-sub {
 	color: var(--text-faint);
 	font-size: 11px;
+	/* 单个标签不许把整条工具栏顶到换行。模型名是常见的元凶，
+	   "GLM 5.3 Flash (Volc) volc-glm" 这种一条就能顶掉两个按钮的位置。 */
+	max-width: 16ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .chip.newchat {
