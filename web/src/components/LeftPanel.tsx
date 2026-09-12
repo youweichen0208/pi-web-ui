@@ -4,7 +4,6 @@ import {
 	FiEdit2,
 	FiFolder,
 	FiFolderPlus,
-	FiMessageSquare,
 	FiTrash2,
 	FiX,
 } from "react-icons/fi";
@@ -250,23 +249,20 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 								type="button"
 								key={c.id}
 								className={`session-item ${active ? "active" : ""}`}
-								title={c.title}
+								title={`${c.title}\n${
+									active ? t("current") : t("messageCount", { n: c.messageCount })
+								}`}
 								onClick={() => {
 									if (!active) send({ type: "switch_conversation", id: c.id });
 								}}
 							>
-								<FiMessageSquare className="session-icon" />
+								<span
+									className={`session-dot${c.isStreaming ? " streaming" : ""}`}
+									title={c.isStreaming ? t("streaming") : undefined}
+								/>
 								<span className="session-info">
 									<span className="session-title">{c.title}</span>
-									<span className="session-sub">
-										{active
-											? t("current")
-											: t("messageCount", { n: c.messageCount })}
-									</span>
 								</span>
-								{c.isStreaming && (
-									<span className="conv-streaming" title={t("streaming")} />
-								)}
 							</button>
 						);
 					})}
@@ -332,25 +328,24 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 								<button
 									type="button"
 									className={`session-item ${active ? "active" : ""}`}
-									title={s.path}
+									title={`${s.path}\n${
+										active
+											? t("current")
+											: t("messageCount", { n: s.messageCount })
+									}`}
 									onClick={() => {
 										if (!active) send({ type: "switch_session", path: s.path });
 									}}
 								>
-									<FiMessageSquare className="session-icon" />
+									<span className="session-dot" />
 									<span className="session-info">
 										<span className="session-title">{displayName(s)}</span>
-										<span className="session-sub">
-											{active
-												? t("current")
-												: t("messageCount", { n: s.messageCount })}
-											{s.source === "tui" && (
-												<span className="session-src" title={t("tuiTip")}>
-													TUI
-												</span>
-											)}
-										</span>
 									</span>
+									{s.source === "tui" && (
+										<span className="session-src" title={t("tuiTip")}>
+											TUI
+										</span>
+									)}
 									<span className="session-time">
 										{formatModified(s.modified)}
 									</span>
