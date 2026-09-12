@@ -156,30 +156,30 @@
 
 :root {
 	color-scheme: light;
-	/* 中性色整体偏暖（原来是偏蓝的 slate）：主区留纯白，侧边栏用暖白，
-	   靠明度差分栏而不是靠边框。强调色仍是 pi 原来的靛蓝。 */
+	/* 中性色：不带色相偏向的灰白。之前试过整体调暖（暖白侧边栏 + 暖灰边框），
+	   改回来了——界面底一律纯白/中性灰，暖色只留在强调色上。 */
 	--bg: #ffffff;
 	--bg-elev: #ffffff;
-	--bg-elev2: #eae7e0;
-	--border: #e4e0d8;
-	--border-soft: #edeae3;
-	--text: #23211e;
-	--text-dim: #55514a;
-	--text-faint: #868076;
+	--bg-elev2: #f2f2f4;
+	--border: #e3e3e6;
+	--border-soft: #eeeef0;
+	--text: #1f2024;
+	--text-dim: #55565c;
+	--text-faint: #8b8c93;
 	--accent: #c2663f;
 	--accent-soft: rgba(194, 102, 63, 0.12);
 	/* 正文链接单独留一份蓝：强调色变成陶土色之后，链接如果也跟着变暖，就会跟
 	   行内代码的暖红（--code-chip-fg）糊成一片，而且「链接是蓝的」这个约定本身
 	   也值钱。强调色管选中/焦点/按钮，链接只管链接，两件事分开。 */
 	--link: #3b49df;
-	/* 左右侧栏底色 —— 比主区暗一档的暖白 */
-	--sidebar-bg: #f2f0eb;
-	/* 列表选中态：中性暖灰，不再用强调色染整行（强调色只点在图标/圆点上） */
-	--row-active: #e2ddd4;
+	/* 左右侧栏底色。跟主区一样是纯白，靠 .panel 的 1px 边框分栏 */
+	--sidebar-bg: #ffffff;
+	/* 列表选中态：中性灰，不用强调色染整行（强调色只点在图标/圆点上） */
+	--row-active: #e9e9ed;
 	/* 用户消息气泡 */
-	--bubble-bg: #faf8f5;
-	/* 正文里的行内代码：暖底暖红字，跟深色代码块区分开 */
-	--code-chip-bg: #f6f1ed;
+	--bubble-bg: #f7f7f9;
+	/* 正文里的行内代码：浅灰底 + 红字，跟深色代码块区分开 */
+	--code-chip-bg: #f2f2f4;
 	--code-chip-fg: #a83f27;
 	--green: #16a34a;
 	--green-soft: rgba(22, 163, 74, 0.12);
