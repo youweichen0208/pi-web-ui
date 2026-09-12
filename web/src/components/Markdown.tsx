@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import type { PluggableList } from "unified";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { remarkCjkAutolink } from "../remark-cjk-autolink";
 import { CopyButton } from "./copy-button";
 import { MermaidDiagram } from "./MermaidDiagram";
 
@@ -14,7 +15,9 @@ interface MarkdownProps {
  *  StreamMarkdown's per-segment renderers reuse the exact same configuration
  *  as this full-document renderer — streaming preview and final render must
  *  be visually identical. */
-export const remarkPlugins = [remarkGfm];
+// remarkCjkAutolink 必须排在 remarkGfm 后面：它修的正是 gfm 自动链接把中文
+// 标点吞进 URL 的结果。
+export const remarkPlugins = [remarkGfm, remarkCjkAutolink];
 export const rehypePlugins: PluggableList = [
 	[rehypeHighlight, { detect: true, ignoreMissing: true }],
 ];
