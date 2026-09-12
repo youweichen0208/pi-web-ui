@@ -433,6 +433,14 @@ const TOOL_WATCHDOG_TIMEOUT_MS = (() => {
 const MAX_OPEN_CONVERSATIONS = 8;
 const DEFAULT_CONV_TITLE = "新对话";
 
+/** AI 起标题那条链路的过程日志开关。排查时 PI_WEB_DEBUG_TITLE=1 打开，平时
+ *  关着——每开一条新对话打三四行 stderr，对正常用户是纯噪音。真正的失败
+ *  （异常、写盘失败）不受这个开关控制，任何时候都打。 */
+const TITLE_DEBUG = !!process.env.PI_WEB_DEBUG_TITLE;
+function titleLog(...args: unknown[]): void {
+	if (TITLE_DEBUG) console.error("[title]", ...args);
+}
+
 // Mirrors web/src/skill-block.ts's parseSkillBlock (which itself mirrors the
 // pi SDK's dist/core/agent-session.js) — kept in sync by hand, server and
 // web can't share a module across the tsconfig split. When the user sends
@@ -517,7 +525,7 @@ async function generateAiTitle(
 	try {
 		const model = session.model;
 		if (!model) {
-			console.error("[title] session.model 为空，跳过");
+			titleLog("session.model 为空，跳过");
 			return null;
 		}
 
@@ -529,9 +537,7 @@ async function generateAiTitle(
 			}
 		)._getSummarizationRequestAuth;
 		if (typeof authFn !== "function") {
-			console.error(
-				"[title] SDK 上找不到 _getSummarizationRequestAuth，跳过（上游可能改了私有方法）",
-			);
+			titleLog("SDK 上找不到 _getSummarizationRequestAuth，跳过（上游可能改了私有方法）");
 			return null;
 		}
 		const {
@@ -553,7 +559,7 @@ async function generateAiTitle(
 			{ apiKey, headers, env, maxTokens: 60, signal },
 		);
 
-		console.error("[title] 模型调用完成，stopReason=", reply.stopReason);
+		titleLog("模型调用完成，stopReason=", reply.stopReason);
 		const title = contentText(reply.content)
 			.trim()
 			.replace(/^["'“”「」]+|["'“”「」]+$/g, "")
@@ -2252,10 +2258,9 @@ export class ClientSession {
 			conv.title = fallbackTitle;
 			this.emitConversations();
 
-			// 这条链路排查过几轮都停在"到底有没有执行"上，所以三个关键节点各留
-			// 一行 stderr：进入分支、拿到标题、写盘。dev 下直接能看到走到哪一步，
-			// 不用再靠猜。
-			console.error(`[title] 开始生成，兜底标题="${fallbackTitle}"`);
+			// 这条链路排查过几轮都停在"到底有没有执行"上，所以关键节点各留一行
+			// 日志（PI_WEB_DEBUG_TITLE=1 打开）：进入分支、拿到标题、写盘。
+			titleLog(`开始生成，兜底标题="${fallbackTitle}"`);
 
 			// 20s 上限：起标题只是锦上添花，不值得为它一直挂着一个请求。
 			const convId = conv.id;
@@ -2265,12 +2270,10 @@ export class ClientSession {
 				.then((aiTitle) => {
 					if (!aiTitle) return;
 					// 只在这期间没人改过标题时才覆盖。
-					console.error(`[title] 模型返回："${aiTitle}"`);
+					titleLog(`模型返回："${aiTitle}"`);
 					const current = this.convs.get(convId);
 					if (!current || current.title !== fallbackTitle) {
-						console.error(
-							`[title] 期间标题已被改过（现在是 "${current?.title}"），放弃覆盖`,
-						);
+						titleLog(`期间标题已被改过（现在是 "${current?.title}"），放弃覆盖`);
 						return;
 					}
 					current.title = aiTitle;
@@ -2284,9 +2287,7 @@ export class ClientSession {
 					try {
 						current.session.sessionManager.appendSessionInfo(aiTitle);
 						void this.refreshSessions();
-						console.error(
-							`[title] 已写入会话文件：${current.session.sessionFile ?? "(无)"}`,
-						);
+						titleLog(`已写入会话文件：${current.session.sessionFile ?? "(无)"}`);
 					} catch (err) {
 						// 起名字是锦上添花，写不进去就维持内存里的标题
 						console.error("[title] 写入会话文件失败：", err);
