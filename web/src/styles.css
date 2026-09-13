@@ -4311,6 +4311,13 @@ span.msg-editor-hint svg {
 	font-size: 12px;
 	line-height: 1.55;
 }
+/* highlight.js 的主题里有一条 `pre code.hljs { padding: 1em }`，特指度
+   (0,1,2) 比上面那条 .codeblock code (0,1,1) 高，所以我们的 padding: 0 根本
+   没生效——结果是 pre 的 12px 和 hljs 的 12px 叠在一起，代码块上下各 24px、
+   左边 26px 的留白，一行命令也撑成一大块黑色。选择器提到 (0,2,2) 压过它。 */
+.codeblock pre code.hljs {
+	padding: 0;
+}
 
 /* Mermaid diagrams rendered from ```mermaid fenced code blocks (see
    components/MermaidDiagram.tsx). Mirrors .codeblock chrome so a doc mixing
