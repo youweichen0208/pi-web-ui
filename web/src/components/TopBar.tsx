@@ -11,7 +11,6 @@ import {
 	FiSettings,
 	FiLayers,
 	FiTerminal,
-	FiVolume2,
 } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import type { ClientMessage, CommandDef } from "../types";
@@ -76,7 +75,6 @@ export function TopBar({
 	onSoundPreview,
 }: TopBarProps) {
 	const { locale, setLocale, t } = useI18n();
-	const [soundOpen, setSoundOpen] = useState(false);
 	const [langOpen, setLangOpen] = useState(false);
 	const [moreOpen, setMoreOpen] = useState(false);
 
@@ -173,16 +171,6 @@ export function TopBar({
 				    GitHub link live only inside the "⋯" panel now, on both
 				    desktop and mobile — no separate top-level chips for them. */}
 				<div className="topbar-desktop">
-					{/* Global search — sessions / projects / workspace files. */}
-					<button
-						type="button"
-						className="chip"
-						title={t("searchGlobalTip")}
-						onClick={onOpenGlobalSearch}
-					>
-						<FiSearch />
-						<span className="chip-sub">{t("searchGlobal")}</span>
-					</button>
 					{/* Background tasks — AI-started servers still listening. Always shown
 					    so the list survives the conversation that started them (badge = count). */}
 					<button
@@ -214,23 +202,6 @@ export function TopBar({
 						<FiSettings />
 						<span className="chip-sub">{t("settings")}</span>
 					</button>
-
-					<Dropdown
-						trigger={
-							<>
-								<FiVolume2 />
-								<span className="chip-sub">{t("sound")}</span>
-							</>
-						}
-						open={soundOpen}
-						onOpenChange={setSoundOpen}
-					>
-						<SoundSettingsPanel
-							settings={sound}
-							onChange={onSoundChange}
-							onPreview={onSoundPreview}
-						/>
-					</Dropdown>
 
 					<Dropdown
 						trigger={
