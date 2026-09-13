@@ -3,7 +3,7 @@ import {
 	FiCheck,
 	FiEdit2,
 	FiFolder,
-	FiFolderPlus,
+	FiPlus,
 	FiTrash2,
 	FiX,
 } from "react-icons/fi";
@@ -185,15 +185,20 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 	return (
 		<aside className="panel panel-left">
 			<div className="panel-projects">
-				<div className="panel-section-title">{t("recentProjects")}</div>
-				<button
-					type="button"
-					className="lp-add-project"
-					onClick={() => setPicking(true)}
-				>
-					<FiFolderPlus className="project-icon" />
-					<span>{t("openFolder")}</span>
-				</button>
+				{/* 加项目收进分组标题行：它是个偶尔用一次的动作，不值得在列表
+				    最上面常驻一整行。 */}
+				<div className="panel-section-title">
+					<span>{t("recentProjects")}</span>
+					<button
+						type="button"
+						className="lp-add-project"
+						title={t("openFolder")}
+						aria-label={t("openFolder")}
+						onClick={() => setPicking(true)}
+					>
+						<FiPlus />
+					</button>
+				</div>
 				<div className="projects-scroll">
 					{projects.map((p) => {
 						const active = currentCwd === p.path;

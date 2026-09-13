@@ -703,8 +703,14 @@ body.panel-resizing {
 	min-height: 0;
 }
 
+/* 分组标题行。最近项目那一组右侧还挂着一个 + 按钮，所以是 flex 两端对齐；
+   只有标题文字的分组（历史对话）视觉上不受影响。 */
 .panel-section-title {
-	padding: 6px 10px 6px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 8px 6px 10px;
 	font-size: 11.5px;
 	font-weight: 500;
 	letter-spacing: 0.04em;
@@ -1110,33 +1116,30 @@ body.panel-resizing {
 }
 
 /* "Open folder…" entry point at the head of the recent-project list. */
-/* 「打开文件夹…」原来是一个虚线框，在侧栏里是视觉上最重的一块——比它下面
-   真正的项目行还抢眼，而它只是个次要动作。虚线框在界面里通常表示"空状态/
-   拖放区"，用在这儿语义也不对。
-   改成跟项目行同一套度量的安静一行：无边框、灰字，只有 + 图标带强调色
-   （跟顶栏「新对话」是同一套语言：次要动作靠一个带色图标标记，不靠整块描边）。 */
+/* 加项目按钮。原来是列表上方一个占满宽度的虚线框——虚线在界面里通常表示
+   "空状态/拖放区"，而且它是整个侧栏视觉最重的一块，可它只是个偶尔用一次的
+   动作，轻重是反的。现在收成分组标题行右侧的一颗小 +。 */
 .lp-add-project {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 8px;
-	width: 100%;
-	padding: 7px 10px;
-	margin-bottom: 2px;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 22px;
+	height: 22px;
 	border: none;
-	border-radius: 8px;
+	border-radius: 6px;
 	background: transparent;
-	color: var(--text-dim);
-	font-size: 12.5px;
-	font-family: inherit;
-	text-align: left;
+	color: var(--text-faint);
 	cursor: pointer;
-}
-.lp-add-project .project-icon {
-	color: var(--accent);
+	padding: 0;
 }
 .lp-add-project:hover {
 	background: var(--bg-elev2);
-	color: var(--text);
+	color: var(--accent);
+}
+.lp-add-project:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
 }
 
 /* --------------------------------------------------------------------- files */
