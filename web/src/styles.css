@@ -1110,13 +1110,19 @@ body.panel-resizing {
 }
 
 /* "Open folder…" entry point at the head of the recent-project list. */
+/* 「打开文件夹…」原来是一个虚线框，在侧栏里是视觉上最重的一块——比它下面
+   真正的项目行还抢眼，而它只是个次要动作。虚线框在界面里通常表示"空状态/
+   拖放区"，用在这儿语义也不对。
+   改成跟项目行同一套度量的安静一行：无边框、灰字，只有 + 图标带强调色
+   （跟顶栏「新对话」是同一套语言：次要动作靠一个带色图标标记，不靠整块描边）。 */
 .lp-add-project {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	width: 100%;
 	padding: 7px 10px;
-	border: 1px dashed var(--border);
+	margin-bottom: 2px;
+	border: none;
 	border-radius: 8px;
 	background: transparent;
 	color: var(--text-dim);
@@ -1125,10 +1131,12 @@ body.panel-resizing {
 	text-align: left;
 	cursor: pointer;
 }
-.lp-add-project:hover {
+.lp-add-project .project-icon {
 	color: var(--accent);
-	border-color: var(--accent);
-	background: var(--accent-soft);
+}
+.lp-add-project:hover {
+	background: var(--bg-elev2);
+	color: var(--text);
 }
 
 /* --------------------------------------------------------------------- files */
