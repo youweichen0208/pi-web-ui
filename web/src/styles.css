@@ -180,8 +180,9 @@
 	   小是有意的：取色自 Claude 桌面端，那种"几乎同一张纸、只是折了一下"的
 	   关系，比明显的深浅分栏安静得多。 */
 	--sidebar-bg: #fbfbf9;
-	/* 列表选中态：淡淡一层靛蓝，不加边框 */
-	--row-active: rgba(59, 73, 223, 0.1);
+	/* 列表选中态：暖灰。之前是淡靛蓝，在这套暖底上偏紫、跟底色不是一家。
+	   强调色现在只剩圆点和图标在用。 */
+	--row-active: #eae8e4;
 	/* 用户消息气泡 */
 	--bubble-bg: #f5f4f1;
 	/* 行内代码：浅灰底，字色跟正文一致——博客整体很克制，不额外加一种红 */
@@ -5900,32 +5901,32 @@ span.msg-editor-hint svg {
 	color: var(--accent);
 }
 
-/* Send: solid blue circle with a white up-arrow. */
-.inputbox .btn.send {
-	background: #3b82f6;
-	border-color: #3b82f6;
+/* 发送 / 停止：实心圆 + 白箭头。原来硬编码 #3b82f6，是界面里第三支蓝（强调色
+   #3b49df、链接、再加这个），改成统一用 --accent。 */
+.inputbox .btn.send,
+.inputbox .btn.stop {
+	background: var(--accent);
+	border-color: var(--accent);
 	color: #fff;
-	box-shadow: 0 2px 10px rgba(59, 130, 246, 0.35);
+	box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 32%, transparent);
 }
-.inputbox .btn.send:hover:not(:disabled) {
-	background: #2563eb;
-	border-color: #2563eb;
+.inputbox .btn.send:hover:not(:disabled),
+.inputbox .btn.stop:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--accent) 85%, #000);
+	border-color: color-mix(in srgb, var(--accent) 85%, #000);
 	transform: translateY(-1px);
-	box-shadow: 0 4px 16px rgba(59, 130, 246, 0.45);
+	box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 42%, transparent);
 }
 
-/* Stop: solid blue circle matching send, icon only. */
-.inputbox .btn.stop {
-	background: #3b82f6;
-	border-color: #3b82f6;
-	color: #fff;
-	box-shadow: 0 2px 10px rgba(59, 130, 246, 0.35);
-}
-.inputbox .btn.stop:hover:not(:disabled) {
-	background: #2563eb;
-	border-color: #2563eb;
-	transform: translateY(-1px);
-	box-shadow: 0 4px 16px rgba(59, 130, 246, 0.45);
+/* 没东西可发时：真的换成一颗浅蓝的按钮，而不是把深蓝按钮调透明。
+   后者在浅底上只是"发灰的深蓝"，看着仍然像可以点。 */
+.inputbox .btn.send:disabled,
+.inputbox .btn.stop:disabled {
+	opacity: 1;
+	background: var(--accent-soft);
+	border-color: transparent;
+	color: color-mix(in srgb, var(--accent) 45%, var(--bg-elev));
+	box-shadow: none;
 }
 
 /* 补充: queue a message that sends the moment the current reply finishes. */
