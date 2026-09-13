@@ -15,7 +15,8 @@ import { Message, asText, roleLabel } from "./Message";
 import { collectQuestionAttachments } from "../question-attachments";
 
 import { parseSkillBlock } from "../skill-block";
-import { CollapsedMessage } from "./CollapsedMessage";
+import { buildCollapsedGroups } from "../collapsed-groups";
+import { CollapsedGroup } from "./CollapsedGroup";
 import { LazyMount } from "./LazyMount";
 import {
 	applyPlan,
@@ -138,6 +139,13 @@ export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBa
 		state.messages.length > COLLAPSE_MIN
 			? Math.max(0, state.messages.length - KEEP_RECENT)
 			: 0;
+	// 相邻的同角色折叠消息并成一条摘要：一次「想一下 → 调几个工具 → 回话」在
+	// transcript 里是 8 条 assistant 消息，一条一行会把历史区堆成 8 条长得一模
+	// 一样的条带。纯逻辑在 collapsed-groups.ts（有单测）。
+	const collapsed = useMemo(
+		() => buildCollapsedGroups(state.messages, recentStart, expanded),
+		[state.messages, recentStart, expanded],
+	);
 
 	// ---- 惰性窗口化（lazy windowing，纯函数见 lazy-window.ts）----------------
 	// 视口缓冲带之外的重型消息替换为等高占位 div；滚动临近时换回真实内容并
@@ -317,6 +325,16 @@ export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBa
 
 	const expand = useCallback((id: string) => {
 		setExpanded((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+	}, []);
+
+	/** 展开一整组折叠消息（摘要行代表的是整轮，不是单条）。 */
+	const expandGroup = useCallback((ids: string[]) => {
+		setExpanded((prev) => {
+			if (ids.every((id) => prev.has(id))) return prev;
+			const next = new Set(prev);
+			for (const id of ids) next.add(id);
+			return next;
+		});
 	}, []);
 
 	// 搜索跳转目标若是折叠的旧消息，先同步展开（flushSync 保证本轮 DOM 就绪）
@@ -544,11 +562,17 @@ export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBa
 					const isOld = i < recentStart;
 					const isExpandedOld = isOld && expanded.has(m.id);
 					if (isOld && !isExpandedOld) {
-						// toolResult content lives inside its toolCall card — nothing to
-						// show in the collapsed row either.
-						if (m.role === "toolResult") return null;
+						// Folded into an earlier group's summary row (or a toolResult,
+						// whose content lives inside its toolCall card) — render nothing.
+						if (collapsed.absorbed.has(i)) return null;
+						const group = collapsed.groupAt.get(i);
+						if (!group) return null;
 						return (
-							<CollapsedMessage key={m.id} message={m} onExpand={expand} />
+							<CollapsedGroup
+								key={m.id}
+								messages={group}
+								onExpand={expandGroup}
+							/>
 						);
 					}
 					const qIdx = m.role === "user" ? qnIndex.get(m.id) : undefined;
