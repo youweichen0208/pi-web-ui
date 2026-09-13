@@ -156,13 +156,15 @@
 
 :root {
 	color-scheme: light;
-	/* 取自 blog.youwei-agent.com：冷调 slate 中性色 + 靛蓝强调。
-	   正文 #334155、标题 #18202a、边框偏 slate，卡片纯白浮在近白的页底上。 */
-	--bg: #fbfbfd;
+	/* 字体与文字色取自 blog.youwei-agent.com（Inter、正文 #334155、标题
+	   #18202a、靛蓝强调）；底色和边框取自 Claude 桌面端——一层极淡的暖中性，
+	   而不是原来偏蓝的 slate。两者混着用是有意的：文字沿用博客那套层级，底
+	   色换成更安静的暖白。 */
+	--bg: #fcfcfb;
 	--bg-elev: #ffffff;
-	--bg-elev2: #f1f3f8;
-	--border: #e3e7ee;
-	--border-soft: #edf0f5;
+	--bg-elev2: #f1f0ed;
+	--border: #e3e3e1;
+	--border-soft: #eeedeb;
 	--text: #334155;
 	--text-dim: #64748b;
 	--text-faint: #94a3b8;
@@ -174,14 +176,16 @@
 	/* 链接单独留一个 token：现在它跟强调色同为靛蓝，但语义不同——强调色管
 	   选中/焦点/按钮，--link 只管链接，以后强调色再动不会牵连链接。 */
 	--link: #3b49df;
-	/* 侧栏是纯白卡片，浮在 --bg 那层近白的页底上，跟博客里白卡片的关系一致 */
-	--sidebar-bg: #ffffff;
+	/* 侧栏比主区再暗一丝（#fbfbf9 vs #fcfcfb），靠 1px 分隔线收边。两边差得很
+	   小是有意的：取色自 Claude 桌面端，那种"几乎同一张纸、只是折了一下"的
+	   关系，比明显的深浅分栏安静得多。 */
+	--sidebar-bg: #fbfbf9;
 	/* 列表选中态：淡淡一层靛蓝，不加边框 */
 	--row-active: rgba(59, 73, 223, 0.1);
 	/* 用户消息气泡 */
-	--bubble-bg: #f1f3f8;
+	--bubble-bg: #f5f4f1;
 	/* 行内代码：浅灰底，字色跟正文一致——博客整体很克制，不额外加一种红 */
-	--code-chip-bg: #f1f3f8;
+	--code-chip-bg: #f1f0ed;
 	--green: #16a34a;
 	--green-soft: rgba(22, 163, 74, 0.12);
 	--red: #dc2626;
