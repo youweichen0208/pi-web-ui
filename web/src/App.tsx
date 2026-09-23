@@ -15,6 +15,7 @@ import { desktopAPI } from "./desktop";
 import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { MessageList } from "./components/MessageList";
+import type { CurrentFileContext, ReadCurrentFile } from "./current-file";
 import { ChatInput } from "./components/ChatInput";
 import { GoalBar } from "./components/GoalBar";
 import { FooterBar } from "./components/FooterBar";
@@ -206,6 +207,11 @@ export function App() {
 		}
 	}, [chat.activeConversationId, attachments]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
+	const contextReader = useRef<ReadCurrentFile | null>(null);
+	const [currentFile, setCurrentFile] = useState<CurrentFileContext | null>(null);
+	useEffect(() => {
+		if (!switching && chat.state?.cwd && previewFile && previewFile.cwd !== chat.state.cwd) setPreviewFile(null);
+	}, [switching, chat.state?.cwd, previewFile]);
 	const fileGuard = useRef<FileNavigationGuard | null>(null);
 	const send = useCallback((message: ClientMessage) => {
 		const navigation = message.type === "set_cwd" || message.type === "switch_session" ||
@@ -213,7 +219,7 @@ export function App() {
 		if (navigation && fileGuard.current) {
 			setView("chat");
 			setDrawer("right");
-			fileGuard.current(() => { if (rawSend(message)) setPreviewFile(null); });
+			fileGuard.current(() => { if (rawSend(message) && message.type !== "switch_session") setPreviewFile(null); });
 			return false;
 		}
 		return rawSend(message);
@@ -567,7 +573,11 @@ export function App() {
 	// GoalBar skip re-render while tokens stream in — inline closures here
 	// would break their shallow prop comparison every render).
 	const openManageModels = useCallback(() => setManageModelsOpen(true), []);
-	const clearAttachments = useCallback(() => setAttachments([]), []);
+	const clearAttachments = useCallback((conversationId: string, sent: PendingAttachment[]) => {
+		const remaining = (items: PendingAttachment[]) => items.filter((item) => !sent.includes(item));
+		if (attachmentKey.current === conversationId) setAttachments(remaining);
+		else attachmentDrafts.current.set(conversationId, remaining(attachmentDrafts.current.get(conversationId) ?? []));
+	}, []);
 	const removeAttachmentCb = useCallback(removeAttachment, []);
 	const addImageFilesCb = useCallback(addImageFiles, [addImageFiles]);
 	const addLocalFilesCb = useCallback(addLocalFiles, [addLocalFiles]);
@@ -750,6 +760,9 @@ export function App() {
 						{/* 扩展问卷：非模态内联面板，插在输入框上方，对话内容保持可见 */}
 						{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
 						<ChatInput
+							currentFile={!switching && currentFile?.cwd === chat.state?.cwd ? currentFile : null}
+							contextReader={contextReader}
+							promptResult={chat.promptResult}
 							send={send}
 							ready={chat.ready}
 							streaming={chat.state?.isStreaming ?? false}
@@ -795,6 +808,8 @@ export function App() {
 							<FilePreviewContent
 								key={`${previewFile.cwd}:${previewFile.path}`}
 								file={previewFile}
+								contextReader={contextReader}
+								onContextChange={setCurrentFile}
 								guard={fileGuard}
 								result={chat.fileResult}
 								disabled={!!switching || previewFile.cwd !== chat.state?.cwd}

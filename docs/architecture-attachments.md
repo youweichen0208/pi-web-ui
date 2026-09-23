@@ -12,7 +12,7 @@
 | `reference` | 仅路径 | 发 `<file path="..." size="..."/>`，模型按需用 read 工具读 |
 | `lines` | 选中行 | 发 `<file path="..." lines="2-3">```选中行```</file>`，只读该范围（读取上限 2MB，超限降级 reference） |
 
-附件作为独立 custom message（`sendCustomMessage` + `deliverAs: "nextTurn"` asides）发送，渲染成可折叠卡片。客户端 `stripFileWrapper` 的正则要兼容 `lines="..."` 属性。
+附件作为独立 custom message（`prompt-delivery.ts` 在 SDK 预检通过后入队的 file asides）发送，渲染成可折叠卡片。客户端 `stripFileWrapper` 的正则要兼容 `lines="..."` 属性。
 
 **消息序列化缓存按 `role:timestamp` 为 key——同一 prompt 的多个 aside 同毫秒创建会碰撞，必须靠内容指纹（`contentFingerprint`）区分，否则只有第一个渲染（已修，勿回退）。**
 
@@ -85,3 +85,12 @@ Markdown 使用原生 contenteditable，`rich-markdown.tsx` 按语法树的源�
 `web/src/download.ts`：不用 `<a download href>`（Chrome Safe Browsing 会拦截非 HTTPS 源的无信誉文件类型如 .zip/.exe），而是 fetch → blob 保存；>200MB 回退原生导航流式下载；失败 toast 显示服务端错误正文（`downloadFailed` i18n key）。
 
 **Windows 特例**：blob 锚点下载在 Windows 上仍可能被 Safe Browsing 静默拦截（无 JS 错误，表现为「点了没反应」）——Chromium 安全上下文（localhost/HTTPS）下优先用 `showSaveFilePicker` 直接写入用户选中的文件（绕过下载管线）；Windows 上保存名经 `sanitizeFileName` 清洗（`<>:"\|?*`、尾随点/空格、CON/COM1 等保留设备名）；取消保存对话框不算错误（`cancelled`，不弹 toast）。`download-test.mjs` 覆盖回归（已禁用 picker 以测 blob 路径）。
+### 当前编辑文件自动关联（协议 v15）
+
+成功打开完整可编辑文本后，输入区显示独立 `@文件名` 标签；未保存时标记草稿。标签跟随文件并跨发送保留，隐藏侧栏或切换视图不移除；返回列表、切换项目时清除。同项目换对话继续关联，手动移除仅对当前对话的本次打开有效。只读媒体、二进制、截断内容与失败响应不会关联。
+
+编辑器通过稳定 ref 暴露发送时读取接口，草稿仍只由编辑器持有；向 App 只同步文件身份和 dirty 状态。`PromptAttachment.editorSnapshot` 包含 cwd、完整 text、dirty 和已知 version，普通/steer/followUp 都冻结发送时文本，不保存磁盘。同路径整文件附件由快照覆盖，选区附件保留。UTF-8 上限 512 KiB，超限保留输入并提示缩减或移除，不降级为磁盘引用。
+
+服务端在构建任何附件前验证全部快照的工作区、真实路径边界、类型和大小；历史重问在 fork 前也验证。快照作为 file aside 传给 agent，明确来源、保存状态及优先分析要求，details 保存原快照供卡片和历史重问恢复。旧记录无此字段时保持原行为。prompt 的 requestId 与 prompt_result 在 SDK 预检通过后确认接收，校验失败或断线保留编辑中的问题及附件；仅自动标签不能触发发送。
+
+SDK 的 nextTurn 缓冲不会随 steer/followUp 消费，因此附件在预检通过后进入对应队列；普通发送在 agent_start 时入队。带附件的运行临时使用 all 队列模式，让问题与文件卡一起消费，agent_end 恢复原模式。预检失败与仅执行扩展命令不留下下一轮文件快照。回归：`tests/current-file-protocol-test.mjs`（本地模拟模型，验证实际 SDK 请求）、`tests/current-file-ui-test.mjs`（加 `--electron`）、`tests/unit/current-file.test.ts`。

@@ -17,6 +17,11 @@ const STORAGE_KEY = "pi-web-ui:lang";
 /* ------------------------------------------------------------------ */
 
 const zh = {
+	currentFileLabel: "当前文件",
+	currentFileUnsaved: "未保存",
+	currentFileDraft: "当前文件 · 未保存草稿",
+	currentFileUnavailable: "当前文件尚未就绪，请重新打开或移除标签",
+	currentFileTooLarge: "当前文件快照超过 512 KiB，请缩减内容或移除标签",
 	switchingProject: "正在同步项目…",
 	retryProjectSwitch: "重试切换项目",
 	/* common */
@@ -672,6 +677,11 @@ const zh = {
 /* ------------------------------------------------------------------ */
 
 const en: Record<keyof typeof zh, string> = {
+	currentFileLabel: "Current file",
+	currentFileUnsaved: "Unsaved",
+	currentFileDraft: "Current file · Unsaved draft",
+	currentFileUnavailable: "Current file is unavailable. Reopen it or remove the tag.",
+	currentFileTooLarge: "Current file exceeds 512 KiB. Reduce its content or remove the tag.",
 	switchingProject: "Syncing project…",
 	retryProjectSwitch: "Retry project switch",
 	/* common */

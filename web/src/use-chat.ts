@@ -76,6 +76,7 @@ export interface ChatState {
 	gitBranch: Extract<ServerMessage, { type: "git_branch" }> | null;
 	/** Latest file content fetched for the preview panel (request-matched in the file editor). */
 	fileContent: FileContent | null;
+	promptResult: Extract<ServerMessage, { type: "prompt_result" }> | null;
 	fileResult: Extract<ServerMessage, { type: "file_result" }> | null;
 
 	/** Last dir-changed push from the server fs.watch (path = listed directory). */
@@ -215,6 +216,7 @@ type Action =
 
 	| { type: "file_changed"; path: string }
 	| { type: "file_content"; content: FileContent }
+	| { type: "prompt_result"; result: Extract<ServerMessage, { type: "prompt_result" }> }
 	| { type: "file_result"; result: Extract<ServerMessage, { type: "file_result" }> }
 	| { type: "models"; models: ModelInfo[]; loading: boolean }
 	| { type: "models_config"; providers: UiProviderConfig[] }
@@ -544,6 +546,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, files: action.files };
 		case "file_changed":
 			return { ...state, fileChanged: { path: action.path } };
+		case "prompt_result":
+			return { ...state, promptResult: action.result };
 		case "file_result":
 			return { ...state, fileResult: action.result };
 		case "file_content":
@@ -697,6 +701,7 @@ export function useChat() {
 
 		fileChanged: null,
 		fileContent: null,
+		promptResult: null,
 		fileResult: null,
 		models: [],
 		modelsLoading: false,
@@ -989,6 +994,9 @@ export function useChat() {
 					break;
 				case "file_changed":
 					dispatch({ type: "file_changed", path: msg.path });
+					break;
+				case "prompt_result":
+					dispatch({ type: "prompt_result", result: msg });
 					break;
 				case "file_result":
 					dispatch({ type: "file_result", result: msg });

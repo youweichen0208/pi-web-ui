@@ -1,3 +1,6 @@
+import { deliverPrompt } from "./prompt-delivery.js";
+import type { PromptAttachment } from "./protocol.js";
+import { validateEditorSnapshots } from "./editor-snapshot.js";
 import { ConversationTitleJob, completedTitleTurn } from "./conversation-title.js";
 import { QueryCache } from "./query-cache.js";
 /**
@@ -2193,18 +2196,7 @@ export class ClientSession {
 
 	async prompt(
 		text: string,
-		attachments?: {
-			path: string;
-			mode?: "inline" | "reference" | "lines";
-			lines?: { start: number; end: number };
-			/** Raw pasted/dropped/uploaded image (base64) — bypasses workspace path. */
-			imageData?: string;
-			/** Raw uploaded file bytes (base64) — persisted, attached as reference. */
-			fileData?: string;
-			mimeType?: string;
-			name?: string;
-			size?: number;
-		}[],
+		attachments?: PromptAttachment[],
 		/**
 		 * true = followUp: while streaming, queue the prompt and deliver it only
 		 * after the WHOLE run finishes (补充 button — "AI 生成结束才发送").
@@ -2212,28 +2204,37 @@ export class ClientSession {
 		 * after the current turn settles, skipping remaining planned tool calls.
 		 */
 		queue = false,
+		requestId?: string,
 	): Promise<void> {
 		const conv = this.conv;
+		let acknowledged = false;
+		const acknowledge = (ok: boolean) => {
+			if (acknowledged) return;
+			acknowledged = true;
+			if (requestId) this.emit({ type: "prompt_result", requestId, ok });
+		};
 		try {
 			const s = conv.session;
+			validateEditorSnapshots(this.cwd, attachments);
 			// Native slash commands (see NATIVE_COMMANDS) are executed here and
 			// never reach the SDK. Extension / skill / template commands fall
 			// through — AgentSession.prompt() handles those itself.
 			const slash = parseSlash(text);
 			if (slash && (await this.slash.exec(slash.name, slash.args))) {
+				acknowledge(true);
 				this.flushSnapshot();
 				return;
 			}
 			// Native commands above are pure config tweaks (no tokens) — allow them
 			// even while quiesced. Everything that reaches the SDK is NEW work and
 			// is refused until admission reopens.
-			if (this.quiesceBlocked()) return;
+			if (this.quiesceBlocked()) throw new Error("服务暂停接收消息");
 			if (conv.title === DEFAULT_CONV_TITLE && text.trim()) {
 				const temporary = skillAwareTitleText(text).trim().replace(/\s+/g, " ");
 				conv.title = temporary.length > 30 ? `${temporary.slice(0, 30)}…` : temporary;
 				this.emitConversations();
 			}
-			// Attach files as independent nextTurn context messages (asides) so the
+			// Attach files as independent context messages (asides) so the
 			// user message stays clean; they render as separate attachment cards.
 			const asides = await buildAttachmentMessages(
 				{
@@ -2245,27 +2246,9 @@ export class ClientSession {
 				},
 				attachments,
 			);
-			for (const aside of asides) {
-				await s.sendCustomMessage(aside.message, { deliverAs: "nextTurn" });
-			}
-			if (s.isStreaming) {
-				// queue=true (补充 button) → followUp: the message is delivered only
-				// after the whole run finishes — the agent finishes what it started,
-				// then responds to the queued message. queue=false/undefined
-				// (plain Enter) → steer: interrupts the current run — the message
-				// is delivered right after the current assistant turn settles
-				// (remaining planned tool calls are skipped) and the agent
-				// immediately responds to it. This is the pi CLI
-				// Enter-during-streaming semantic (docs/usage: Enter queues a
-				// steering message); followUp would wait for the whole run
-				// to finish, which users perceive as ordinary queueing.
-				await s.prompt(text, {
-					streamingBehavior: queue ? "followUp" : "steer",
-				});
-			} else {
-				await s.prompt(text);
-			}
+			await deliverPrompt(s, text, asides, queue, acknowledge);
 		} catch (err) {
+			acknowledge(false);
 			this.emit({
 				type: "notice",
 				level: "error",
@@ -3040,6 +3023,7 @@ export class ClientSession {
 			return;
 		}
 		try {
+			validateEditorSnapshots(this.cwd, attachments);
 			// Preserve the model the user had selected — fork() seeds a new
 			// branch with the ModelRuntime default model otherwise.
 			const prevModel = this.session.agent.state.model ?? null;

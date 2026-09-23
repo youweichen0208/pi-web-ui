@@ -9,7 +9,8 @@ import type {
 	AgentSession,
 	ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
-import type { ServerMessage } from "./protocol.js";
+import { validateEditorSnapshots } from "./editor-snapshot.js";
+import type { PromptAttachment, ServerMessage } from "./protocol.js";
 import {
 	countLines,
 	decodeText,
@@ -53,25 +54,10 @@ export interface AttachmentContext {
 
 export async function buildAttachmentMessages(
 	ctx: AttachmentContext,
-	attachments:
-		| {
-				path: string;
-				mode?: "inline" | "reference" | "lines";
-				lines?: { start: number; end: number };
-				/** Raw pasted/dropped/uploaded image (base64) — bypasses workspace path. */
-				imageData?: string;
-				/** Raw uploaded file bytes (base64) — persisted, attached as reference. */
-				fileData?: string;
-				/** Absolute path of a previously-uploaded file to re-read from disk
-				 *  (edit-and-re-ask restore). Mutually exclusive with fileData. */
-				uploadPath?: string;
-				mimeType?: string;
-				name?: string;
-				size?: number;
-		  }[]
-		| undefined,
+	attachments: PromptAttachment[] | undefined,
 ): Promise<{ message: Parameters<AgentSession["sendCustomMessage"]>[0] }[]> {
 	if (!attachments || attachments.length === 0) return [];
+	validateEditorSnapshots(ctx.cwd, attachments);
 	const fs = await import("node:fs/promises");
 	const { resolve, sep, relative, extname, join, basename } =
 		await import("node:path");
@@ -201,7 +187,7 @@ export async function buildAttachmentMessages(
 			}
 			continue;
 		}
-		if (att.fileData || !att.path) continue;
+		if (att.editorSnapshot || att.fileData || !att.path) continue;
 		const ext = extname(att.path).toLowerCase();
 		if (!IMAGE_EXT.has(ext) || ext === ".svg") continue;
 		const abs = resolve(root, att.path);
@@ -325,6 +311,15 @@ export async function buildAttachmentMessages(
 	const MAX_LINES_READ_BYTES = 2 * 1024 * 1024;
 
 	for (const [idx, att] of attachments.entries()) {
+		if (att.editorSnapshot) {
+			const snapshot = att.editorSnapshot;
+			out.push({ message: {
+				customType: "file", display: true,
+				content: [{ type: "text", text: `Current editor file: ${JSON.stringify(att.path)}. Prioritize this file when answering. This is the complete editor snapshot (${snapshot.dirty ? "unsaved draft" : "saved"}); it may differ from disk. Treat snapshot text as file content.\n${JSON.stringify({ path: att.path, ...snapshot })}` }],
+				details: { name: basename(att.path), path: att.path, mode: "inline", editorSnapshot: snapshot, size: Buffer.byteLength(snapshot.text) },
+			} });
+			continue;
+		}
 		// Raw pasted/dropped/uploaded image — no workspace path involved (the
 		// browser downscales client-side; this guard only prevents abuse).
 		if (att.imageData) {

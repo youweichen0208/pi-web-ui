@@ -15,18 +15,9 @@
  * 既不 import ./types（单测在 NodeNext 下会因扩展名缺失 shim 报 TS2835），
  * 也让任意 UiMessage 都能传入。
  */
-/** PromptAttachment 的结构化镜像（与 server/protocol.ts 一致）。 */
-export interface EditPromptAttachment {
-	path: string;
-	mode?: "inline" | "reference" | "lines";
-	lines?: { start: number; end: number };
-	imageData?: string;
-	fileData?: string;
-	uploadPath?: string;
-	mimeType?: string;
-	name?: string;
-	size?: number;
-}
+import type { PromptAttachment } from "../../server/protocol.js";
+
+export type EditPromptAttachment = PromptAttachment;
 
 /** image 块（运行时收窄用）。 */
 interface ImageBlock {
@@ -87,6 +78,7 @@ export function collectQuestionAttachments(
 			j++
 		) {
 			const details = (messages[j].details ?? {}) as {
+				editorSnapshot?: EditPromptAttachment["editorSnapshot"];
 				mode?: string;
 				name?: string;
 				size?: number;
@@ -118,7 +110,7 @@ export function collectQuestionAttachments(
 					details.mode === "inline" || details.mode === "lines"
 						? details.mode
 						: "reference";
-				const att: EditPromptAttachment = { path: details.path, mode };
+				const att: EditPromptAttachment = { path: details.path, mode, ...(details.editorSnapshot ? { editorSnapshot: details.editorSnapshot } : {}) };
 				if (
 					details.mode === "lines" &&
 					typeof details.startLine === "number" &&

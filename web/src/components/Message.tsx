@@ -86,6 +86,7 @@ function editAttKind(att: PromptAttachment): EditAttKind {
 
 /** Tooltip label for an editor chip (reuses the chat-input attachment i18n). */
 function editAttLabel(att: PromptAttachment, t: Translate): string {
+	if (att.editorSnapshot) return `${att.path} · ${t(att.editorSnapshot.dirty ? "currentFileDraft" : "currentFileLabel")}`;
 	if (att.imageData) return t("attachImage", { name: att.name ?? "image" });
 	if (att.uploadPath) return t("attachFile", { name: att.name ?? att.uploadPath });
 	if (att.fileData) return t("attachFile", { name: att.name ?? "file" });
@@ -543,6 +544,7 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
 	const details = (message.details ?? {}) as {
+		editorSnapshot?: PromptAttachment["editorSnapshot"];
 		name?: string;
 		path?: string;
 		mode?: "inline" | "reference" | "lines" | "image" | "bridged";
@@ -561,7 +563,7 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 		.filter((b): b is { type: "text"; text: string } => b.type === "text")
 		.map((b) => b.text)
 		.join("\n");
-	const clean = stripFileWrapper(text);
+	const clean = details.editorSnapshot?.text ?? stripFileWrapper(text);
 	const image = message.content.find((b) => b.type === "image") as
 		| { type: "image"; dataUrl?: string }
 		| undefined;
@@ -576,6 +578,7 @@ function AttachmentCard({ message }: { message: UiMessage }) {
 			>
 				<span className="attachcard-icon">{isFolder ? "📁" : "📎"}</span>
 				<span className="attachcard-name">{name}</span>
+				{details.editorSnapshot && <span className="attachcard-mode">{t(details.editorSnapshot.dirty ? "currentFileDraft" : "currentFileLabel")}</span>}
 				{details.path && (
 					<span className="attachcard-path">{details.path}</span>
 				)}

@@ -47,7 +47,11 @@ try {
 	assert.equal(readFileSync(join(root, "note.txt"), "utf8"), "after");
 	send({ type: "read_file", path: "missing", cwd: root, requestId: "r2" });
 	assert.equal((await wait((m) => m.requestId === "r2")).ok, false);
-	console.log("PASS versioned file WS protocol");
+	for (const [requestId, path, cwd] of [["context-workspace", "note.txt", root + "-wrong"], ["context-path", "../outside.txt", root]]) {
+		send({ type: "prompt", requestId, text: "must reject before calling agent", attachments: [{ path, editorSnapshot: { cwd, text: "draft", dirty: true } }] });
+		assert.equal((await wait((m) => m.type === "prompt_result" && m.requestId === requestId)).ok, false);
+	}
+	console.log("PASS versioned file WS protocol and editor context rejection");
 } finally {
 	ws?.close();
 	if (server?.pid && server.exitCode === null && server.signalCode === null) {

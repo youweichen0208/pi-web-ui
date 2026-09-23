@@ -32,6 +32,7 @@ const ALL = [
 	"fetch-models-test",
 	"global-search-test",
 	"file-editor-protocol-test",
+	"current-file-protocol-test",
 	"goal-prefs-test",
 	"goal-test",
 	"left-panel-delete-test",

@@ -1,6 +1,10 @@
+import type { MutableRefObject } from "react";
+import type { CurrentFileContext, ReadCurrentFile } from "../current-file";
+import { mergeCurrentFile } from "../current-file";
+import { randomUuid } from "../uuid";
 import { memo, useLayoutEffect, useEffect, useRef, useState } from "react";
 import { FiSend, FiSquare, FiPaperclip, FiArrowUp } from "react-icons/fi";
-import type { ClientMessage, ModelInfo, SlashCommandInfo, UiMessage, UiState } from "../types";
+import type { ClientMessage, PromptAttachment, ServerMessage, ModelInfo, SlashCommandInfo, UiMessage, UiState } from "../types";
 import { useT, useI18n } from "../i18n";
 import { isRasterImage } from "../image-paste";
 
@@ -11,6 +15,9 @@ import { ModelThinking } from "./ModelThinking";
  *  by the server when the persisted set is unchanged), so the shallow-compared
  *  memo() below skips this input bar on every text delta. */
 interface ChatInputProps {
+	currentFile: CurrentFileContext | null;
+	contextReader: MutableRefObject<ReadCurrentFile | null>;
+	promptResult: Extract<ServerMessage, { type: "prompt_result" }> | null;
 	ready: boolean;
 	streaming: boolean;
 	/** Persisted messages (stable reference while unchanged) — used by /copy. */
@@ -56,13 +63,13 @@ interface ChatInputProps {
 	/** Client-side notices (e.g. folders dropped). */
 	onNotice: (level: "info" | "warning" | "error", text: string) => void;
 	/** Called after a prompt is successfully sent — clears pending attachments. */
-	onSent: () => void;
+	onSent: (conversationId: string, sent: ChatInputProps["attachments"]) => void;
 	/** Opens the custom-model config modal (mobile input row). */
 	onManageModels: () => void;
 }
 
 export const ChatInput = memo(function ChatInput({
-	ready,
+	ready, currentFile, contextReader, promptResult,
 	streaming,
 	messages,
 	slashCommands,
@@ -81,6 +88,10 @@ export const ChatInput = memo(function ChatInput({
 	onManageModels,
 }: ChatInputProps) {
 	const t = useT();
+	const [dismissed, setDismissed] = useState<Record<string, string>>({});
+	const autoFile = currentFile && dismissed[activeConversationId] !== currentFile.id ? currentFile : null;
+	const pendingSubmit = useRef<{ id: string; conversation: string; text: string; attachments: ChatInputProps["attachments"] } | null>(null);
+
 	const { locale } = useI18n();
 	const slashDesc = (c: SlashCommandInfo) =>
 		locale === "en" && c.descriptionEn ? c.descriptionEn : (c.description ?? "");
@@ -98,6 +109,20 @@ export const ChatInput = memo(function ChatInput({
 			drafts.current.delete(activeConversationId);
 		}
 	}, [activeConversationId, text]);
+	useEffect(() => {
+		const pending = pendingSubmit.current;
+		if (!pending || promptResult?.requestId !== pending.id) return;
+		pendingSubmit.current = null;
+		if (!promptResult.ok) return;
+		onSent(pending.conversation, pending.attachments);
+		if (pending.conversation === activeConversationId) {
+			setText((value) => value === pending.text ? "" : value);
+			setPendingEcho(activeConversationId, pending.text.trim());
+		} else {
+			drafts.current.delete(pending.conversation);
+		}
+	}, [promptResult, activeConversationId, onSent, setPendingEcho]);
+	useEffect(() => { if (!ready) pendingSubmit.current = null; }, [ready]);
 	const [dragOver, setDragOver] = useState(false);
 	/** Slash-command picker: non-null while open (filtered by the current input). */
 	const [completions, setCompletions] = useState<SlashCommandInfo[] | null>(
@@ -267,7 +292,7 @@ export const ChatInput = memo(function ChatInput({
 	const submit = (queue = false) => {
 		const trimmed = text.trim();
 		const hasRawAttach = attachments.some((a) => a.imageData || a.fileData);
-		if (!connected || (!trimmed && !hasRawAttach)) return;
+		if (pendingSubmit.current || !connected || (!trimmed && !hasRawAttach)) return;
 		// Client-side slash commands (never sent to the server).
 		if (trimmed === "/help") {
 			// Match the modal width to the input box (the backdrop spans the full
@@ -292,42 +317,24 @@ export const ChatInput = memo(function ChatInput({
 		// in agent-service.ts. The 补充 (supplement) button passes queue=true,
 		// which the server delivers as followUp instead — the prompt is sent
 		// only after the WHOLE run finishes ("AI 生成结束才发送").
-		if (
-			send({
-				type: "prompt",
-				text: trimmed,
-				queue,
-				attachments: attachments.map((a) => {
-					if (a.imageData) {
-						return {
-							path: "",
-							imageData: a.imageData,
-							mimeType: a.mimeType,
-							name: a.name,
-						};
-					}
-					if (a.fileData) {
-						return {
-							path: "",
-							fileData: a.fileData,
-							mimeType: a.mimeType,
-							name: a.name,
-							size: a.size,
-						};
-					}
-					return {
-						path: a.path,
-						mode: a.mode,
-						...(a.lines ? { lines: a.lines } : {}),
-					};
-				}),
-			})
-		) {
-			setPendingEcho(activeConversationId, trimmed);
-			setText("");
-			onSent();
-			taRef.current?.focus();
+		let outgoing: PromptAttachment[] = attachments.map(({ key, isDir, ...attachment }) => attachment);
+		if (autoFile) {
+			const snapshot = contextReader.current?.(autoFile.id);
+			if (!snapshot?.editorSnapshot || snapshot.path !== autoFile.path || snapshot.editorSnapshot.cwd !== autoFile.cwd) {
+				onNotice("error", t("currentFileUnavailable"));
+				return;
+			}
+			if (new TextEncoder().encode(snapshot.editorSnapshot.text).length > 512 * 1024) {
+				onNotice("error", t("currentFileTooLarge"));
+				return;
+			}
+			outgoing = mergeCurrentFile(outgoing, snapshot);
 		}
+		const requestId = randomUuid();
+		if (send({ type: "prompt", text: trimmed, queue, requestId, attachments: outgoing })) {
+			pendingSubmit.current = { id: requestId, conversation: activeConversationId, text, attachments };
+		}
+
 	};
 
 	const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -431,8 +438,13 @@ export const ChatInput = memo(function ChatInput({
 					<span>📎 {t("dropHereToAttach")}</span>
 				</div>
 			)}
-			{attachments.length > 0 && (
+			{(attachments.length > 0 || autoFile) && (
 				<div className="attach-row">
+					{autoFile && <span className="attach-chip current-file" title={`${autoFile.cwd}/${autoFile.path}`}>
+						@{autoFile.name}{autoFile.dirty ? ` · ${t("currentFileUnsaved")}` : ""}
+						<button type="button" className="attach-remove" title={t("removeAttachment")}
+							onClick={() => setDismissed((previous) => ({ ...previous, [activeConversationId]: autoFile.id }))}>×</button>
+					</span>}
 					{attachments.map((a) => (
 						<span
 							key={a.key ?? `${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}`}

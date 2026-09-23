@@ -9,7 +9,7 @@
  *   5. 工作区路径附件（reference/inline/lines）原样重附加。
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildAttachmentMessages, type AttachmentContext } from "../../server/attachments.js";
@@ -222,4 +222,17 @@ describe("buildAttachmentMessages — 编辑重问附件恢复", () => {
 		expect(out[3].message.details.mode).toBe("reference");
 		expect(out[3].message.details.path).toBe("src/big.md");
 	});
+});
+
+it("delivers the complete editor draft and source without reading disk as content", async () => {
+	const cwd = tempDir();
+	writeFileSync(join(cwd, "draft.txt"), "disk original");
+	const ctx = makeCtx({ cwd, dataDir: tempDir(), notices: [] });
+	const editorSnapshot = { cwd, text: "unsaved last input 中文", dirty: true, version: "known" };
+	const out = await buildAttachmentMessages(ctx, [{ path: "draft.txt", editorSnapshot }]);
+	expect(out[0].message.details).toMatchObject({ editorSnapshot });
+	expect(JSON.stringify(out[0].message.content)).toContain("unsaved last input");
+	expect(JSON.stringify(out[0].message.content)).toContain("Prioritize");
+	expect(readFileSync(join(cwd, "draft.txt"), "utf8")).toBe("disk original");
+	await expect(buildAttachmentMessages(ctx, [{ path: "draft.txt", editorSnapshot: { ...editorSnapshot, cwd: "wrong" } }])).rejects.toThrow();
 });

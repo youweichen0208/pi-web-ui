@@ -193,6 +193,7 @@ export interface SlashCommandInfo {
  *  workspace-path attachments (inline/reference/lines), raw pasted/dropped
  *  images (imageData) and raw uploaded files (fileData). */
 export interface PromptAttachment {
+	editorSnapshot?: { cwd: string; text: string; dirty: boolean; version?: string };
 	path: string;
 	mode?: "inline" | "reference" | "lines";
 	/** 1-based inclusive line range (mode "lines" only). */
@@ -234,6 +235,7 @@ export type ClientMessage =
 	| { type: "get_commands" }
 	| {
 			type: "prompt";
+			requestId?: string;
 			text: string;
 			/**
 			 * While the agent is streaming: queue this prompt and deliver it after
@@ -1017,6 +1019,7 @@ export type ServerMessage =
 	 *  (path = the listed directory; unknown/unsupported fs falls back to the
 	 *  10s polling). */
 	| { type: "file_changed"; path: string }
+	| { type: "prompt_result"; requestId: string; ok: boolean }
 	| { type: "file_result"; operation: "read" | "write"; requestId?: string; cwd: string; path: string; ok: boolean; version?: string; error?: string; conflict?: boolean }
 	| {
 			type: "file_content";

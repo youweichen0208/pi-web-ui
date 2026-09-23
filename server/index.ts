@@ -570,6 +570,7 @@ wss.on("connection", (ws) => {
 			return;
 		}
 		if (cs.switchingWorkspace && msg.type !== "set_cwd" && msg.type !== "get_state") {
+			if (msg.type === "prompt" && msg.requestId) send({ type: "prompt_result", requestId: msg.requestId, ok: false });
 			if (msg.type === "read_file" || msg.type === "write_file") send({
 				type: "file_result", operation: msg.type === "read_file" ? "read" : "write",
 				requestId: msg.requestId, cwd: msg.cwd ?? cs.cwd, path: msg.path,
@@ -579,7 +580,7 @@ wss.on("connection", (ws) => {
 		}
 		switch (msg.type) {
 			case "prompt":
-				void cs.prompt(msg.text, msg.attachments, msg.queue);
+				void cs.prompt(msg.text, msg.attachments, msg.queue, msg.requestId);
 				break;
 			case "abort":
 				void cs.abort();
