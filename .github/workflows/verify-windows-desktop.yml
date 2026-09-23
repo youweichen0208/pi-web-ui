@@ -56,7 +56,7 @@ jobs:
       # 交叉构建时会直接报错，只有真机 Windows 才能跑；windows-latest runner 自带
       # 编译工具链，这里应该会成功）。产出 nsis 安装包 + portable 绿色版 + zip。
       - name: Build Electron desktop app (real npmRebuild)
-        run: npm run build:electron:win
+        run: npm run build:electron:win -- --publish never
 
       - name: Verify packaged server and portable relaunch
         shell: pwsh
