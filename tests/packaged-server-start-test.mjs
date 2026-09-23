@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { createServer } from "node:net";
 import { once } from "node:events";
 import { pathToFileURL } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 
 const [executable, appRoot] = process.argv.slice(2).map((p) => resolve(p));
 assert(executable && appRoot, "Usage: node tests/packaged-server-start-test.mjs <executable> <resources/app>");
@@ -21,6 +22,41 @@ execFileSync(executable, ["--input-type=module", "--eval", `await import(${JSON.
 const temp = mkdtempSync(join(tmpdir(), "pi-packaged-start-"));
 const workspace = join(temp, "workspace");
 mkdirSync(workspace);
+// Use the packaged runtime and worker, not the checkout's SQLite reader.
+const databasePath = join(workspace, "graph.db");
+const database = new DatabaseSync(databasePath);
+database.exec("CREATE TABLE nodes(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO nodes VALUES(1, 'packaged-sqlite')");
+database.close();
+await new Promise((resolve, reject) => {
+	let settled = false;
+	let workerOutput = "";
+	const worker = fork(join(appRoot, "dist/server/sqlite-worker.js"), [], {
+		execPath: executable, execArgv: [],
+		env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NODE_PATH: "", NODE_OPTIONS: "" },
+		stdio: ["ignore", "ignore", "pipe", "ipc"], serialization: "json",
+	});
+	const finish = (error) => {
+		if (settled) return;
+		settled = true;
+		clearTimeout(timer);
+		worker.kill();
+		if (error) reject(new Error(`${error.message}\n${workerOutput}`)); else resolve();
+	};
+	const timer = setTimeout(() => finish(new Error("Packaged SQLite worker timed out")), 10000);
+	worker.stderr.on("data", (chunk) => { workerOutput = (workerOutput + chunk).slice(-8000); });
+	worker.once("error", finish);
+	worker.once("exit", (code, signal) => finish(new Error(`Packaged SQLite worker exited: ${code ?? signal}`)));
+	worker.once("message", (message) => {
+		try {
+			assert.equal(message.error, undefined);
+			assert.equal(message.data.table, "nodes");
+			assert.equal(message.data.rows[0][1].value, "packaged-sqlite");
+			finish();
+		} catch (error) { finish(error); }
+	});
+	worker.send({ absolute: databasePath, offset: 0 }, (error) => { if (error) finish(error); });
+});
+console.log("PASS packaged SQLite worker: table and row data");
 const listener = createServer();
 await new Promise((resolve, reject) => {
 	listener.once("error", reject);
