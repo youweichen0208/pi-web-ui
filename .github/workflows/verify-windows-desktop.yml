@@ -122,9 +122,15 @@ jobs:
         shell: pwsh
         run: |
           $installer = Get-ChildItem "$env:RUNNER_TEMP/packages/*setup-x64.exe" | Select-Object -First 1
-          $dest = "$env:LOCALAPPDATA/Programs/pi-test"
-          $proc = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$dest") -PassThru
+          $dest = Join-Path $env:LOCALAPPDATA "Programs\pi-test"
+          $proc = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', '/currentuser', "/D=$dest") -PassThru
           if (-not $proc.WaitForExit(180000)) { throw "Installer did not exit within 180 seconds" }
           if ($proc.ExitCode -ne 0) { throw "Installer failed: $($proc.ExitCode)" }
+          if (-not (Test-Path "$dest/pi.exe")) {
+            $installed = Get-ChildItem "$env:LOCALAPPDATA/Programs" -Filter pi.exe -Recurse | Select-Object -First 1
+            if (-not $installed) { throw "Installer exited without an installed pi.exe" }
+            $dest = $installed.DirectoryName
+          }
+          Write-Host "Installed app: $dest"
           node tests/packaged-server-start-test.mjs "$dest/pi.exe" "$dest/resources/app"
           if ($LASTEXITCODE -ne 0) { throw "Installed server cannot start" }
