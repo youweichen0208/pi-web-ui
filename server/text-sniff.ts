@@ -6,7 +6,7 @@
  * 从 agent-service.ts 抽出，行为保持不变。
  */
 
-export type PreviewKind = "image" | "video" | "text" | "none";
+export type PreviewKind = "image" | "video" | "text" | "sqlite" | "none";
 
 const PREVIEW_IMAGE_EXTS = new Set([
 	"png",
@@ -141,7 +141,6 @@ const PREVIEW_TEXT_EXTS = new Set([
 	"csv",
 	"tsv",
 	"lock",
-	"sqlite",
 	"graphql",
 	"gql",
 	"proto",
@@ -159,6 +158,7 @@ export function previewKind(name: string): PreviewKind {
 	const dot = name.lastIndexOf(".");
 	// A leading dot with nothing after it (.gitignore, .env) counts as no ext.
 	const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+	if (["db", "sqlite", "sqlite3", "db3"].includes(ext)) return "sqlite";
 	if (PREVIEW_IMAGE_EXTS.has(ext)) return "image";
 	if (PREVIEW_VIDEO_EXTS.has(ext)) return "video";
 	if (ext === "" || PREVIEW_TEXT_EXTS.has(ext)) return "text";

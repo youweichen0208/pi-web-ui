@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, MutableRefObject } from "react";
 import {
 	FiCheck,
 	FiCode,
@@ -7,32 +7,42 @@ import {
 	FiEdit3,
 	FiEye,
 	FiLink,
-	FiMaximize,
-	FiMinimize,
 	FiPlus,
 	FiSave,
-	FiX,
 	FiZoomIn,
 	FiZoomOut,
 } from "react-icons/fi";
-import type { ClientMessage, FileContent } from "../types";
+import type { ClientMessage, FileContent, ServerMessage } from "../types";
+import { SqlitePreview } from "./SqlitePreview";
+import { CodeFileEditor } from "./CodeFileEditor";
+import { RichMarkdownEditor } from "./RichMarkdownEditor";
 import { Markdown } from "./Markdown";
 import { highlightLines, langFromPath } from "../hljs-lite";
 import { useT } from "../i18n";
 import { getClientId } from "../use-chat";
+import { randomUuid } from "../uuid";
+import { markdownImageUrl } from "../markdown-image";
+import { downloadFile } from "../download";
 import { withToken } from "../auth-token";
 
-/** Cap rendered lines so a pathological file can't freeze the modal. */
+/** Cap rendered lines so a pathological file can't freeze the panel. */
 const MAX_PREVIEW_LINES = 5000;
 
 export interface PreviewFile {
 	path: string;
 	name: string;
+	cwd: string;
 }
 
+export type FileNavigationGuard = (action: () => void) => void;
+
 interface FilePreviewProps {
+	result: Extract<ServerMessage, { type: "file_result" }> | null;
+	guard: MutableRefObject<FileNavigationGuard | null>;
+	disabled: boolean;
+	connected: boolean;
 	file: PreviewFile;
-	/** Latest file content from the server (path-matched inside the modal). */
+	/** Latest server content, matched by workspace, path and request id. */
 	content: FileContent | null;
 	send: (msg: ClientMessage) => boolean;
 	/** Add the selected line range as a "lines" attachment to the chat input. */
@@ -48,7 +58,8 @@ interface Range {
 	end: number;
 }
 
-export function FilePreview({
+export const FilePreviewContent = memo(function FilePreviewContent({
+	result, guard, disabled, connected,
 	file,
 	content,
 	send,
@@ -62,71 +73,117 @@ export function FilePreview({
 	const [sel, setSel] = useState<Range | null>(null);
 	const [dragging, setDragging] = useState(false);
 	const [added, setAdded] = useState(false);
-	// Editing is deliberately opt-in for every newly opened file.
-	const [editing, setEditing] = useState(false);
+	// Editable files retain their visual formatting while accepting input.
+	const [editing, setEditing] = useState(true);
 	const [draft, setDraft] = useState("");
-	// Markdown files open in rendered view; raw source remains one click away.
+	// Markdown preview renders the current draft.
 	const [markdownPreview, setMarkdownPreview] = useState(true);
-	const editViewRef = useRef(false);
 	// Word wrap for the text preview (default on).
 	const [wrap, setWrap] = useState(true);
-	// Fullscreen fills the whole viewport; zoom scales the preview body
-	// (font-size for code/editor/hex, CSS zoom for the rendered markdown).
-	const [fullscreen, setFullscreen] = useState(false);
+	// Zoom scales code/editor/hex and the rendered Markdown.
 	const [zoom, setZoom] = useState(100);
 	const anchorRef = useRef(0);
 	const draggingRef = useRef(false);
 	const addedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	// Request content on open / file change (mount included).
-	useEffect(() => {
+	const readId = useRef("");
+	const pending = useRef<{ id: string; text: string; next?: () => void } | null>(null);
+	const [status, setStatus] = useState<"saved" | "saving" | "failed">("saved");
+	const [error, setError] = useState("");
+	const [conflict, setConflict] = useState(false);
+	const [leave, setLeave] = useState<{ action: () => void } | null>(null);
+	const dirty = loaded !== null && draft !== loaded.text;
+
+	const requestContent = () => {
+		if (disabled) return;
+		readId.current = randomUuid();
 		setLoading(true);
-		setLoaded(null);
-		setSel(null);
-		setEditing(false);
-		setDraft("");
-		setMarkdownPreview(true);
-		editViewRef.current = false;
-		send({ type: "read_file", path: file.path });
-	}, [file.path, send]);
-
-	// Accept responses only for the file currently shown (stale responses for
-	// previously previewed files are ignored).
-	useEffect(() => {
-		if (content && content.path === file.path) {
-			setLoaded(content);
-			if (!editing) setDraft(content.text);
+		setError("");
+		if (!send({ type: "read_file", path: file.path, cwd: file.cwd, requestId: readId.current })) {
 			setLoading(false);
+			setError(t("fileOffline"));
 		}
-	}, [content, editing, file.path]);
+	};
+	useEffect(() => { requestContent(); }, [file.path, file.cwd]);
 
-	// Escape closes; Ctrl/Cmd+A selects everything in the preview.
 	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				handleClose();
-				return;
-			}
-			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && editing) {
-				e.preventDefault();
-				saveEditing();
-				return;
-			}
-			const target = e.target as HTMLElement | null;
-			const typing =
-				target &&
-				(target.tagName === "INPUT" ||
-					target.tagName === "TEXTAREA" ||
-					target.isContentEditable);
-			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !typing) {
-				e.preventDefault();
-				selectAll();
-			}
+		if (content?.requestId !== readId.current || content?.cwd !== file.cwd || content?.path !== file.path) return;
+		readId.current = "";
+		setLoaded(content);
+		setSel(null);
+		setDraft(content.text);
+		setEditing(content.kind === "text" && !content.binary && !content.truncated);
+		setMarkdownPreview(true);
+		setLoading(false);
+		setConflict(false);
+		setStatus("saved");
+	}, [content, file.path, file.cwd]);
+
+	useEffect(() => {
+		if (!result || result.cwd !== file.cwd || result.path !== file.path) return;
+		if (result.operation === "read" && result.requestId === readId.current) {
+			readId.current = "";
+			setLoading(false);
+			setError(result.error ?? t("fileSaveFailed"));
+		}
+		if (result.operation !== "write" || result.requestId !== pending.current?.id) return;
+		const saved = pending.current;
+		if (!saved) return;
+		pending.current = null;
+		if (result.ok) {
+			setLoaded((previous) => previous && ({
+				...previous,
+				text: saved.text,
+				version: result.version,
+				size: new TextEncoder().encode(saved.text).length,
+				lines: saved.text ? saved.text.split("\n").length - (saved.text.endsWith("\n") ? 1 : 0) : 0,
+			}));
+			setStatus("saved");
+			setSel(null);
+			setConflict(false);
+			setError("");
+			saved.next?.();
+		} else {
+			setStatus("failed");
+			setConflict(!!result.conflict);
+			setError(result.error ?? t("fileSaveFailed"));
+		}
+	}, [result, file.cwd, file.path, t]);
+
+	useEffect(() => {
+		if (!loading) return;
+		const fail = () => { readId.current = ""; setLoading(false); setError(t("fileOffline")); };
+		if (!connected) { fail(); return; }
+		const timer = setTimeout(fail, 15000);
+		return () => clearTimeout(timer);
+	}, [loading, connected, t]);
+
+	useEffect(() => {
+		if (status !== "saving") return;
+		const fail = () => {
+			pending.current = null;
+			setStatus("failed");
+			setError(t("fileOffline"));
 		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [onClose, loaded, editing, draft]);
+		if (!connected) { fail(); return; }
+		const timer = setTimeout(fail, 15000);
+		return () => clearTimeout(timer);
+	}, [status, connected, t]);
+
+	useLayoutEffect(() => {
+		guard.current = (action) => {
+			if (pending.current) return;
+			if (dirty) setLeave({ action });
+			else action();
+		};
+		return () => { guard.current = null; };
+	}, [dirty, guard]);
+	useEffect(() => {
+		if (!dirty) return;
+		const prevent = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+		window.addEventListener("beforeunload", prevent);
+		return () => window.removeEventListener("beforeunload", prevent);
+	}, [dirty]);
 
 	// End drag selection on mouseup anywhere.
 	useEffect(() => {
@@ -135,7 +192,10 @@ export function FilePreview({
 			setDragging(false);
 		};
 		window.addEventListener("mouseup", up);
-		return () => window.removeEventListener("mouseup", up);
+		return () => {
+			window.removeEventListener("mouseup", up);
+			if (addedTimer.current) clearTimeout(addedTimer.current);
+		};
 	}, []);
 
 	const lines = useMemo(() => {
@@ -191,42 +251,26 @@ export function FilePreview({
 	const canEdit =
 		loaded !== null && loaded.kind === "text" && !loaded.binary && !loaded.truncated;
 
-	const cancelEditing = () => {
-		setDraft(loaded?.text ?? "");
-		setEditing(false);
-		if (editViewRef.current) setMarkdownPreview(true);
-	};
-
 	const toggleEditing = () => {
-		if (editing) {
-			if (draft !== (loaded?.text ?? "") && !window.confirm(t("discardFileChanges"))) {
-				return;
-			}
-			cancelEditing();
-			return;
-		}
-		if (!canEdit || !loaded) return;
-		editViewRef.current = isMarkdownFile(file.name) && markdownPreview;
-		if (isMarkdownFile(file.name)) setMarkdownPreview(false);
-		setSel(null);
-		setDraft(loaded.text);
-		setEditing(true);
-	};
-
-	const saveEditing = () => {
-		if (!editing || !loaded || !canEdit) return;
-		if (!send({ type: "write_file", path: file.path, text: draft })) return;
-		setEditing(false);
-		if (editViewRef.current) setMarkdownPreview(true);
+		if (!canEdit) return;
+		setEditing((value) => !value);
 		setSel(null);
 	};
 
-	const handleClose = () => {
-		if (editing && draft !== (loaded?.text ?? "") && !window.confirm(t("discardFileChanges"))) {
-			return;
+	const saveEditing = (force = false, next?: () => void) => {
+		if (!loaded || !canEdit || loading || disabled || pending.current) return;
+		const id = randomUuid();
+		pending.current = { id, text: draft, next };
+		setStatus("saving");
+		setError("");
+		if (!send({ type: "write_file", path: file.path, cwd: file.cwd, text: draft, requestId: id, expectedVersion: loaded.version, force })) {
+			pending.current = null;
+			setStatus("failed");
+			setError(t("fileOffline"));
 		}
-		onClose();
 	};
+
+	const handleClose = () => guard.current?.(onClose);
 
 	const setZoomLevel = (next: number) => {
 		setZoom(Math.min(200, Math.max(50, next)));
@@ -240,7 +284,7 @@ export function FilePreview({
 	const kind = loaded?.kind ?? "text";
 	const isMarkdown = isMarkdownFile(file.name);
 	const showMarkdown =
-		isMarkdown && markdownPreview && !editing && kind === "text" && !isBinary;
+		isMarkdown && markdownPreview && kind === "text" && !isBinary;
 	// /api/file resolves against the requesting client's workspace (the opened
 	// project), not the server's startup cwd — pass clientId so they can differ.
 	const mediaUrl = (p: string) =>
@@ -250,146 +294,42 @@ export function FilePreview({
 
 	return (
 		<div
-			className={`fp-overlay ${fullscreen ? "fullscreen" : ""}`}
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) handleClose();
+			className="fp-embedded"
+			onKeyDown={(event) => {
+				if (!event.nativeEvent.isComposing && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+					event.preventDefault();
+					event.stopPropagation();
+					saveEditing();
+				}
 			}}
 		>
 			<div
-				className={`fp ${fullscreen ? "fullscreen" : ""}`}
+				className="fp"
 				style={{ "--fp-zoom": zoom / 100 } as CSSProperties}
 			>
-				<div className="fp-head">
-					<span className="fp-name" title={file.path}>
-						{file.name}
-					</span>
-					<span className="fp-path">{file.path}</span>
-					<span className="fp-meta">
-						{loaded &&
-							kind === "text" &&
-							!isBinary &&
-							t("fileLines", { n: lineCount })}
-						{loaded && ` · ${formatSize(loaded.size)}`}
-					</span>
-					<span className="fp-head-actions">
-						{isMarkdown && kind === "text" && !isBinary && loaded && (
-							<button
-								type="button"
-								className={`fp-attach markdown ${markdownPreview ? "on" : ""}`}
-								data-tip={
-									markdownPreview
-										? t("showMarkdownSource")
-										: t("showMarkdownPreview")
-								}
-								disabled={editing}
-								onClick={() => setMarkdownPreview((value) => !value)}
-							>
-								{markdownPreview ? <FiEye /> : <FiCode />}
-							</button>
-						)}
-						{kind === "text" && !isBinary && loaded && (
-							<button
-								type="button"
-								className={`fp-attach edit ${editing ? "on" : ""}`}
-								data-tip={
-									truncated
-										? t("fileEditTruncated")
-										: editing
-											? t("exitEditFile")
-											: t("editFile")
-								}
-								disabled={!canEdit && !editing}
-								onClick={toggleEditing}
-							>
-								<FiEdit3 />
-							</button>
-						)}
-						{kind === "text" && !isBinary && !showMarkdown && (
-							<button
-								type="button"
-								className={`fp-attach wrap ${wrap ? "on" : ""}`}
-								data-tip={wrap ? t("disableWrap") : t("enableWrap")}
-								onClick={() => setWrap((w) => !w)}
-							>
-								<FiCornerDownLeft />
-							</button>
-						)}
-						{kind === "text" && loaded && (
-							<span className="fp-zoom">
-								<button
-									type="button"
-									className="fp-attach zoom-out"
-									data-tip={t("zoomOut")}
-									disabled={zoom <= 50}
-									onClick={() => setZoomLevel(zoom - 10)}
-								>
-									<FiZoomOut />
-								</button>
-								<button
-									type="button"
-									className="fp-zoom-val"
-									title={t("resetZoom")}
-									onClick={() => setZoom(100)}
-								>
-									{zoom}%
-								</button>
-								<button
-									type="button"
-									className="fp-attach zoom-in"
-									data-tip={t("zoomIn")}
-									disabled={zoom >= 200}
-									onClick={() => setZoomLevel(zoom + 10)}
-								>
-									<FiZoomIn />
-								</button>
-							</span>
-						)}
-						{kind !== "video" && kind !== "none" && (
-							<button
-								type="button"
-								className="fp-attach inline"
-								data-tip={t("attachInlineTip")}
-								onClick={() => onAttach(file.path, file.name, "inline")}
-							>
-								<FiPlus />
-							</button>
-						)}
-						<button
-							type="button"
-							className="fp-attach ref"
-							data-tip={t("referenceTip")}
-							onClick={() => onAttach(file.path, file.name, "reference")}
-						>
-							<FiLink />
-						</button>
-						<button
-							type="button"
-							className={`fp-attach full ${fullscreen ? "on" : ""}`}
-							data-tip={fullscreen ? t("exitFullscreen") : t("fullscreen")}
-							onClick={() => setFullscreen((f) => !f)}
-						>
-							{fullscreen ? <FiMinimize /> : <FiMaximize />}
-						</button>
-						<button
-							type="button"
-							className="fp-close"
-							title={t("close")}
-							onClick={handleClose}
-						>
-							<FiX />
-						</button>
-					</span>
-				</div>
+
 
 				{truncated && kind === "text" && !isBinary && (
 					<div className="fp-notice">{t("previewTruncated")}</div>
 				)}
 
+				{error && <div className="fp-notice" role="alert">{error}
+					<button className="btn" disabled={disabled || status === "saving"} onClick={() => guard.current?.(requestContent)}>{t("fileReload")}</button>
+					{conflict && <button className="btn" disabled={disabled} onClick={() => { if (window.confirm(t("fileOverwriteConfirm"))) saveEditing(true); }}>{t("fileOverwrite")}</button>}
+				</div>}
+				{leave && <div className="fp-leave" role="alertdialog" aria-label={t("fileUnsaved")}>
+					<p>{t("fileLeavePrompt")}</p>
+					<button className="btn primary" disabled={disabled} onClick={() => { const next = leave.action; setLeave(null); saveEditing(false, next); }}>{t("fileSaveContinue")}</button>
+					<button className="btn" onClick={() => { const next = leave.action; setLeave(null); next(); }}>{t("fileDiscard")}</button>
+					<button className="btn" onClick={() => setLeave(null)}>{t("cancel")}</button>
+				</div>}
 				{loading && !loaded && <div className="fp-empty">{t("loading")}</div>}
 
 				{!loading && kind === "none" && !isBinary && (
 					<div className="fp-empty">{t("previewNotSupported")}</div>
 				)}
+
+				{!loading && kind === "sqlite" && <SqlitePreview file={file} disabled={disabled || !connected} />}
 
 				{!loading && kind === "image" && (
 					<div className="fp-media-wrap">
@@ -412,17 +352,19 @@ export function FilePreview({
 					</div>
 				)}
 
-				{!loading && showMarkdown && loaded && (
+				{!loading && showMarkdown && loaded && (editing && canEdit ?
+					<RichMarkdownEditor file={file} value={draft} readOnly={disabled || status === "saving"} onChange={setDraft} /> : (
 					<div className="fp-markdown msg-text">
 						<div className="fp-markdown-zoom">
-							<Markdown text={loaded.text} />
+							<Markdown text={canEdit ? draft : loaded.text} imageSrc={(source) => markdownImageUrl(source, file)} />
 						</div>
 					</div>
-				)}
+				))}
 
 				{!loading &&
 					isBinary &&
 					kind !== "image" &&
+					kind !== "sqlite" &&
 					kind !== "video" &&
 					loaded && (
 						<div className="fp-hex-wrap">
@@ -434,14 +376,13 @@ export function FilePreview({
 						</div>
 					)}
 
-				{!loading && editing && kind === "text" && !isBinary && loaded && (
-					<textarea
-						className={`fp-editor ${wrap ? "" : "no-wrap"}`}
+				{!loading && editing && !showMarkdown && kind === "text" && !isBinary && loaded && (
+					<CodeFileEditor
+						name={file.name}
 						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
-						wrap={wrap ? "soft" : "off"}
-						spellCheck={false}
-						autoFocus
+						readOnly={disabled || status === "saving"}
+						onChange={setDraft}
+						wrap={wrap}
 					/>
 				)}
 
@@ -511,79 +452,127 @@ export function FilePreview({
 					</div>
 				)}
 
-				<div className="fp-foot">
-					{editing ? (
-						<>
-							<span className="fp-hint">{t("editFile")}</span>
-							<div className="fp-actions">
-								<button type="button" className="btn" onClick={toggleEditing}>
-									{t("cancel")}
+				<div className="fp-foot fp-foot-compact">
+					<button className="btn" onClick={handleClose} disabled={status === "saving"}>{t("backToFiles")}</button>
+					<span className="fp-save-status" role="status">{kind === "sqlite" ? t("dbReadOnly") : status === "saving" ? t("fileSaving") : status === "failed" ? t("fileSaveFailed") : dirty ? t("fileUnsaved") : loaded ? t("fileSaved") : ""}</span>
+					<details className="fp-more">
+						<summary aria-label={t("fileMoreActions")}>···</summary>
+						<div className="fp-more-actions">
+						<button className="btn" disabled={disabled} onClick={() => { void downloadFile(file.path, file.name).then((r) => { if (!r.ok && !r.cancelled) setError(r.error); }); }}>{t("downloadFile")}</button>
+						{isMarkdown && kind === "text" && !isBinary && loaded && (
+							<button
+								type="button"
+								className={`fp-attach markdown ${markdownPreview ? "on" : ""}`}
+								data-tip={
+									markdownPreview
+										? t("showMarkdownSource")
+										: t("showMarkdownPreview")
+								}
+								disabled={disabled}
+								onClick={() => setMarkdownPreview((value) => !value)}
+							>
+								{markdownPreview ? <FiEye /> : <FiCode />}
+							</button>
+						)}
+						{kind === "text" && !isBinary && loaded && (
+							<button
+								type="button"
+								className={`fp-attach edit ${editing ? "on" : ""}`}
+								data-tip={
+									truncated
+										? t("fileEditTruncated")
+										: editing
+											? t("exitEditFile")
+											: t("editFile")
+								}
+								disabled={!canEdit && !editing}
+								onClick={toggleEditing}
+							>
+								<FiEdit3 />
+							</button>
+						)}
+						{kind === "text" && !isBinary && !showMarkdown && (
+							<button
+								type="button"
+								className={`fp-attach wrap ${wrap ? "on" : ""}`}
+								data-tip={wrap ? t("disableWrap") : t("enableWrap")}
+								onClick={() => setWrap((w) => !w)}
+							>
+								<FiCornerDownLeft />
+							</button>
+						)}
+						{kind === "text" && loaded && (
+							<span className="fp-zoom">
+								<button
+									type="button"
+									className="fp-attach zoom-out"
+									data-tip={t("zoomOut")}
+									disabled={zoom <= 50}
+									onClick={() => setZoomLevel(zoom - 10)}
+								>
+									<FiZoomOut />
 								</button>
 								<button
 									type="button"
-									className="btn primary"
-									disabled={draft === (loaded?.text ?? "")}
-									onClick={saveEditing}
+									className="fp-zoom-val"
+									title={t("resetZoom")}
+									onClick={() => setZoom(100)}
 								>
-									<FiSave /> {t("saveFile")}
+									{zoom}%
 								</button>
-							</div>
-						</>
-					) : (
-						!showMarkdown && kind === "text" && (
-							<>
-								<span className="fp-hint">
-									{sel
-										? t("selectedRange", {
-												n: selCount,
-												start: sel.start,
-												end: sel.end,
-											})
-										: t("selectLinesHint")}
-								</span>
-								<div className="fp-actions">
-									<button
-										type="button"
-										className="btn"
-										disabled={lines.length === 0}
-										onClick={selectAll}
-									>
-										{t("selectAll")}
-									</button>
-									<button
-										type="button"
-										className="btn"
-										disabled={!sel}
-										onClick={() => setSel(null)}
-									>
-										{t("clearSelection")}
-									</button>
-									<button
-										type="button"
-										className="btn primary"
-										disabled={!sel || isBinary}
-										onClick={addToChat}
-									>
-										{added ? <FiCheck /> : null}
-										{added ? t("addedToChat") : t("addToChat")}
-									</button>
-								</div>
-							</>
-						)
-					)}
+								<button
+									type="button"
+									className="fp-attach zoom-in"
+									data-tip={t("zoomIn")}
+									disabled={zoom >= 200}
+									onClick={() => setZoomLevel(zoom + 10)}
+								>
+									<FiZoomIn />
+								</button>
+							</span>
+						)}
+						{kind !== "video" && kind !== "none" && kind !== "sqlite" && (
+							<button
+								type="button"
+								className="fp-attach inline"
+								data-tip={t("attachInlineTip")}
+								disabled={disabled}
+								onClick={() => onAttach(file.path, file.name, "inline")}
+							>
+								<FiPlus />
+							</button>
+						)}
+						<button
+							type="button"
+							className="fp-attach ref"
+							data-tip={t("referenceTip")}
+							disabled={disabled}
+							onClick={() => onAttach(file.path, file.name, "reference")}
+						>
+							<FiLink />
+						</button>
+
+						</div>
+					</details>
+					{canEdit && <button className="btn primary" disabled={!dirty || disabled || status === "saving"} onClick={() => saveEditing()}><FiSave /> {t("saveFile")}</button>}
+					{!editing && !showMarkdown && kind === "text" && !isBinary && <div className="fp-selection-actions">
+						<span>{sel ? t("selectedRange", { n: selCount, start: sel.start, end: sel.end }) : t("selectLinesHint")}</span>
+						<button className="btn" disabled={!lines.length} onClick={selectAll}>{t("selectAll")}</button>
+						<button className="btn" disabled={!sel} onClick={() => setSel(null)}>{t("clearSelection")}</button>
+						<button className="btn" disabled={!sel || disabled} onClick={addToChat}>{added ? <FiCheck /> : null}{added ? t("addedToChat") : t("addToChat")}</button>
+					</div>}
 				</div>
 			</div>
 		</div>
 	);
+});
+
+/** Optional modal shell for consumers outside the sidebar. */
+export function FilePreview(props: FilePreviewProps) {
+	return <div className="fp-overlay"><FilePreviewContent {...props} /></div>;
 }
 
 function isMarkdownFile(name: string): boolean {
 	const lower = name.toLowerCase();
 	return lower.endsWith(".md") || lower.endsWith(".markdown");
-}
-
-function formatSize(bytes: number): string {
-	if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-	if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-	return `${bytes} B`;
 }

@@ -5,7 +5,8 @@
  * 全部为无状态 fs 操作 + 两个自持的 watcher（当前列出目录、git dir），
  * 经 FilesHost 回调与 ClientSession 解耦。
  */
-import { statSync, writeFileSync, watch } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, statSync, writeFileSync, watch } from "node:fs";
 import { resolve, relative, sep } from "node:path";
 import type { ServerMessage, FileEntry, FileSearchResult } from "./protocol.js";
 import {
@@ -576,38 +577,30 @@ export class FilesService {
 	}
 
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
-	async readFile(relPath: string): Promise<void> {
+	async readFile(relPath: string, options: { requestId?: string; cwd?: string } = {}): Promise<void> {
 		const cwd = this.host.getCwd();
 		try {
+			if (options.cwd !== undefined && options.cwd !== cwd) throw new Error("工作区已改变");
 			const fs = await import("node:fs/promises");
 			const root = cwd;
 			const wp = workspacePath(resolve(root), relPath);
 			if (!wp) {
-				this.host.emit({
-					type: "notice",
-					level: "warning",
-					text: `路径超出工作区：${relPath}`,
-				});
-				return;
+				throw new Error("路径超出工作区");
 			}
 			const { abs, rel } = wp;
 			const stat = await fs.stat(abs);
 			if (!stat.isFile()) {
-				this.host.emit({
-					type: "notice",
-					level: "warning",
-					text: `不是文件：${relPath}`,
-				});
-				return;
+				throw new Error("不是文件");
 			}
 			const name = relPath.split(/[\\/]/).pop() ?? relPath;
 			const kind = previewKind(name);
 			// Media previews stream over the /api/file HTTP endpoint, so only
 			// metadata is sent here — the raw bytes never touch the socket.
-			if (kind === "image" || kind === "video") {
+			if (kind === "image" || kind === "video" || kind === "sqlite") {
 				this.host.emit({
 					type: "file_content",
-				cwd,
+					requestId: options.requestId,
+					cwd,
 					path: rel,
 					name,
 					text: "",
@@ -628,13 +621,17 @@ export class FilesService {
 				const buf = Buffer.alloc(Math.min(stat.size, MAX_PREVIEW_BYTES));
 				const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
 				const data = buf.subarray(0, bytesRead);
-				if (looksLikeText(data)) {
+				if (data.subarray(0, 16).toString("utf8") === "SQLite format 3\0") {
+					this.host.emit({ type: "file_content", requestId: options.requestId, cwd, path: rel, name, text: "", truncated: false, binary: true, kind: "sqlite", lines: 0, size: stat.size });
+				} else if (looksLikeText(data)) {
 					this.host.emit({
 						type: "file_content",
-				cwd,
+						requestId: options.requestId,
+						cwd,
 						path: rel,
 						name,
 						text: decodeText(data),
+						version: createHash("sha256").update(data).digest("hex"),
 						truncated: bytesRead < stat.size,
 						binary: false,
 						kind: "text",
@@ -644,7 +641,8 @@ export class FilesService {
 				} else {
 					this.host.emit({
 						type: "file_content",
-				cwd,
+						requestId: options.requestId,
+						cwd,
 						path: rel,
 						name,
 						text: hexDump(data),
@@ -659,60 +657,33 @@ export class FilesService {
 				await handle.close();
 			}
 		} catch (err) {
-			this.host.emit({
-				type: "notice",
-				level: "error",
-				text: `读取文件失败：${(err as Error).message}`,
-			});
+			this.host.emit({ type: "file_result", operation: "read", requestId: options.requestId, cwd, path: relPath, ok: false, error: (err as Error).message });
 		}
 	}
 
 	/** Save text from the file preview panel within the active workspace. */
-	async writeFile(relPath: string, text: string): Promise<void> {
+	async writeFile(relPath: string, text: string, options: { requestId?: string; cwd?: string; expectedVersion?: string; force?: boolean } = {}): Promise<void> {
 		const cwd = this.host.getCwd();
+		const result = { type: "file_result" as const, operation: "write" as const, requestId: options.requestId, cwd, path: relPath };
 		try {
-			const root = cwd;
-			const wp = workspacePath(resolve(root), relPath);
-			if (!wp) {
-				this.host.emit({
-					type: "notice",
-					level: "warning",
-					text: `路径超出工作区：${relPath}`,
-				});
-				return;
-			}
-			if (Buffer.byteLength(text, "utf8") > 2 * 1024 * 1024) {
-				this.host.emit({
-					type: "notice",
-					level: "warning",
-					text: "文件内容过大，无法保存（上限 2MB）",
-				});
-				return;
-			}
+			if (options.cwd !== undefined && options.cwd !== cwd) throw new Error("工作区已改变");
+			const wp = workspacePath(resolve(cwd), relPath);
+			if (!wp) throw new Error("路径超出工作区");
+			if (Buffer.byteLength(text, "utf8") > 2 * 1024 * 1024) throw new Error("文件内容过大（上限 2MB）");
 			const stat = statSync(wp.abs);
-			if (!stat.isFile()) {
-				this.host.emit({
-					type: "notice",
-					level: "warning",
-					text: `不是文件：${relPath}`,
-				});
+			if (!stat.isFile() || stat.size > MAX_PREVIEW_BYTES) throw new Error("文件不是可编辑的完整文本");
+			const data = readFileSync(wp.abs);
+			if (!looksLikeText(data)) throw new Error("二进制文件不可编辑");
+			const version = createHash("sha256").update(data).digest("hex");
+			if (!options.force && options.expectedVersion !== version) {
+				this.host.emit({ ...result, ok: false, conflict: true, error: "磁盘内容已改变，请重新加载或明确覆盖" });
 				return;
 			}
+			// No await between checking the version and writing: concurrent UI saves serialize.
 			writeFileSync(wp.abs, text, "utf8");
-			this.host.emit({
-				type: "notice",
-				level: "info",
-				text: `已保存：${wp.rel}`,
-			});
-			// Re-read through the same path as the preview request so the client
-			// gets the canonical content, line count and file size after saving.
-			if (cwd === this.host.getCwd()) await this.readFile(wp.rel);
+			this.host.emit({ ...result, ok: true, version: createHash("sha256").update(text).digest("hex") });
 		} catch (err) {
-			this.host.emit({
-				type: "notice",
-				level: "error",
-				text: `保存文件失败：${(err as Error).message}`,
-			});
+			this.host.emit({ ...result, ok: false, error: (err as Error).message });
 		}
 	}
 

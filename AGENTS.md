@@ -14,7 +14,7 @@ Windows 计划任务部署。
 - 仓库（公开）：`git@github.com:xing-shuyin/pi-web-ui.git`
 - npm 包：`@youweichen/pi-web-ui`（发布者 npm 账号 `youweichen`；fork 自原作者 `xingshuyin` 的 `pi-web-ui`）
 - Node 要求：**>= 22.19.0**（pi SDK 的 dist 使用了 `import … with { type: "json" }` 语法）
-- 版本：`package.json` 与 `package-lock.json` 两处同步维护
+- 版本：`package.json` 与 `package-lock.json` 两处同步维护。
 
 ## 2. 技术栈
 
@@ -49,6 +49,7 @@ pi-web-ui/
 │   ├── plugins.ts              # 可选界面组件插件（扫描 <dataDir>/plugins/<id>/）
 │   ├── vision-bridge.ts        # 视觉桥：纯文本主模型看图转写
 │   ├── files-service.ts        # 文件服务（readDirForUI/readFile/searchFiles/watcher）
+│   ├── sqlite-preview.ts       # SQLite 只读预览调度（sqlite-worker/query：隔离进程与分页查询）
 │   ├── scm.ts                  # SCM 只读 git 查询（execFile git status/branches/history/filediff/commit）
 │   ├── patch-node-pty.ts       # node-pty × Node --watch 兼容自愈补丁
 │   ├── ensure-bash.ts          # Windows 轻量 bash 兜底（busybox-w32）
@@ -107,7 +108,7 @@ pi-web-ui/
 
 | 组件 | 职责 |
 | --- | --- |
-| `FilePreview.tsx` | 文件预览弹窗：行号、点选/拖拽/Shift 选区、添加到对话；Markdown 预览可切换原文；可编辑保存 |
+| `FilePreview.tsx` | 右栏代码高亮编辑、Markdown 渲染文档编辑（`/` 插入元素、截图粘贴）与媒体/SQLite 只读预览、只读行选区附件；版本校验保存与离开保护（详见 docs/architecture-attachments.md） |
 | `LeftPanel.tsx` | 左栏：最近项目、运行的对话、历史对话（含删除） |
 | `RightPanel.tsx` | 文件树浏览（list_files），文件名点击→预览，📎/🔗/👁 附件按钮；服务端原生递归 watcher |
 | `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色）；全窗口拖放目标；followUp 排队/steer 插队；斜杠命令选择器 |
@@ -140,7 +141,7 @@ pi-web-ui/
 | **安全边界** | `docs/architecture-core.md` | 默认只绑 loopback；WS Origin/Host 同权威校验；quiesce 准入控制；控制 socket；provider headers 不下发浏览器 |
 | **多对话并发** | `docs/architecture-core.md` | 每对话独立 AgentSessionRuntime；对话按项目归属；set_cwd 切到目标项目对话；8 个上限/项目；共享同一个 ModelRuntime |
 | **附件** | `docs/architecture-attachments.md` | 三种模式（inline/reference/lines）；图片问答（base64 + 缩放）；文件上传（fileData 落盘）；视觉桥（纯文本模型看图转写） |
-| **文件预览** | `docs/architecture-attachments.md` | 512KB 上限 + 内容嗅探（文本/二进制 + GBK 回退）；媒体预览走 HTTP Range；下载绕开 Chrome Safe Browsing |
+| **文件预览** | `docs/architecture-attachments.md` | 修改右栏编辑、保存冲突或草稿离开保护时阅读；512KB 预览、媒体 HTTP Range、下载 |
 | **终端** | `docs/architecture-terminal.md` | 每 Conversation 一个 TerminalManager；spawn 统一准入；按键编码纯函数；输出微批合并；node-pty × --watch 兼容自愈 |
 | **SCM** | `docs/architecture-terminal.md` | 只读 git 查询走 execFile；未跟踪文件显示限量内容；git-dir watcher；写操作走可见终端 tab |
 | **终端接管 bash** | `docs/architecture-terminal.md` | 设置开关（默认关）；哨兵行技术；静默解阻；shell 状态跨调用保留 |

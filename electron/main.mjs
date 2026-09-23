@@ -205,6 +205,19 @@ function createWindow() {
 		mainWindow.on(event, publishWindowState);
 	}
 	mainWindow.webContents.on("did-finish-load", publishWindowState);
+	mainWindow.webContents.on("will-prevent-unload", (event) => {
+		const zh = app.getLocale().startsWith("zh");
+		const choice = dialog.showMessageBoxSync(mainWindow, {
+			type: "warning",
+			message: zh ? "文件有未保存的修改，确定放弃并离开？" : "Discard unsaved file changes and leave?",
+			buttons: zh ? ["取消", "放弃修改"] : ["Cancel", "Discard changes"],
+			defaultId: 0,
+			cancelId: 0,
+		});
+		// Electron allows unloading only when this event is prevented.
+		if (choice === 1) event.preventDefault();
+		else isQuitting = false;
+	});
 
 	// 加载 localhost 上的 server
 	const url = `http://127.0.0.1:${serverPort}`;

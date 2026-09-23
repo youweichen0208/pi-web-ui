@@ -1,0 +1,256 @@
+/** Real browser + isolated backend, zero model tokens. */
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { chromium } from "playwright-core";
+import { CHROME_PATH } from "./lib/chrome.mjs";
+import { portUp } from "./lib/port-utils.mjs";
+import { setTimeout as sleep } from "node:timers/promises";
+
+const PORT = 8997;
+const root = mkdtempSync(join(tmpdir(), "file-editor-ui-"));
+const cwd = join(root, "workspace");
+mkdirSync(cwd);
+mkdirSync(join(cwd, "sub"));
+writeFileSync(join(cwd, "sub", "note.md"), "# Original\n");
+for (let n = 0; n < 100; n++) writeFileSync(join(cwd, "sub", `z${String(n).padStart(3, "0")}.txt`), String(n));
+writeFileSync(join(cwd, "code.ts"), "export const value = 42;\n");
+writeFileSync(join(cwd, "large.txt"), "a".repeat(512 * 1024 + 1));
+writeFileSync(join(cwd, "clip.mp4"), "");
+writeFileSync(join(cwd, "binary.bin"), Buffer.from([0, 1, 2]));
+writeFileSync(join(cwd, "pixel.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+const otherCwd = join(root, "other");
+mkdirSync(otherCwd);
+writeFileSync(join(otherCwd, "note.md"), "other workspace");
+writeFileSync(join(otherCwd, "second.txt"), "second file");
+let server, browser;
+try {
+	assert.equal(await portUp(PORT), false, "isolated port must be free");
+	server = spawn(process.execPath, ["dist/server/index.js"], {
+		env: { ...process.env, PORT: String(PORT), PI_WEB_CWD: cwd, PI_WEB_DATA_DIR: join(root, "data"), PI_CODING_AGENT_DIR: join(root, "agent") },
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	let logs = "";
+	server.stderr.on("data", (chunk) => { logs += chunk; });
+	for (let i = 0; i < 80 && !(await portUp(PORT)); i++) await sleep(250);
+	assert.equal(await portUp(PORT), true, logs);
+	browser = await chromium.launch({ executablePath: CHROME_PATH });
+	const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+	const startEditing = async () => {
+		await page.locator(".fp-more").evaluate((node) => { node.open = true; });
+		if (!(await page.locator(".fp-attach.edit").getAttribute("class")).includes("on")) await page.locator(".fp-attach.edit").click();
+		await page.locator(".fp-more").evaluate((node) => { node.open = true; });
+		if (await page.locator(".fp-rich-document").count()) await page.locator(".fp-attach.markdown").click();
+		await page.locator(".fp-editor").waitFor();
+	};
+	const errors = [];
+	let socket, upstream, disconnectSave = false;
+	const reads = [];
+	const incoming = [];
+	const outgoing = [];
+	await page.routeWebSocket("**/ws", (route) => {
+		socket = route;
+		upstream = route.connectToServer();
+		route.onMessage((wire) => {
+			const msg = JSON.parse(wire.toString());
+			outgoing.push(msg);
+			if (disconnectSave && msg.type === "write_file") { disconnectSave = false; upstream.close(); route.close(); return; }
+			upstream.send(wire);
+		});
+		upstream.onMessage((wire) => {
+			const msg = JSON.parse(wire.toString());
+			if (msg.type === "file_content") reads.push(msg);
+			if (msg.type === "file_result" || msg.type === "cwd_result") incoming.push(msg);
+			route.send(wire);
+		});
+	});
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto(`http://localhost:${PORT}`);
+	await page.locator(".setup-modal .modal-close").waitFor();
+	if (await page.locator(".setup-modal .modal-close").isVisible()) await page.locator(".setup-modal .modal-close").click();
+	await page.locator(".file-dir-main", { hasText: "sub" }).click();
+	await page.locator(".file-name", { hasText: "note.md" }).click();
+	await page.locator(".fp-markdown").waitFor();
+	assert.equal(await page.locator(".fp-editor").count(), 0);
+	await startEditing();
+	await page.locator(".fp-editor").waitFor();
+	assert.equal(await page.locator(".fp-overlay").count(), 0);
+	assert.equal(Math.round((await page.locator(".drawer-right").boundingBox()).width), 480);
+	const resize = await page.locator(".resize-right").boundingBox();
+	await page.mouse.move(resize.x + resize.width / 2, resize.y + 100);
+	await page.mouse.down();
+	await page.mouse.move(resize.x - 37, resize.y + 100);
+	await page.mouse.up();
+	const editWidth = Math.round((await page.locator(".drawer-right").boundingBox()).width);
+	assert(editWidth >= 515);
+	await page.screenshot({ path: "/tmp/pi-file-editor.png" });
+	const editor = page.locator(".fp-editor");
+	await editor.fill("# Draft preview\n");
+	await page.locator(".fp-more").evaluate((node) => { node.open = true; });
+	await page.locator(".fp-attach.markdown").click();
+	await page.locator(".fp-markdown h1", { hasText: "Draft preview" }).waitFor();
+	assert.equal(readFileSync(join(cwd, "sub/note.md"), "utf8"), "# Original\n");
+	await page.locator(".fp-more").evaluate((node) => { node.open = true; });
+	await page.locator(".fp-attach.markdown").click();
+	await editor.focus();
+	await page.keyboard.press("Control+s");
+	await page.waitForFunction(() => document.querySelector(".fp-save-status")?.textContent === "已保存");
+	assert.equal(readFileSync(join(cwd, "sub/note.md"), "utf8"), "# Draft preview\n");
+	console.log("✓ inline editor, draft Markdown and confirmed save to disk");
+	await editor.fill("retained draft");
+	writeFileSync(join(cwd, "sub/note.md"), "external update");
+	await page.locator(".fp-foot").getByRole("button", { name: "保存文件", exact: true }).click();
+	await page.locator(".fp-notice", { hasText: "磁盘内容已改变" }).waitFor();
+	assert.equal(await editor.inputValue(), "retained draft");
+	assert.equal(readFileSync(join(cwd, "sub/note.md"), "utf8"), "external update");
+	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
+	await page.locator(".fp-leave").getByRole("button", { name: "取消", exact: true }).click();
+	assert.equal(await editor.inputValue(), "retained draft");
+	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
+	await page.getByRole("button", { name: "保存后继续", exact: true }).click();
+	await page.locator(".fp-save-status", { hasText: "保存失败" }).waitFor();
+	assert.equal(await editor.inputValue(), "retained draft");
+	page.once("dialog", (dialog) => dialog.accept());
+	await page.getByRole("button", { name: "覆盖磁盘文件", exact: true }).click();
+	await page.waitForFunction(() => document.querySelector(".fp-save-status")?.textContent === "已保存");
+	assert.equal(readFileSync(join(cwd, "sub/note.md"), "utf8"), "retained draft");
+	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
+	await page.locator(".file-name", { hasText: "note.md" }).waitFor();
+	assert.equal(await page.locator(".panel-crumbs").textContent(), "根目录sub");
+	console.log("✓ conflict, failed save retains draft, cancel departure, explicit overwrite, directory restoration");
+	assert.equal(Math.round((await page.locator(".drawer-right").boundingBox()).width), 240);
+	const target = page.locator(".file-name", { hasText: "z050.txt" });
+	await target.scrollIntoViewIfNeeded();
+	const scroll = await page.locator(".panel-right .panel-body").evaluate((node) => node.scrollTop);
+	assert(scroll > 0);
+	await target.click();
+	await page.locator(".fp-edit-number").first().waitFor();
+	assert.equal(await editor.count(), 1);
+	await startEditing();
+	await editor.waitFor();
+	assert.equal(Math.round((await page.locator(".drawer-right").boundingBox()).width), editWidth);
+	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
+	assert.equal(await page.locator(".panel-right .panel-body").evaluate((node) => node.scrollTop), scroll);
+	console.log("✓ separate remembered widths and directory scroll restoration");
+
+	await page.locator(".panel-crumbs .crumb").first().click();
+	for (const name of ["large.txt", "binary.bin", "pixel.png", "clip.mp4"]) {
+		await page.locator(".file-name", { hasText: name }).click();
+		await page.waitForFunction(() => !document.querySelector(".fp-empty")?.textContent?.includes("加载"));
+		if (name === "pixel.png" || name === "clip.mp4") await page.locator(".fp-media").waitFor();
+		else await page.locator(name === "large.txt" ? ".fp-code" : ".fp-hex").waitFor();
+		assert.equal(await page.locator(".fp-editor").count(), 0);
+		await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
+	}
+	console.log("✓ image/video containers, binary and truncated file read-only");
+	await page.locator(".file-name", { hasText: "code.ts" }).click();
+	await page.locator(".fp-code-ink .hljs-keyword").first().waitFor();
+	assert.equal(await page.locator(".fp-edit-number").first().textContent(), "1");
+	assert.equal(await editor.count(), 1);
+	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
+	console.log("✓ default code highlighting/line numbers and rendered Markdown");
+	// Reopen the same path with a new request id; an old response must not reset the draft.
+	await page.locator(".file-dir-main", { hasText: "sub" }).click();
+	await page.locator(".file-name", { hasText: "note.md" }).click();
+	await startEditing();
+	await editor.waitFor();
+	await editor.fill("protected draft");
+	socket.send(JSON.stringify(reads[0]));
+	await sleep(150);
+	assert.equal(await editor.inputValue(), "protected draft");
+	const element = await editor.elementHandle();
+	await editor.evaluate((node) => { node.focus(); node.setSelectionRange(3, 3); });
+	await page.getByRole("tab").nth(2).click();
+	await page.getByRole("tab").nth(0).click();
+	assert.equal(await editor.inputValue(), "protected draft");
+	assert.equal(await element.evaluate((node) => node === document.querySelector(".fp-editor") && node.selectionStart === 3), true);
+	for (let n = 0; n < 5; n++) socket.send(JSON.stringify({ type: "notice", level: "info", text: "render-" + n }));
+	await sleep(100);
+	assert.equal(await element.evaluate((node) => node === document.querySelector(".fp-editor") && node.selectionStart === 3), true);
+	// Hidden file tree has no polling or watcher-driven list requests.
+	const before = outgoing.filter((msg) => msg.type === "list_files").length;
+	await sleep(10500);
+	assert.equal(outgoing.filter((msg) => msg.type === "list_files").length, before);
+	// A chat shortcut cannot save the file editor.
+	await page.locator(".inputbar textarea").evaluate((node) => {
+		node.focus();
+		node.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+	});
+	assert.equal(readFileSync(join(cwd, "sub/note.md"), "utf8"), "retained draft");
+	disconnectSave = true;
+	await editor.focus();
+	await page.keyboard.press("Control+s");
+	await page.locator(".fp-save-status", { hasText: "保存失败" }).waitFor();
+	assert.equal(await editor.inputValue(), "protected draft");
+	await sleep(1800);
+	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
+	await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+	console.log("✓ stale response, retained DOM/cursor, hidden polling, chat shortcut and disconnect");
+	await page.locator(".panel-crumbs .crumb").first().click();
+	await page.setViewportSize({ width: 390, height: 844 });
+	// Open drawer using the topbar's right-panel toggle.
+	if (!(await page.locator(".drawer-right").getAttribute("class")).includes("open")) await page.locator(".topbar .panel-toggle").last().click();
+	await page.locator(".file-dir-main", { hasText: "sub" }).click();
+	await page.locator(".file-name", { hasText: "note.md" }).click();
+	await startEditing();
+	await editor.waitFor();
+	assert.match(await page.locator(".drawer-right").getAttribute("class"), /open/);
+	await editor.fill("mobile draft");
+	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
+	await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+	await page.locator(".file-name", { hasText: "note.md" }).waitFor();
+	await page.setViewportSize({ width: 1440, height: 950 });
+	await page.locator(".file-name", { hasText: "note.md" }).click();
+	await startEditing();
+	await editor.fill("workspace draft");
+	await page.locator(".status-cwd").click();
+	await page.locator(".status-cwd-input").fill(otherCwd);
+	await page.locator(".status-cwd-input").press("Enter");
+	await page.locator(".fp-leave").getByRole("button", { name: "取消", exact: true }).click();
+	assert.equal(await editor.inputValue(), "workspace draft");
+	await page.locator(".status-cwd").click();
+	await page.locator(".status-cwd-input").fill(otherCwd);
+	await page.locator(".status-cwd-input").press("Enter");
+	await page.getByRole("button", { name: "保存后继续", exact: true }).click();
+	await page.locator(".file-name", { hasText: "note.md" }).waitFor().catch(async (error) => {
+		console.error(await page.locator("body").innerText(), outgoing.slice(-10), incoming.slice(-10));
+		throw error;
+	});
+	await page.locator(".file-name", { hasText: "note.md" }).click();
+	await startEditing();
+	await page.waitForFunction(() => document.querySelector(".fp-editor")?.value === "other workspace");
+	assert.equal(readFileSync(join(cwd, "sub/note.md"), "utf8"), "workspace draft");
+	socket.send(JSON.stringify({ ...reads[0], path: "note.md" }));
+	await sleep(150);
+	assert.equal(await editor.inputValue(), "other workspace");
+	console.log("✓ project departure save/cancel and workspace response isolation");
+	await page.locator(".fp-more").evaluate((node) => { node.open = true; });
+	await page.locator(".fp-attach.edit").click();
+	await page.locator(".fp-line").first().click();
+	await page.getByRole("button", { name: "添加到对话", exact: true }).click();
+	await page.locator(".attach-chip.lines").waitFor();
+	await page.locator(".fp-more").evaluate((node) => { node.open = true; });
+	await page.locator(".fp-attach.ref").click();
+	await page.locator(".attach-chip.reference").waitFor();
+	await page.locator(".fp-more").evaluate((node) => { node.open = true; });
+	await page.locator(".fp-attach.edit").click();
+	await editor.fill("search departure draft");
+	await page.getByRole("tab").nth(2).click();
+	await page.keyboard.press("Control+k");
+	await page.locator(".gs-input-row input").fill("second");
+	await page.locator(".gs-item", { hasText: "second.txt" }).click();
+	await page.getByRole("button", { name: "放弃修改", exact: true }).click();
+	await page.locator(".fp-code-editor").waitFor();
+	await startEditing();
+	await page.waitForFunction(() => document.querySelector(".fp-editor")?.value === "second file");
+	assert.equal(await page.locator(".fp-overlay").count(), 0);
+	console.log("✓ line and whole-file attachments, global search with unsaved departure");
+
+	assert.deepEqual(errors, []);
+	console.log("✓ narrow drawer stays open and discard navigation");
+} finally {
+	await browser?.close();
+	if (server?.pid && server.exitCode === null && server.signalCode === null) { server.kill("SIGTERM"); await new Promise((resolve) => server.once("exit", resolve)); }
+}

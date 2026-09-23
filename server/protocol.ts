@@ -326,9 +326,9 @@ export type ClientMessage =
 	| { type: "list_projects" }
 	| { type: "list_files"; path?: string }
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
-	| { type: "read_file"; path: string }
+	| { type: "read_file"; path: string; requestId?: string; cwd?: string }
 	/** Save text edited in the file preview panel. */
-	| { type: "write_file"; path: string; text: string }
+	| { type: "write_file"; path: string; text: string; requestId?: string; cwd?: string; expectedVersion?: string; force?: boolean }
 	| { type: "list_models" }
 	| { type: "set_model"; modelId: string }
 	| { type: "set_thinking"; level: string }
@@ -551,16 +551,43 @@ export interface FileSearchResult {
 	name: string;
 	type: "file" | "dir";
 }
+/** Read-only SQLite HTTP preview; shared by server and sidebar. */
+export interface SqliteCell {
+	kind: "null" | "blob" | "number" | "text";
+	value: string;
+	truncated?: boolean;
+}
+export interface SqlitePreviewData {
+	queryError?: string;
+	tables: { name: string; type: "table" | "view" }[];
+	tablesTruncated: boolean;
+	table: string | null;
+	schema: string;
+	columns: { name: string; type: string; primaryKey: number }[];
+	columnsTruncated: boolean;
+	rows: SqliteCell[][];
+	offset: number;
+	pageSize: number;
+	hasMore: boolean;
+}
+export interface SqlitePreviewResponse {
+	requestId: string;
+	cwd: string;
+	path: string;
+	data?: SqlitePreviewData;
+	error?: string;
+}
+
 export interface FileEntry {
 	name: string;
 	/** Path relative to the workspace root ('' for the root itself). */
 	path: string;
 	type: "file" | "dir";
 	/**
-	 * Preview category (files only; undefined for dirs). "none" files are
-	 * never previewed — the UI doesn't open them and read_file refuses them.
+	 * Preview category (files only; undefined for dirs). Unknown files are
+	 * sniffed on read; SQLite files use the read-only database viewer.
 	 */
-	kind?: "image" | "video" | "text" | "none";
+	kind?: "image" | "video" | "text" | "sqlite" | "none";
 }
 
 // -- source-control panel (wire shapes shared by scm_data) -------------------
@@ -990,8 +1017,11 @@ export type ServerMessage =
 	 *  (path = the listed directory; unknown/unsupported fs falls back to the
 	 *  10s polling). */
 	| { type: "file_changed"; path: string }
+	| { type: "file_result"; operation: "read" | "write"; requestId?: string; cwd: string; path: string; ok: boolean; version?: string; error?: string; conflict?: boolean }
 	| {
 			type: "file_content";
+			requestId?: string;
+			version?: string;
 			cwd: string;
 			path: string;
 			name: string;
@@ -999,7 +1029,7 @@ export type ServerMessage =
 			 * Preview category: media kinds render via the /api/file HTTP
 			 * endpoint (text stays empty); "none" means not previewable.
 			 */
-			kind: "image" | "video" | "text" | "none";
+			kind: "image" | "video" | "text" | "sqlite" | "none";
 			text: string;
 			truncated: boolean;
 			binary: boolean;

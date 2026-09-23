@@ -49,10 +49,36 @@
 
 ## 文件预览协议
 
-- 客户端发 `{ type: "read_file", path }` → 服务端回 `{ type: "file_content", path, name, text, truncated, binary, lines, size }`。
+- 客户端发 `{ type: "read_file", path, cwd?, requestId? }` → 服务端回 `file_content`（含 cwd、requestId、文本原始字节的 SHA-256 version，以及内容/类型/大小）。失败回 `file_result`（operation: read）。
+- 保存发 `write_file`（path、text、cwd、requestId、expectedVersion；明确覆盖时 force: true），成功/失败均回 `file_result`（operation: write、cwd、path、requestId、ok；成功含新 version，冲突含 conflict）。服务端校验工作区、路径、文本类型和大小，比较磁盘当前版本后写入；版本比较到写入之间无 await，以串行处理本进程中的保存。与外部进程之间不提供文件系统事务锁。
+- 写入保留原有 UTF-8 和 2MB 内容上限；磁盘文件超过读取上限或为二进制时拒绝编辑。工作区切换期间读写返回明确失败。协议版本同步至 v13。
 - 只读文件前 **512KB**（`MAX_PREVIEW_BYTES`）；**内容嗅探决定文本还是二进制**：无 NUL、控制字符占比 < 2% 即按文本预览（`looksLikeText`）——未知/无扩展名文件（jsonl、.log.1 等）也能打开；**文本解码带 GBK 回退**（`decodeText`：严格 UTF-8 失败 → GBK → latin1，预览/内联附件/行附件都用它），Windows 老中文文件不再乱码；二进制返回 `binary: true`，`text` 为前 4KB 的**十六进制视图**（`hexDump`，前端 `.fp-hex` 渲染，可下载完整文件）。路径经 `resolve + relative` 校验，`..` 越界直接拒。
 - **媒体预览走 HTTP**：image/video 经 `/api/file?clientId=…&path=…` 流式返回（`sendFile` 支持 Range），路径按**该客户端的会话 cwd**（打开的项目）解析，而非服务启动目录——两者可能不一致；`clientId` 缺失或会话不存在时回退到服务启动 `CWD`。路径校验统一走 `workspacePath()`（agent-service 导出）。
 - 行号语义：**尾随换行不产生空行**（`countLines` 已修正），前后端 split 逻辑必须一致。
+
+### 右栏编辑与草稿保护
+
+文件列表与全局搜索共用 App 的打开入口。文件内容替换右栏列表，`FilePreviewContent` 是内容组件，`FilePreview` 保留可选弹窗外壳。单次只挂载一个文件，按 cwd + path 标识；列表隐藏时保留目录/滚动位置并停止轮询和 watcher 刷新。文本默认在带行号/语法高亮的编辑器中修改；Markdown 默认在渲染文档中编辑，可随时切源码，两者共用一份草稿；只读源码视图保留行选区附件，图片/视频走媒体预览，二进制和截断文本只读。
+
+编辑宽度首次 480px，与列表宽度分开存于 localStorage，并由布局限制在窗口可用空间内。窄屏沿用抽屉。Chat/终端/Git 切换或隐藏抽屉保留同一个编辑器实例；编辑器没有主动刷新和尺寸测量循环。快捷键仅处理文件区域内的 Cmd/Ctrl+S。
+
+草稿只在匹配 cwd、path、requestId 的成功响应后更新保存基线。保存期间编辑器只读，断线/15 秒超时/错误保留草稿并取消待执行导航；冲突提供重新加载和二次确认覆盖。返回列表、另开文件和项目导航经过“保存后继续／放弃修改／取消”保护；保存后继续等待服务端成功。浏览器 beforeunload 提醒未保存修改，Electron 通过 will-prevent-unload 弹原生确认；普通关闭到托盘继续保留草稿。
+
+代码编辑由 `CodeFileEditor` 的原生 textarea 承担输入、选区、IME 与撤销，惯性滚动同步到不可交互的高亮层。高亮层和输入层共用字体、行高、换行宽度与滚动条留白，不测量隐藏编辑器。
+
+Markdown 使用原生 contenteditable，`rich-markdown.tsx` 按语法树的源位置记录段落。未改变的段落按原字节保存，改动段落用 Turndown + GFM 转回 Markdown（表格对齐、任务框、代码围栏保留）；前置元数据、独立 HTML 块、脚注和引用定义显示保留原文的块，可切源码编辑。表格或段落里的行内 HTML（如 `<dataDir>`、`<id>`）以不可执行的原文片段保留，不使整个容器退回源码；`<br>` 显示为换行，编辑保存时保留。内容 DOM 只在打开或外部替换草稿时初始化，按键和保存不会重建光标所在 DOM。文本粘贴按纯文本插入，链接点击不跳转。截图粘贴走 `POST /api/markdown-image`：沿用鉴权和同源校验，要求匹配已连接客户端的工作区，切换中拒绝写入；最多 5 MB 的 PNG/JPEG/WebP/GIF，经内容嗅探和真实路径边界校验，唯一命名写入文档同目录 `.assets/`，不使用有保留期的聊天上传目录。上传成功才在光标处插入图片相对路径，失败显示错误，组件卸载取消请求并忽略迟到结果。渲染时相对路径映射到带 cwd 校验的媒体接口，保存时还原原路径，不写入 token 或 clientId；放弃草稿不自动删除已写入的图片。原生撤销、重做只作用于该文档。正文顶部不显示标题或工具栏，返回、保存及折叠的更多文件操作位于底部。Markdown 输入 `/` 可筛选并插入标题、正文、代码块、表格、列表、任务列表、引用和分隔线；方向键选择、Enter 插入、Escape 保留输入并关闭菜单，代码块和链接内不触发。选中表格单元格后显示局部行列操作，可在当前行下方加行、当前列右侧加列或删除当前行列；保留表头与至少一行一列。Tab/Shift+Tab 在单元格间移动，最后一格 Tab 自动加行，新增列继承相邻列对齐。代码块右上角可选择语言（含纯文本），语言元数据独立于正文撤销栈，切换更新高亮和保存的围栏语言；语言控件从序列化中剔除，不进入 Markdown。渲染编辑中的代码块保持原始行宽，长行横向滚动，不套用行内代码的边框；目录树的空格和换行保持原样。
+
+回归：`tests/rendered-file-edit-test.mjs`（加 `--electron` 跑桌面壳，覆盖代码高亮、Markdown 语义及未改段落保真）、`tests/unit/file-edit.test.ts`（版本与访问校验）、`tests/file-editor-protocol-test.mjs`（真实 WS，纳入 smoke）、`tests/file-editor-ui-test.mjs`（真实浏览器）、`tests/file-editor-electron-test.mjs`（桌面壳）。
+
+### SQLite 只读预览
+
+`.db/.sqlite/.sqlite3/.db3` 文件，以及头部为 `SQLite format 3\0` 的无扩展名文件进入 `SqlitePreview`；文件树保留 `.codegraph` 目录。WS 的 `file_content.kind = "sqlite"` 只传元数据，表数据走带鉴权、同源检查与 cwd/clientId/requestId 归属校验的 `GET /api/sqlite`。返回字段类型、主键标识、表/视图、建表 SQL 和分页数据。切表、切文件或项目期间取消旧请求，迟到结果不更新当前页面；不做定时刷新。
+
+查询复用 Node 内置 `node:sqlite` 的只读连接（[最低支持版本 API](https://nodejs.org/download/release/v22.19.0/docs/api/sqlite.html)），不开扩展、不接受任意 SQL。路径按真实路径验证工作区边界，表名先匹配 sqlite_schema 再做标识符转义。数据库连接额外启用 query_only、关闭 trusted_schema。查询由短生命周期子进程执行，全局最多 2 个，8 秒硬超时终止；锁等待最多 200ms。不会创建/修改业务表，也不引入数据库依赖或迁移。
+
+每页最多 50 行，多读一行判断下一页；有主键时按主键排序。最多 500 张表、64 列、每格 256 字符，BLOB 只读取长度，64 位整数转十进制字符串避免精度丢失。视图查询失败仍保留表选择器，损坏/加密/非 SQLite 文件显示错误。外部修改可能影响翻页结果，可手动刷新回到首页；WAL 库由 SQLite 读取已提交数据。数据库结构操作和 SQL 编辑不在此入口提供。
+
+验证：`tests/unit/sqlite-preview.test.ts`、`tests/sqlite-preview-test.mjs`（加 `--electron` 复核桌面版），覆盖隐藏目录、分页、空/损坏库、特殊标识符、值类型、真实路径边界、只读内容校验、迟到响应与查询超时不阻塞服务。
 
 ### 下载
 

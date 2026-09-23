@@ -9,6 +9,7 @@ import { MermaidDiagram } from "./MermaidDiagram";
 
 interface MarkdownProps {
 	text: string;
+	imageSrc?: (source: string) => string;
 }
 
 /** Shared markdown pipeline + codeblock chrome (copy button). Exported so
@@ -22,19 +23,19 @@ export const rehypePlugins: PluggableList = [
 	[rehypeHighlight, { detect: true, ignoreMissing: true }],
 ];
 
-export function MarkdownBody({ text }: { text: string }) {
+export function MarkdownBody({ text, imageSrc }: MarkdownProps) {
 	return (
-		<ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ pre: PreWithCopy }}>
+		<ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={{ pre: PreWithCopy, ...(imageSrc ? { img: ({ node: _node, src, ...props }) => <img {...props} src={imageSrc(src ?? "")} /> } : {}) }}>
 			{text}
 		</ReactMarkdown>
 	);
 }
 
 /** GFM markdown with syntax highlighting; code blocks get a copy button. */
-export const Markdown = memo(function Markdown({ text }: MarkdownProps) {
+export const Markdown = memo(function Markdown({ text, imageSrc }: MarkdownProps) {
 	return (
 		<div className="md">
-			<MarkdownBody text={text} />
+			<MarkdownBody text={text} imageSrc={imageSrc} />
 		</div>
 	);
 });

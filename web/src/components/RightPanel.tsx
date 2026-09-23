@@ -33,7 +33,7 @@ interface RightPanelProps {
 		mode: AttachMode,
 		isDir?: boolean,
 	) => void;
-	/** Called when the user clicks a file to open the preview modal. */
+	/** Called when the user clicks a file to open the inline file editor. */
 	onPreview: (path: string, name: string) => void;
 	/** Show a transient toast (download errors etc.). */
 	onNotice: (level: "info" | "warning" | "error", text: string) => void;
@@ -62,6 +62,7 @@ export const RightPanel = memo(function RightPanel({
 	// Monotonic request id — responses are only trusted if they match the latest
 	// requested path (guards against out-of-order responses when navigating fast).
 	const reqSeq = useRef(0);
+	const requestedPath = useRef("");
 
 	// Last cwd we listed — when the workspace switches, jump back to its root.
 	const lastCwd = useRef<string | undefined>(undefined);
@@ -69,6 +70,7 @@ export const RightPanel = memo(function RightPanel({
 	const request = useCallback(
 		(path: string, opts?: { silent?: boolean }) => {
 			const seq = ++reqSeq.current;
+			requestedPath.current = path;
 			setCurrentPath(path);
 			// Silent refreshes (polling / cwd switch) keep the current listing on
 			// screen instead of flashing the loading placeholder.
@@ -113,7 +115,9 @@ export const RightPanel = memo(function RightPanel({
 	// change — refresh right away instead of waiting for the 10s poll. The path
 	// guard drops events for a directory the user has already navigated away from.
 	useEffect(() => {
-		if (active && fileChanged && fileChanged.path === currentPath)
+		// A cwd effect above may already have requested a different directory.
+		// Do not let the previous workspace's queued watcher undo that request.
+		if (active && currentPath === requestedPath.current && fileChanged && fileChanged.path === currentPath)
 			request(currentPath, { silent: true });
 	}, [active, fileChanged, currentPath, request]);
 

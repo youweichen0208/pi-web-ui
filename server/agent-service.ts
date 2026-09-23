@@ -3138,13 +3138,13 @@ export class ClientSession {
 	}
 
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
-	async readFile(relPath: string): Promise<void> {
-		return this.files.readFile(relPath);
+	async readFile(relPath: string, options?: { requestId?: string; cwd?: string }): Promise<void> {
+		return this.files.readFile(relPath, options);
 	}
 
 	/** Save text from the file preview panel within the active workspace. */
-	async writeFile(relPath: string, text: string): Promise<void> {
-		return this.files.writeFile(relPath, text);
+	async writeFile(relPath: string, text: string, options?: { requestId?: string; cwd?: string; expectedVersion?: string; force?: boolean }): Promise<void> {
+		return this.files.writeFile(relPath, text, options);
 	}
 
 	async cycleModel(): Promise<void> {

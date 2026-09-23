@@ -74,8 +74,9 @@ export interface ChatState {
 	/** Workspace file listing for the right panel. */
 	files: FileListing | null;
 	gitBranch: Extract<ServerMessage, { type: "git_branch" }> | null;
-	/** Latest file content fetched for the preview panel (path-matched in the modal). */
+	/** Latest file content fetched for the preview panel (request-matched in the file editor). */
 	fileContent: FileContent | null;
+	fileResult: Extract<ServerMessage, { type: "file_result" }> | null;
 
 	/** Last dir-changed push from the server fs.watch (path = listed directory). */
 	fileChanged: { path: string } | null;
@@ -214,6 +215,7 @@ type Action =
 
 	| { type: "file_changed"; path: string }
 	| { type: "file_content"; content: FileContent }
+	| { type: "file_result"; result: Extract<ServerMessage, { type: "file_result" }> }
 	| { type: "models"; models: ModelInfo[]; loading: boolean }
 	| { type: "models_config"; providers: UiProviderConfig[] }
 	| { type: "providers_status"; providers: ProviderStatus[] }
@@ -542,6 +544,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, files: action.files };
 		case "file_changed":
 			return { ...state, fileChanged: { path: action.path } };
+		case "file_result":
+			return { ...state, fileResult: action.result };
 		case "file_content":
 			return { ...state, fileContent: action.content };
 		case "models":
@@ -693,6 +697,7 @@ export function useChat() {
 
 		fileChanged: null,
 		fileContent: null,
+		fileResult: null,
 		models: [],
 		modelsLoading: false,
 		modelsConfig: [],
@@ -984,6 +989,9 @@ export function useChat() {
 					break;
 				case "file_changed":
 					dispatch({ type: "file_changed", path: msg.path });
+					break;
+				case "file_result":
+					dispatch({ type: "file_result", result: msg });
 					break;
 				case "file_content":
 					if (msg.cwd !== confirmedCwd.current || switchRef.current) break;

@@ -11,7 +11,7 @@
 export type * from "../../server/protocol";
 
 // 本地类型引用到的协议类型（export type * 不会把名字带进本地作用域）
-import type { FileEntry } from "../../server/protocol";
+import type { FileEntry, ServerMessage } from "../../server/protocol";
 export type { FileEntry };
 
 // ---------------------------------------------------------------------------
@@ -30,20 +30,7 @@ export interface FileListing {
 }
 
 /** Content of a workspace file fetched for the preview panel. */
-export interface FileContent {
-	path: string;
-	name: string;
-	/**
-	 * Preview category: media kinds render via the /api/file HTTP endpoint
-	 * (text stays empty); "none" means not previewable.
-	 */
-	kind: "image" | "video" | "text" | "none";
-	text: string;
-	truncated: boolean;
-	binary: boolean;
-	lines: number;
-	size: number;
-}
+export type FileContent = Extract<ServerMessage, { type: "file_content" }>;
 
 /** A tool FINISHED executing (payload of the tool_status ServerMessage). */
 export interface ToolStatus {

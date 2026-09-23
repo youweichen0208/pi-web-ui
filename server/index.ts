@@ -36,6 +36,8 @@ import {
 } from "./agent-service.js";
 import { previewKind } from "./text-sniff.js";
 import { startControlServer } from "./control-socket.js";
+import { readSqlitePreview } from "./sqlite-preview.js";
+import { saveMarkdownImage } from "./markdown-images.js";
 import { scheduleUploadCleanup } from "./uploads.js";
 import { ensureWindowsBash, windowsBashDir } from "./ensure-bash.js";
 import { PluginManager, resolvePluginClientFile } from "./plugins.js";
@@ -132,6 +134,38 @@ app.get("/api/health", (_req, res) => {
 	res.json({ ok: true, piVersion: VERSION, cwd: CWD, pid: process.pid });
 });
 
+app.get("/api/sqlite", async (req, res) => {
+	res.setHeader("Cache-Control", "no-store");
+	if (!originAllowed(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+	const { clientId, cwd, path, requestId, table, offset = "0" } = req.query;
+	if (![clientId, cwd, path, requestId, offset].every((value) => typeof value === "string") || (table !== undefined && typeof table !== "string")) {
+		res.status(400).json({ error: "Invalid request" }); return;
+	}
+	const cs = service.get(clientId as string);
+	const identity = { requestId, cwd, path };
+	if (!cs || cs.switchingWorkspace || cs.cwd !== cwd) { res.status(409).json({ ...identity, error: "Workspace unavailable" }); return; }
+	const controller = new AbortController();
+	res.once("close", () => controller.abort());
+	try {
+		const data = await readSqlitePreview({ cwd: cwd as string, path: path as string, table: table as string | undefined, offset: Number(offset) }, controller.signal);
+		if (controller.signal.aborted) return;
+		if (cs.switchingWorkspace || cs.cwd !== cwd) { res.status(409).json({ ...identity, error: "Workspace changed" }); return; }
+		res.json({ ...identity, data });
+	} catch (error) {
+		if (!controller.signal.aborted) res.status(400).json({ ...identity, error: (error as Error).message });
+	}
+});
+
+app.post("/api/markdown-image", (req, res) => {
+	if (!originAllowed(req) || !req.is("application/json")) { res.status(403).json({ error: "Forbidden" }); return; }
+	const { clientId, cwd, path, data } = req.body ?? {};
+	if (![clientId, cwd, path, data].every((value) => typeof value === "string")) { res.status(400).json({ error: "Invalid request" }); return; }
+	const cs = service.get(clientId);
+	if (!cs || cs.switchingWorkspace || cs.cwd !== cwd || service.quiesceInfo().quiesced) { res.status(409).json({ error: "Workspace unavailable" }); return; }
+	try { res.json({ path: saveMarkdownImage(cwd, path, data) }); }
+	catch (error) { res.status(400).json({ error: (error as Error).message }); }
+});
+
 /**
  * Stream a workspace file over HTTP.
  *
@@ -153,6 +187,7 @@ app.get("/api/file", async (req, res) => {
 		const cid =
 			typeof req.query.clientId === "string" ? req.query.clientId : "";
 		const cs = cid ? service.get(cid) : undefined;
+		if (req.query.cwd && (!cs || cs.switchingWorkspace || req.query.cwd !== cs.cwd)) { res.status(409).end("workspace changed"); return; }
 		const wp = workspacePath(cs?.cwd ?? CWD, raw);
 		if (!wp) {
 			res.status(400).end("path outside workspace");
@@ -534,7 +569,14 @@ wss.on("connection", (ws) => {
 			pending.push(msg);
 			return;
 		}
-		if (cs.switchingWorkspace && msg.type !== "set_cwd" && msg.type !== "get_state") return;
+		if (cs.switchingWorkspace && msg.type !== "set_cwd" && msg.type !== "get_state") {
+			if (msg.type === "read_file" || msg.type === "write_file") send({
+				type: "file_result", operation: msg.type === "read_file" ? "read" : "write",
+				requestId: msg.requestId, cwd: msg.cwd ?? cs.cwd, path: msg.path,
+				ok: false, error: "工作区切换中，请稍后重试",
+			});
+			return;
+		}
 		switch (msg.type) {
 			case "prompt":
 				void cs.prompt(msg.text, msg.attachments, msg.queue);
@@ -620,10 +662,10 @@ wss.on("connection", (ws) => {
 				void cs.scmQuery("commit", msg.reqId, { hash: msg.hash });
 				break;
 			case "read_file":
-				void cs.readFile(msg.path);
+				void cs.readFile(msg.path, msg);
 				break;
 			case "write_file":
-				void cs.writeFile(msg.path, msg.text);
+				void cs.writeFile(msg.path, msg.text, msg);
 				break;
 			case "list_models":
 				void cs.listModels();

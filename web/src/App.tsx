@@ -36,7 +36,7 @@ import { ModelConfigModal } from "./components/ModelConfigModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { BgTasksModal } from "./components/BgTasksModal";
 import { GlobalSearchModal } from "./components/GlobalSearchModal";
-import { FilePreview, type PreviewFile } from "./components/FilePreview";
+import { FilePreviewContent, type FileNavigationGuard, type PreviewFile } from "./components/FilePreview";
 import { useChat } from "./use-chat";
 import type {
 	ClientMessage,
@@ -131,11 +131,11 @@ const EMPTY_MESSAGES: UiMessage[] = [];
 const PANEL_MIN = 180;
 const PANEL_MAX = 520;
 const PANEL_DEFAULT = 240;
-type PanelSide = "left" | "right";
+type PanelSide = "left" | "right" | "editor";
 const panelWidthKey = (side: PanelSide) => `pi-web-ui:${side}-panel-width`;
 function readPanelWidth(side: PanelSide): number {
 	const v = Number(localStorage.getItem(panelWidthKey(side)));
-	return Number.isFinite(v) && v >= PANEL_MIN && v <= PANEL_MAX ? v : PANEL_DEFAULT;
+	return Number.isFinite(v) && v >= PANEL_MIN && v <= PANEL_MAX ? v : side === "editor" ? 480 : PANEL_DEFAULT;
 }
 
 /** 面板与主区之间的拖拽分隔条：拖动改宽度，双击复位。 */
@@ -175,10 +175,14 @@ function ResizeHandle({
 	);
 	return (
 		<div
-			className={`resize-handle resize-${side}`}
+			className={`resize-handle resize-${side === "editor" ? "right" : side}`}
 			title={t("dragToResize")}
 			onPointerDown={onPointerDown}
-			onDoubleClick={() => onResize(PANEL_DEFAULT)}
+			onDoubleClick={() => {
+				const value = side === "editor" ? 480 : PANEL_DEFAULT;
+				onResize(value);
+				localStorage.setItem(panelWidthKey(side), String(value));
+			}}
 		/>
 	);
 }
@@ -188,7 +192,7 @@ type ViewName = "chat" | "terminal" | "git" | `plugin:${string}`;
 
 export function App() {
 	const t = useT();
-	const { chat, send, dismissNotice, pushNotice, setPendingEcho, terminal, switching, switchError } = useChat();
+	const { chat, send: rawSend, dismissNotice, pushNotice, setPendingEcho, terminal, switching, switchError } = useChat();
 	const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 	const attachmentDrafts = useRef(new Map<string, PendingAttachment[]>());
 	const attachmentKey = useRef(chat.activeConversationId);
@@ -199,10 +203,21 @@ export function App() {
 			attachmentKey.current = chat.activeConversationId;
 			setAttachments(attachmentDrafts.current.get(chat.activeConversationId) ?? []);
 			attachmentDrafts.current.delete(chat.activeConversationId);
-			setPreviewFile(null);
 		}
 	}, [chat.activeConversationId, attachments]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
+	const fileGuard = useRef<FileNavigationGuard | null>(null);
+	const send = useCallback((message: ClientMessage) => {
+		const navigation = message.type === "set_cwd" || message.type === "switch_session" ||
+			(message.type === "prompt" && /^\/cwd(?:\s|$)/.test(message.text));
+		if (navigation && fileGuard.current) {
+			setView("chat");
+			setDrawer("right");
+			fileGuard.current(() => { if (rawSend(message)) setPreviewFile(null); });
+			return false;
+		}
+		return rawSend(message);
+	}, [rawSend]);
 	/** Full-window file drag in progress (issue #19) — shows the app-wide
 	 *  drop overlay; drop anywhere attaches, the input bar keeps priority via
 	 *  its own stopPropagation handlers. */
@@ -233,7 +248,9 @@ export function App() {
 	const [leftWidth, setLeftWidth] = useState(() => readPanelWidth("left"));
 	const [rightWidth, setRightWidth] = useState(() => readPanelWidth("right"));
 	const resizeLeft = useCallback((w: number) => setLeftWidth(w), []);
+	const [editorWidth, setEditorWidth] = useState(() => readPanelWidth("editor"));
 	const resizeRight = useCallback((w: number) => setRightWidth(w), []);
+	const resizeEditor = useCallback((w: number) => setEditorWidth(w), []);
 	// Mobile: which side panel is open as a drawer (null = both closed).
 	const [drawer, setDrawer] = useState<"left" | "right" | null>(null);
 	// Viewport class: ≤768px turns the side panels into sliding drawers
@@ -261,6 +278,18 @@ export function App() {
 		mq.addEventListener("change", onChange);
 		return () => mq.removeEventListener("change", onChange);
 	}, []);
+	const openPreview = useCallback((path: string, name: string) => {
+		if (switching || !chat.state?.cwd) return;
+		const cwd = chat.state.cwd;
+		// Reveal the editor before asking about its draft, even when search
+		// was opened from Git/Terminal or a closed mobile drawer.
+		setView("chat");
+		setDrawer("right");
+		if (previewFile?.cwd === cwd && previewFile.path === path) return;
+		const open = () => setPreviewFile({ path, name, cwd });
+		if (fileGuard.current) fileGuard.current(open);
+		else open();
+	}, [switching, chat.state?.cwd, previewFile]);
 	// Setup modal: one-time prompt when the pi agent config is missing.
 	const [setupDismissed, setSetupDismissed] = useState(false);
 	// Custom model config panel (model dropdown → 管理模型).
@@ -386,7 +415,7 @@ export function App() {
 		}
 	}, [chat.notices, sound]);
 
-	const attach = (
+	const attach = useCallback((
 		path: string,
 		name: string,
 		mode: "inline" | "reference" | "lines",
@@ -405,7 +434,11 @@ export function App() {
 				? prev
 				: [...prev, { path, name, mode, isDir, ...(lines ? { lines } : {}) }],
 		);
-	};
+	}, []);
+	const closePreview = useCallback(() => setPreviewFile(null), []);
+	const attachPreviewLines = useCallback((path: string, name: string, start: number, end: number) => {
+		attach(path, name, "lines", false, { start, end });
+	}, [attach]);
 	const removeAttachment = (pathOrKey: string) =>
 		setAttachments((prev) =>
 			prev.filter((a) => (a.key ? a.key !== pathOrKey : a.path !== pathOrKey)),
@@ -662,9 +695,9 @@ export function App() {
 			</div>
 			<div
 				className="layout"
-				style={{ "--left-w": `${leftWidth}px`, "--right-w": `${rightWidth}px` } as CSSProperties}
+				style={{ "--left-w": `${leftWidth}px`, "--right-w": `${previewFile ? editorWidth : rightWidth}px` } as CSSProperties}
 			>
-				{drawer && (
+				{drawer && (isMobile || isDesktopNarrow) && (
 					<div className="drawer-backdrop" onClick={() => setDrawer(null)} />
 				)}
 				<div className={`view-pane ${view === "chat" ? "" : "hidden"}`}>
@@ -737,28 +770,42 @@ export function App() {
 						/>
 					</main>
 					{!isMobile && !isDesktopNarrow && (
-						<ResizeHandle side="right" width={rightWidth} onResize={resizeRight} />
+						<ResizeHandle side={previewFile ? "editor" : "right"} width={previewFile ? editorWidth : rightWidth} onResize={previewFile ? resizeEditor : resizeRight} />
 					)}
 					<div
 						className={`panel-drawer drawer-right ${drawer === "right" ? "open" : ""}`}
 					>
-						<RightPanel
-							active={!switching && view === "chat" && ((!isMobile && !isDesktopNarrow) || drawer === "right")}
-							send={panelSend}
-							files={chat.files}
-							fileChanged={chat.fileChanged}
-							widgets={chat.widgets}
-							cwd={chat.state?.cwd ?? ""}
-							onAttach={(path, name, mode, isDir) => {
-								setDrawer(null);
-								attach(path, name, mode, isDir);
-							}}
-							onPreview={(path, name) => {
-								setDrawer(null);
-								setPreviewFile({ path, name });
-							}}
-							onNotice={(level, text) => pushNotice(level, text)}
-						/>
+						<div className="file-list-host" hidden={!!previewFile}>
+							<RightPanel
+								active={!previewFile && !switching && view === "chat" && ((!isMobile && !isDesktopNarrow) || drawer === "right")}
+								send={panelSend}
+								files={chat.files}
+								fileChanged={chat.fileChanged}
+								widgets={chat.widgets}
+								cwd={chat.state?.cwd ?? ""}
+								onAttach={(path, name, mode, isDir) => {
+									setDrawer(null);
+									attach(path, name, mode, isDir);
+								}}
+								onPreview={openPreview}
+								onNotice={(level, text) => pushNotice(level, text)}
+							/>
+						</div>
+						{previewFile && (
+							<FilePreviewContent
+								key={`${previewFile.cwd}:${previewFile.path}`}
+								file={previewFile}
+								guard={fileGuard}
+								result={chat.fileResult}
+								disabled={!!switching || previewFile.cwd !== chat.state?.cwd}
+								connected={chat.status === "open"}
+								content={chat.fileContent}
+								send={send}
+								onAddLines={attachPreviewLines}
+								onAttach={attach}
+								onClose={closePreview}
+							/>
+						)}
 					</div>
 				</div>
 				<div className={`view-pane ${view === "terminal" ? "" : "hidden"}`}>
@@ -785,18 +832,7 @@ export function App() {
 				})}
 			</div>
 			<FooterBar chat={chat} send={send} />
-			{previewFile && (
-				<FilePreview
-					file={previewFile}
-					content={chat.fileContent}
-					send={send}
-					onAddLines={(path, name, start, end) =>
-						attach(path, name, "lines", false, { start, end })
-					}
-					onAttach={(path, name, mode) => attach(path, name, mode)}
-					onClose={() => setPreviewFile(null)}
-				/>
-			)}
+
 			{chat.ready &&
 				chat.state &&
 				chat.state.piConfigured === false &&
@@ -852,9 +888,7 @@ export function App() {
 					onSwitchProject={(path) => {
 						void send({ type: "set_cwd", path });
 					}}
-					onPreviewFile={(path, name) => {
-						setPreviewFile({ path, name });
-					}}
+					onPreviewFile={openPreview}
 				/>
 			)}
 		</div>

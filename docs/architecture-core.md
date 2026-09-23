@@ -27,7 +27,7 @@
 
 ## 协议单源（types.ts 是 re-export shim，不再手工同步）
 
-`server/protocol.ts` 是唯一事实源；`web/src/types.ts` 用 `export type * from "../../server/protocol"` 全量再导出（纯类型，构建时擦除），前端本地类型（FileContent/FileListing/ToolStatus）附在 shim 下方。
+`server/protocol.ts` 是唯一事实源；`web/src/types.ts` 用 `export type * from "../../server/protocol"` 全量再导出（纯类型，构建时擦除），前端本地类型（FileListing/ToolStatus）附在 shim 下方；FileContent 直接从 ServerMessage 提取。
 
 新增/修改任何消息：只改 `protocol.ts`，然后在 `server/index.ts` 的 `dispatch` switch 和 `web/src/use-chat.ts` 的 `onmessage` switch 各加一个分支。注意 protocol.ts 必须保持**纯类型导出**（不能加 const/function 等运行时代码，否则破坏 type-only 前提）；`npm run check:protocol` 守护这两个不变量。
 
@@ -105,7 +105,7 @@ bash 工具卡片运行中显示「停止」→ 发 `{ type: "abort_bash" }` →
 过期时先返回缓存并后台刷新；历史查询缓存上限 24 个项目、每项目 200 条摘要，项目列表只缓存路径/时间聚合，不保留 SDK 的全文检索字符串。新建、删除、重命名会话及移除项目清除相关缓存。
 文件扫描仅合并进行中的相同工作区/路径请求，不缓存文件内容。
 
-草稿和附件按会话隔离；消息列表保留有限的滚动位置、折叠状态及窗口化高度数据，
+聊天输入草稿和附件按会话隔离；文件编辑草稿按工作区/路径保护离开（见 architecture-attachments.md）。消息列表保留有限的滚动位置、折叠状态及窗口化高度数据，
 不保留各项目的消息 DOM。终端、Git、插件宿主首次访问后才挂载；隐藏文件栏停止
 轮询，隐藏 Chat 跳过消息列表更新，隐藏终端继续接收输出，仅在显示时适配尺寸。
 
