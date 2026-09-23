@@ -134,3 +134,28 @@ jobs:
           Write-Host "Installed app: $dest"
           node tests/packaged-server-start-test.mjs "$dest/pi.exe" "$dest/resources/app"
           if ($LASTEXITCODE -ne 0) { throw "Installed server cannot start" }
+
+  diagnose-portable:
+    if: ${{ inputs.release_tag != '' }}
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Download published portable EXE
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release download $env:RELEASE_TAG --pattern '*win-x64.exe' --dir "$env:RUNNER_TEMP/portable-package"
+          if ($LASTEXITCODE -ne 0) { throw "Release download failed" }
+      - name: Verify portable first launch and relaunch
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "$env:RUNNER_TEMP/portable-package/*win-x64.exe" | Select-Object -First 1
+          ./tests/portable-relaunch-test.ps1 -PortableExe $exe.FullName
