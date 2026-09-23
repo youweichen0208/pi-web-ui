@@ -86,7 +86,7 @@ pi-web-ui/
 ├── scripts/check-protocol-sync.mjs  # 守护 types.ts shim 单源机制 + protocol.ts 纯类型约束
 ├── .github/workflows/ci.yml    # CI：协议同步 → typecheck → build → vitest → 冒烟
 ├── extensions/                 # pi 扩展：webui.ts（/webui 命令启动本机服务并打开浏览器）
-├── electron/                   # Electron 桌面版壳子（main.mjs 主进程 + preload.mjs），本地构建，不进 npm 包
+├── electron/                   # Electron 桌面版壳子（main.mjs 主进程 + 沙箱兼容的 preload.cjs），本地构建，不进 npm 包
 ├── electron-builder.yml        # Electron 打包配置（mac dmg/zip、win nsis/portable、linux AppImage/deb）
 ├── build/                      # electron-builder 用的图标源文件（icon.png 1024x1024 + icon.ico）
 ├── dev/                        # 本地开发辅助（不入 npm 包）
@@ -135,13 +135,14 @@ pi-web-ui/
 | 主题 | 文档 | 要点 |
 | --- | --- | --- |
 | **快照驱动** | `docs/architecture-core.md` | 服务端是唯一事实源，60ms 节流推快照；增量快照（snapshot_delta）；message_delta 实时增量通道不经 snapshot 通道；WS permessage-deflate 压缩；多标签页序列化共享；协议版本协商 |
+| **项目切换缓存** | `docs/architecture-core.md` | 修改切换、缓存或异步归属时阅读：请求确认、权威状态与展示分离、3 项目/32MiB LRU、隐藏视图刷新策略 |
 | **协议单源** | `docs/architecture-core.md` | `server/protocol.ts` 是唯一事实源；`web/src/types.ts` 是 `export type *` shim；新增消息只改 protocol.ts，两端 switch 各加分支 |
 | **安全边界** | `docs/architecture-core.md` | 默认只绑 loopback；WS Origin/Host 同权威校验；quiesce 准入控制；控制 socket；provider headers 不下发浏览器 |
 | **多对话并发** | `docs/architecture-core.md` | 每对话独立 AgentSessionRuntime；对话按项目归属；set_cwd 切到目标项目对话；8 个上限/项目；共享同一个 ModelRuntime |
 | **附件** | `docs/architecture-attachments.md` | 三种模式（inline/reference/lines）；图片问答（base64 + 缩放）；文件上传（fileData 落盘）；视觉桥（纯文本模型看图转写） |
 | **文件预览** | `docs/architecture-attachments.md` | 512KB 上限 + 内容嗅探（文本/二进制 + GBK 回退）；媒体预览走 HTTP Range；下载绕开 Chrome Safe Browsing |
 | **终端** | `docs/architecture-terminal.md` | 每 Conversation 一个 TerminalManager；spawn 统一准入；按键编码纯函数；输出微批合并；node-pty × --watch 兼容自愈 |
-| **SCM** | `docs/architecture-terminal.md` | 只读 git 查询走 execFile 直跑（不经过 shell）；git-dir watcher；写操作走可见终端 tab |
+| **SCM** | `docs/architecture-terminal.md` | 只读 git 查询走 execFile；未跟踪文件显示限量内容；git-dir watcher；写操作走可见终端 tab |
 | **终端接管 bash** | `docs/architecture-terminal.md` | 设置开关（默认关）；哨兵行技术；静默解阻；shell 状态跨调用保留 |
 | **插件** | `docs/architecture-plugins.md` | <dataDir>/plugins/<id>/ 目录（manifest.json + index.mjs + client/entry.mjs）；attach 时热重扫；MCP 工具桥 |
 | **工具结束实时状态** | `docs/architecture-core.md` | tool_status 先于快照落盘，浏览器卡片立即从「执行中」→「已结束」 |
@@ -202,7 +203,7 @@ npm publish --access public
 - **CLI 前台**：`pi-web-ui --port 9000 --cwd /path`
 - **开机自启**：`pi-web-ui server install`（macOS→launchd / Linux→systemd / Windows→计划任务）
 - **Docker**：`docker compose up -d`
-- **桌面版（Electron）**：`npm run build && npm run dev:electron` 本地跑；`npm run build:electron:mac/:win/:linux` 出安装包（`release/`，未发布，需真机构建）；详见 `docs/deployment.md`
+- **桌面版（Electron）**：`npm run build && npm run dev:electron` 本地跑；`npm run build:electron:mac/:win/:linux` 出安装包（`release/`，未发布，需真机构建）。改窗口顶栏、preload 接口或窄窗口布局时看 `docs/deployment.md` 的桌面窗口外壳说明。
 
 ## 9. 常见坑
 
@@ -217,6 +218,7 @@ npm publish --access public
 - **Playwright 脚本**：headless shell 路径写死在本机，CI/换机需要改 `HEADLESS` 常量。
 
 - **Electron `fork()` 必须显式带 `ipc`**：`child_process.fork()` 传自定义 `stdio` 数组时，不含 `'ipc'` 会直接抛 `ERR_CHILD_PROCESS_IPC_REQUIRED`（`electron/main.mjs` 里是 `stdio: ["ignore", "pipe", "pipe", "ipc"]`，别漏了最后一项）。
+- **Electron 沙箱 preload 用 CommonJS**：`BrowserWindow` 默认沙箱不执行 preload 中的 ESM `import`；保持 `preload.cjs` 与 `require("electron")`，否则桌面标记与窗口控制接口均不会注入。
 - **node-pty 没有 linux 预编译包**：`node_modules/node-pty/prebuilds/` 只有 darwin-arm64/x64 和 win32-arm64/x64，本项目目标平台是 mac/win 桌面机；在纯 Linux 环境（比如某些 CI/沙箱）直接跑 server 会在加载终端功能时崩，与 Electron 改动无关，是环境限制。
 
 ---

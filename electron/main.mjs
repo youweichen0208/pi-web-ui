@@ -25,7 +25,7 @@
  *     不受影响）。
  */
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, dialog, Notification } from "electron";
+import { app, BrowserWindow, Tray, Menu, nativeImage, dialog, Notification, ipcMain } from "electron";
 import { fork } from "node:child_process";
 import { createServer } from "node:net";
 import { existsSync, mkdirSync } from "node:fs";
@@ -97,7 +97,7 @@ async function startServer() {
 	}
 
 	// 桌面版数据目录与命令行版分开（见文件头注释），确保存在
-	const dataDir = join(
+	const dataDir = process.env.PI_WEB_DATA_DIR || join(
 		process.env.HOME || process.env.USERPROFILE || "~",
 		".pi-web-desktop",
 	);
@@ -182,13 +182,29 @@ function createWindow() {
 		minHeight: 600,
 		title: "pi",
 		show: false,
+		...(process.platform === "darwin"
+			? { titleBarStyle: "hidden", trafficLightPosition: { x: 18, y: 17 } }
+			: { frame: false }),
 		webPreferences: {
-			preload: join(__dirname, "preload.mjs"),
+			preload: join(__dirname, "preload.cjs"),
 			nodeIntegration: false,
 			contextIsolation: true,
 		},
 		icon: join(__dirname, "icon.png"),
 	});
+
+	const publishWindowState = () => {
+		if (mainWindow && !mainWindow.isDestroyed()) {
+			mainWindow.webContents.send("pi-window-state", {
+				maximized: mainWindow.isMaximized(),
+				fullscreen: mainWindow.isFullScreen(),
+			});
+		}
+	};
+	for (const event of ["maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "restore"]) {
+		mainWindow.on(event, publishWindowState);
+	}
+	mainWindow.webContents.on("did-finish-load", publishWindowState);
 
 	// 加载 localhost 上的 server
 	const url = `http://127.0.0.1:${serverPort}`;
@@ -216,6 +232,27 @@ function createWindow() {
 		mainWindow.webContents.openDevTools({ mode: "detach" });
 	}
 }
+
+// Only the app's main webContents may control its own window. The renderer
+// receives fixed operations, never an arbitrary Electron method or channel.
+ipcMain.handle("pi-window-action", (event, action) => {
+	const win = mainWindow;
+	if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
+	switch (action) {
+		case "minimize": win.minimize(); break;
+		case "toggle-maximize":
+			if (win.isFullScreen()) win.setFullScreen(false);
+			else if (win.isMaximized()) win.unmaximize();
+			else win.maximize();
+			break;
+		case "close": win.close(); break;
+	}
+});
+ipcMain.handle("pi-window-state-read", (event) => {
+	const win = mainWindow;
+	if (!win || win.isDestroyed() || event.sender !== win.webContents) return null;
+	return { maximized: win.isMaximized(), fullscreen: win.isFullScreen() };
+});
 
 // ── 托盘 ──
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FiFile, FiFolder } from "react-icons/fi";
+import { FiFile, FiFolder, FiGitBranch } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import { useT } from "../i18n";
 
@@ -8,12 +8,13 @@ interface FooterBarProps {
 	send: (
 		msg:
 			| { type: "complete_path"; path: string }
-			| { type: "set_cwd"; path: string },
+			| { type: "set_cwd"; path: string }
+			| { type: "get_git_branch" },
 	) => boolean;
 }
 
 /**
- * Compact status bar: connection, context usage, cost, session, queue, and the
+ * Compact status bar: connection, context usage, Git branch, session, queue, and the
  * workspace path — click the path to switch directories (with completion).
  */
 export function FooterBar({ chat, send }: FooterBarProps) {
@@ -24,6 +25,16 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 	const [selIdx, setSelIdx] = useState(0);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const completions = chat.pathCompletions;
+
+	useEffect(() => {
+		if (!chat.ready || !state?.cwd) return;
+		send({ type: "get_git_branch" });
+	}, [chat.ready, state?.cwd, chat.scmDirty, send]);
+	useEffect(() => {
+		const refresh = () => { if (chat.ready) send({ type: "get_git_branch" }); };
+		window.addEventListener("focus", refresh);
+		return () => window.removeEventListener("focus", refresh);
+	}, [chat.ready, send]);
 
 	// Debounced path completion requests while editing.
 	useEffect(() => {
@@ -47,6 +58,8 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 
 	if (!state) return null;
 	const s = state.stats;
+	const git = chat.gitBranch?.cwd === state.cwd ? chat.gitBranch : null;
+	const branchLabel = git?.branch ? (git.detached ? `${t("scmDetached")} · ${git.branch}` : git.branch) : "—";
 
 	const connClass = chat.ready ? "ok" : "busy";
 	const connLabel = chat.ready ? t("connected") : t("connecting");
@@ -148,8 +161,9 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 			</span>
 			<span className="status-sep">·</span>
 
-			<span className="status-item" title={t("cumulativeCost")}>
-				${formatCost(s.cost)}
+			<span className="status-item status-branch" title={`${t("scmCurrentBranch")}: ${branchLabel}`}>
+				<FiGitBranch aria-hidden="true" />
+				<span className="status-branch-name">{branchLabel}</span>
 			</span>
 			<span className="status-sep">·</span>
 
@@ -237,10 +251,4 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 function formatTokens(n: number): string {
 	if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
 	return String(n);
-}
-
-function formatCost(cost: number): string {
-	if (cost <= 0) return "0";
-	if (cost < 0.0001) return "<0.0001";
-	return cost.toFixed(4).replace(/\.?0+$/, "");
 }

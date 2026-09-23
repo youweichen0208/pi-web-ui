@@ -7,13 +7,17 @@
  * just renders it.
  */
 import { execFile } from "node:child_process";
+import { open, realpath, stat } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { decodeText, looksLikeText } from "./text-sniff.js";
 
 const exec = promisify(execFile);
 
 /** Per-command timeout / output cap — a stuck repo must not hang the panel. */
 const GIT_TIMEOUT_MS = 15_000;
 const MAX_GIT_OUTPUT = 16 * 1024 * 1024;
+const MAX_UNTRACKED_PREVIEW_BYTES = 512 * 1024;
 
 export interface ScmFileEntry {
 	path: string;
@@ -324,16 +328,51 @@ export async function scmStatus(
 	};
 }
 
-/** Staged + worktree diffs for one file (empty strings when no diff). */
+/** Staged + worktree diffs, or a bounded preview for an untracked file. */
 export async function scmFileDiff(
 	cwd: string,
 	path: string,
-): Promise<{ staged: string; worktree: string }> {
+): Promise<{
+	staged: string;
+	worktree: string;
+	untracked?: boolean;
+	untrackedText?: string;
+	untrackedKind?: "text" | "binary" | "directory";
+	untrackedTruncated?: boolean;
+}> {
 	const [staged, worktree] = await Promise.all([
 		git(cwd, ["diff", "--cached", "--no-color", "--no-ext-diff", "--", path]).catch(() => ""),
 		git(cwd, ["diff", "--no-color", "--no-ext-diff", "--", path]).catch(() => ""),
 	]);
-	return { staged, worktree };
+	if (staged || worktree) return { staged, worktree };
+	const others = await git(cwd, ["ls-files", "--others", "--exclude-standard", "--", path]);
+	if (!others.trim()) return { staged, worktree };
+	const abs = resolve(cwd, path);
+	const root = await realpath(cwd);
+	const target = await realpath(abs);
+	const rel = relative(root, target);
+	if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) throw new Error("路径超出工作区");
+	const info = await stat(target);
+	if (!info.isFile()) {
+		return { staged, worktree, untracked: true, untrackedKind: "directory" };
+	}
+	const handle = await open(target, "r");
+	try {
+		const buf = Buffer.alloc(Math.min(info.size, MAX_UNTRACKED_PREVIEW_BYTES));
+		const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+		const data = buf.subarray(0, bytesRead);
+		const isText = looksLikeText(data);
+		return {
+			staged,
+			worktree,
+			untracked: true,
+			untrackedKind: isText ? "text" : "binary",
+			untrackedText: isText ? decodeText(data) : undefined,
+			untrackedTruncated: bytesRead < info.size,
+		};
+	} finally {
+		await handle.close();
+	}
 }
 
 /** Full patch of one commit (`git show`). */
@@ -348,4 +387,17 @@ export async function scmCommitDetail(cwd: string, hash: string): Promise<string
 		"--patch",
 		hash,
 	]);
+}
+
+/** Footer metadata only. symbolic-ref also works before the first commit. */
+export async function scmCurrentBranch(cwd: string): Promise<{ branch: string | null; detached: boolean }> {
+	try {
+		return { branch: (await git(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"])).trim(), detached: false };
+	} catch {
+		try {
+			return { branch: (await git(cwd, ["rev-parse", "--short", "HEAD"])).trim(), detached: true };
+		} catch {
+			return { branch: null, detached: false };
+		}
+	}
 }

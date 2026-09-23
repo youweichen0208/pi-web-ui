@@ -17,6 +17,8 @@ const STORAGE_KEY = "pi-web-ui:lang";
 /* ------------------------------------------------------------------ */
 
 const zh = {
+	switchingProject: "正在同步项目…",
+	retryProjectSwitch: "重试切换项目",
 	/* common */
 	cancel: "取消",
 	ok: "确定",
@@ -36,6 +38,12 @@ const zh = {
 
 	/* topbar */
 	viewSwitch: "视图切换",
+	desktopWorkspace: "工作区",
+	windowControls: "窗口操作",
+	minimizeWindow: "最小化窗口",
+	maximizeWindow: "最大化窗口",
+	restoreWindow: "还原窗口",
+	closeWindow: "关闭窗口（隐藏到托盘）",
 	chat: "对话",
 	terminal: "终端",
 	selectModel: "选择模型",
@@ -426,7 +434,11 @@ const zh = {
 	scmUnstaged: "未暂存",
 	scmStagedUnstaged: "已暂存 + 未暂存",
 	scmUntracked: "未跟踪",
-	scmUntrackedNote: "未跟踪文件：差异不显示，提交时会一并包含",
+	scmUntrackedBadge: "u",
+	scmUntrackedBinary: "二进制文件无法在此预览",
+	scmUntrackedDirectory: "目录无法在此预览，请选择其中的文件",
+	scmEmptyFile: "空文件",
+	scmPreviewTruncated: "仅显示前 512 KB",
 	scmQueryFailed: "Git 查询失败：{error}",
 	scmTooManyFailures: "Git 查询连续失败，请点击刷新重试",
 	scmRunsInTerminal: "提交 / 切换分支 / 推送 / 拉取在终端中执行",
@@ -603,6 +615,8 @@ const zh = {
 /* ------------------------------------------------------------------ */
 
 const en: Record<keyof typeof zh, string> = {
+	switchingProject: "Syncing project…",
+	retryProjectSwitch: "Retry project switch",
 	/* common */
 	cancel: "Cancel",
 	ok: "OK",
@@ -622,6 +636,12 @@ const en: Record<keyof typeof zh, string> = {
 
 	/* topbar */
 	viewSwitch: "Switch view",
+	desktopWorkspace: "Workspace",
+	windowControls: "Window controls",
+	minimizeWindow: "Minimize window",
+	maximizeWindow: "Maximize window",
+	restoreWindow: "Restore window",
+	closeWindow: "Close window (hide to tray)",
 	chat: "Chat",
 	terminal: "Terminal",
 	selectModel: "Select model",
@@ -1023,7 +1043,11 @@ const en: Record<keyof typeof zh, string> = {
 	scmUnstaged: "Unstaged",
 	scmStagedUnstaged: "Staged + unstaged",
 	scmUntracked: "Untracked",
-	scmUntrackedNote: "Untracked file — not shown in diff, included on commit",
+	scmUntrackedBadge: "u",
+	scmUntrackedBinary: "Binary file cannot be previewed here",
+	scmUntrackedDirectory: "Directory cannot be previewed here; select a file inside it",
+	scmEmptyFile: "Empty file",
+	scmPreviewTruncated: "Showing only the first 512 KB",
 	scmQueryFailed: "Git query failed: {error}",
 	scmTooManyFailures:
 		"Git queries keep failing — click refresh to retry",

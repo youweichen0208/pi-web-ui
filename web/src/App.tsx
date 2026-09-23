@@ -2,6 +2,7 @@ import {
 	lazy,
 	Suspense,
 	useCallback,
+	useLayoutEffect,
 	useEffect,
 	useMemo,
 	useRef,
@@ -10,6 +11,7 @@ import {
 	type PointerEvent as ReactPointerEvent,
 } from "react";
 import { TopBar } from "./components/TopBar";
+import { desktopAPI } from "./desktop";
 import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { MessageList } from "./components/MessageList";
@@ -186,14 +188,28 @@ type ViewName = "chat" | "terminal" | "git" | `plugin:${string}`;
 
 export function App() {
 	const t = useT();
-	const { chat, send, dismissNotice, pushNotice, setPendingEcho, terminal } = useChat();
+	const { chat, send, dismissNotice, pushNotice, setPendingEcho, terminal, switching, switchError } = useChat();
 	const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+	const attachmentDrafts = useRef(new Map<string, PendingAttachment[]>());
+	const attachmentKey = useRef(chat.activeConversationId);
+	useLayoutEffect(() => {
+		if (attachmentKey.current !== chat.activeConversationId) {
+			if (attachments.length) attachmentDrafts.current.set(attachmentKey.current, attachments);
+			else attachmentDrafts.current.delete(attachmentKey.current);
+			attachmentKey.current = chat.activeConversationId;
+			setAttachments(attachmentDrafts.current.get(chat.activeConversationId) ?? []);
+			attachmentDrafts.current.delete(chat.activeConversationId);
+			setPreviewFile(null);
+		}
+	}, [chat.activeConversationId, attachments]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
 	/** Full-window file drag in progress (issue #19) — shows the app-wide
 	 *  drop overlay; drop anywhere attaches, the input bar keeps priority via
 	 *  its own stopPropagation handlers. */
 	const [appDragOver, setAppDragOver] = useState(false);
 	const [view, setView] = useState<ViewName>("chat");
+	const visited = useRef(new Set<ViewName>(["chat"]));
+	visited.current.add(view);
 	// 已安装且未在设置面板禁用的插件（决定 tab 与视图加载）。
 	const enabledPlugins = useMemo(
 		() =>
@@ -226,6 +242,19 @@ export function App() {
 	const [isMobile, setIsMobile] = useState(
 		() => window.matchMedia("(max-width: 768px)").matches,
 	);
+	const [isDesktopNarrow, setIsDesktopNarrow] = useState(
+		() => !!desktopAPI && window.matchMedia("(max-width: 1100px)").matches,
+	);
+	useEffect(() => {
+		if (!desktopAPI) return;
+		const mq = window.matchMedia("(max-width: 1100px)");
+		const onChange = (e: MediaQueryListEvent) => {
+			setIsDesktopNarrow(e.matches);
+			setDrawer(null);
+		};
+		mq.addEventListener("change", onChange);
+		return () => mq.removeEventListener("change", onChange);
+	}, []);
 	useEffect(() => {
 		const mq = window.matchMedia("(max-width: 768px)");
 		const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
@@ -405,7 +434,11 @@ export function App() {
 	// -- pasted / dropped / uploaded images (no workspace path) ---------------
 	const pasteImageId = useRef(0);
 	const lastVisionWarn = useRef(0);
-	const attachImage = (img: ProcessedImage) => {
+	const appendAttachment = (attachment: PendingAttachment, owner: string) => {
+		if (owner === attachmentKey.current) setAttachments((prev) => [...prev, attachment]);
+		else attachmentDrafts.current.set(owner, [...(attachmentDrafts.current.get(owner) ?? []), attachment]);
+	};
+	const attachImage = (img: ProcessedImage, owner: string) => {
 		// Warn when the current model can't see images — the image would still
 		// be attached but silently ignored by the provider. Throttled so adding
 		// several images at once produces one notice, not a stack.
@@ -417,26 +450,23 @@ export function App() {
 			}
 		}
 		const key = `paste-${++pasteImageId.current}`;
-		setAttachments((prev) => [
-			...prev,
-			{
+		appendAttachment({
 				path: "",
 				key,
 				name: img.name,
 				mode: "inline",
 				imageData: img.data,
 				mimeType: img.mimeType,
-			},
-		]);
+			}, owner);
 	};
-	const addImageFiles = async (files: File[]) => {
+	const addImageFiles = async (files: File[], owner = attachmentKey.current) => {
 		for (const f of files) {
 			const img = await fileToProcessedImage(f);
 			if (!img) {
 				pushNotice("error", t("imageLoadFailed", { name: f.name }));
 				continue;
 			}
-			attachImage(img);
+			attachImage(img, owner);
 		}
 	};
 
@@ -444,7 +474,7 @@ export function App() {
 	/** Keep in sync with MAX_UPLOAD_BYTES in agent-service.ts. */
 	const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 	const uploadId = useRef(0);
-	const attachLocalFile = async (f: File) => {
+	const attachLocalFile = async (f: File, owner: string) => {
 		if (f.size > MAX_UPLOAD_BYTES) {
 			pushNotice(
 				"warning",
@@ -466,9 +496,7 @@ export function App() {
 			return;
 		}
 		const key = `upload-${++uploadId.current}`;
-		setAttachments((prev) => [
-			...prev,
-			{
+		appendAttachment({
 				path: "",
 				key,
 				name: f.name,
@@ -476,17 +504,17 @@ export function App() {
 				fileData: base64,
 				size: f.size,
 				mimeType: f.type || undefined,
-			},
-		]);
+			}, owner);
 	};
 	const addLocalFiles = async (files: File[]) => {
+		const owner = attachmentKey.current;
 		for (const f of files) {
 			// Raster images go through the resize/encode pipeline (vision content);
 			// everything else — including SVG — is uploaded raw and attached by path.
 			if (isRasterImage(f.type)) {
-				await addImageFiles([f]);
+				await addImageFiles([f], owner);
 			} else {
-				await attachLocalFile(f);
+				await attachLocalFile(f, owner);
 			}
 		}
 	};
@@ -620,6 +648,8 @@ export function App() {
 				onSoundChange={setSound}
 				onSoundPreview={(kind: SoundKind) => playSound(kind, sound)}
 			/>
+			{switchError && <div className="protocol-banner" role="alert"><button onClick={() => send({ type: "set_cwd", path: switchError })}>{t("retryProjectSwitch")}</button> {switchError}</div>}
+			{switching && <div className="protocol-banner" role="status">{t("switchingProject")} {switching}</div>}
 			{chat.protocolMismatch && (
 				<div className="protocol-banner">
 					⚠ {t("protocolMismatch")}
@@ -643,7 +673,7 @@ export function App() {
 					>
 						<LeftPanel
 							send={panelSend}
-							active={!isMobile || drawer === "left"}
+							active={view === "chat" && (!isMobile || drawer === "left")}
 							ready={chat.ready}
 							status={chat.status}
 							cwd={chat.state?.cwd ?? ""}
@@ -661,6 +691,7 @@ export function App() {
 					<main className="main">
 						{chat.state ? (
 							<MessageList
+								active={view === "chat"}
 								key={chat.state.conversationId ?? "boot"}
 								state={chat.state}
 								liveOutputs={chat.liveOutputs}
@@ -705,13 +736,14 @@ export function App() {
 							onSent={clearAttachments}
 						/>
 					</main>
-					{!isMobile && (
+					{!isMobile && !isDesktopNarrow && (
 						<ResizeHandle side="right" width={rightWidth} onResize={resizeRight} />
 					)}
 					<div
 						className={`panel-drawer drawer-right ${drawer === "right" ? "open" : ""}`}
 					>
 						<RightPanel
+							active={!switching && view === "chat" && ((!isMobile && !isDesktopNarrow) || drawer === "right")}
 							send={panelSend}
 							files={chat.files}
 							fileChanged={chat.fileChanged}
@@ -731,23 +763,23 @@ export function App() {
 				</div>
 				<div className={`view-pane ${view === "terminal" ? "" : "hidden"}`}>
 					<Suspense fallback={null}>
-						<TerminalPanel chat={chat} send={send} terminal={terminal} />
+						{visited.current.has("terminal") && <TerminalPanel active={view === "terminal" && !switching} chat={chat} send={send} terminal={terminal} />}
 					</Suspense>
 				</div>
 				<div className={`view-pane ${view === "git" ? "" : "hidden"}`}>
-					<ScmPanel
+					{visited.current.has("git") && <ScmPanel
 						chat={chat}
 						send={send}
 						terminal={terminal}
 						active={view === "git"}
 						onSwitchToTerminal={() => setView("terminal")}
-					/>
+					/>}
 				</div>
 				{pluginViews.map((entry) => {
 					const name = `plugin:${entry.info.id}` as ViewName;
 					return (
 						<div key={entry.info.id} className={`view-pane ${view === name ? "" : "hidden"}`}>
-							<PluginView entry={entry} send={send} />
+							{visited.current.has(name) && <PluginView entry={entry} send={send} />}
 						</div>
 					);
 				})}

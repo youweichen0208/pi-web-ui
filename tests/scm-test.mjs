@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { CHROME_PATH } from "./lib/chrome.mjs";
 
 const here = dirname(dirname(fileURLToPath(import.meta.url))); // tests/ → repo root
 const NODE = realpathSync(process.execPath); // fnm shim → real installation
@@ -19,7 +20,7 @@ const repo = join(workdir, "repo");
 const dataDir = join(workdir, "data");
 process.env.PI_WEB_CWD = repo; // the workspace the panel inspects
 process.env.PI_WEB_DATA_DIR = dataDir;
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME = CHROME_PATH;
 
 // ---- set up a throwaway git repo with a modification + an untracked file ----
 execSync("mkdir repo", { cwd: workdir, stdio: "ignore" });
@@ -190,14 +191,17 @@ async function main() {
 	check("diff renders + lines", addLines >= 1);
 	check("diff header shows file name", await page.locator(".scm-diff-header").textContent().then((s) => s?.includes("hello.txt")));
 
-	// untracked file click → note, not a diff
+	// untracked file click → bounded content preview
 	await page.locator(".scm-file-path", { hasText: "newfile.txt" }).click();
-	await waitFor(
-		async () => (await page.locator(".scm-empty").allTextContents()).some((s) => s.includes("未跟踪") || s.includes("Untracked")),
+	const untrackedText = await waitFor(
+		async () => {
+			const text = await page.locator(".scm-untracked-content").textContent();
+			return text?.includes("brand new") ? text : null;
+		},
 		10000,
-		"untracked note",
+		"untracked content",
 	);
-	check("untracked file shows note", true);
+	check("untracked file shows content", untrackedText.includes("brand new"));
 
 	// -- commit through the terminal bridge -----------------------------------
 	await page.locator(".scm-commit-input").fill("my first commit");

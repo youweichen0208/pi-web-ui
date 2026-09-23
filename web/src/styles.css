@@ -2428,10 +2428,9 @@ body.panel-resizing {
 .scm-file-xy.y {
 	color: var(--red);
 }
-.scm-file-xy.q {
-	color: var(--amber);
+.scm-file-xy.y.untracked {
+	color: var(--accent);
 }
-
 .scm-file-path {
 	flex: 1;
 	min-width: 0;
@@ -2512,6 +2511,12 @@ body.panel-resizing {
 	font-family: var(--mono);
 	font-size: 12px;
 	line-height: 1.55;
+}
+.scm-untracked-content {
+	padding: 0 14px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	color: var(--text-dim);
 }
 
 .scm-diff-line {
@@ -8282,4 +8287,108 @@ span.msg-editor-hint svg {
    accent-tinted corner glow on the markdown preview for this theme. ---- */
 .fp-markdown {
 	background: var(--bg);
+}
+
+/* Electron window shell. Browser styles above remain the default. */
+html.pi-desktop .topbar {
+	height: 58px;
+	box-sizing: border-box;
+	padding: 0 0 0 18px;
+	gap: 10px;
+	flex-wrap: nowrap;
+}
+html.pi-desktop-darwin .topbar { padding-left: 92px; }
+html.pi-desktop .brand {
+	flex: 1 1 130px;
+	align-self: stretch;
+	overflow: hidden;
+	-webkit-app-region: drag;
+	app-region: drag;
+}
+html.pi-desktop .brand-name,
+html.pi-desktop .conn-label { display: none; }
+html.pi-desktop .desktop-window-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 13px;
+	font-weight: 600;
+}
+.desktop-window-title { display: none; }
+html.pi-desktop .desktop-window-title { display: block; }
+html.pi-desktop .desktop-title-separator { color: var(--text-faint); padding: 0 3px; }
+html.pi-desktop .topbar-actions {
+	flex: 0 1 auto;
+	flex-wrap: nowrap;
+	white-space: nowrap;
+	-webkit-app-region: no-drag;
+	app-region: no-drag;
+}
+html.pi-desktop .topbar-desktop > .bg-task-chip,
+html.pi-desktop .topbar-desktop > button.chip,
+html.pi-desktop .topbar-desktop > .dropdown:last-child { display: none; }
+html.pi-desktop .topbar-more { display: inline-flex; }
+html.pi-desktop .view-switch { max-width: min(34vw, 340px); overflow-x: auto; scrollbar-width: none; flex-shrink: 1; }
+html.pi-desktop .view-switch::-webkit-scrollbar { display: none; }
+html.pi-desktop .view-switch button { flex-shrink: 0; }
+html.pi-desktop .topbar-desktop { flex-shrink: 0; }
+html.pi-desktop .chip-model { max-width: 112px; overflow: hidden; text-overflow: ellipsis; }
+.desktop-window-controls { display: none; }
+html.pi-desktop .desktop-window-controls {
+	display: flex;
+	align-self: stretch;
+	flex: none;
+	-webkit-app-region: no-drag;
+	app-region: no-drag;
+}
+.desktop-window-controls button {
+	width: 44px;
+	border: 0;
+	background: transparent;
+	color: var(--text-dim);
+	display: grid;
+	place-items: center;
+	cursor: pointer;
+}
+.desktop-window-controls button:hover { background: var(--bg-elev2); color: var(--text); }
+.desktop-window-controls .desktop-window-close:hover { background: #dc3545; color: white; }
+
+@media (max-width: 1100px) {
+	html.pi-desktop .topbar { padding-right: 0; }
+	html.pi-desktop .topbar-actions > .panel-toggle { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: none; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elev2); color: var(--text-dim); cursor: pointer; }
+	html.pi-desktop .drawer-right.panel-drawer {
+		display: block;
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		right: 0;
+		z-index: 60;
+		width: min(320px, 86vw);
+		background: var(--bg-elev);
+		border-left: 1px solid var(--border);
+		box-shadow: -8px 0 30px rgba(0, 0, 0, 0.25);
+		transform: translateX(105%);
+		transition: transform 0.25s ease;
+	}
+	html.pi-desktop .drawer-right.panel-drawer.open { transform: translateX(0); }
+	html.pi-desktop .drawer-right .panel { width: 100%; height: 100%; border: 0; }
+}
+
+@media (max-width: 900px) {
+	html.pi-desktop .topbar { gap: 6px; }
+	html.pi-desktop .view-switch button { padding: 5px 9px; }
+	html.pi-desktop .view-switch button > span { display: none; }
+	html.pi-desktop .topbar-actions { gap: 4px; }
+	html.pi-desktop .topbar-desktop .dropdown:nth-of-type(2) { display: none; }
+}
+
+/* ---- Footer Git branch ---- */
+.status-branch { min-width: 0; }
+.status-branch > svg { flex-shrink: 0; }
+.status-branch-name {
+	max-width: 180px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }

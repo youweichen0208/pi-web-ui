@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import type { CSSProperties } from "react";
@@ -72,6 +72,7 @@ function examples(
 }
 
 interface MessageListProps {
+	active?: boolean;
 	state: UiState;
 	liveOutputs: ReadonlyMap<string, { toolName: string; text: string }>;
 	toolStatuses: ReadonlyMap<string, ToolStatus>;
@@ -92,7 +93,9 @@ interface MessageListProps {
 	pendingEcho?: PendingEcho | null;
 }
 
-export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho }: MessageListProps) {
+const scrollPositions = new Map<string, { top: number; bottom: boolean; hidden: Set<string>; expanded: Set<string>; heights: Map<string, number> }>();
+
+export const MessageList = memo(function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho }: MessageListProps) {
 	const t = useT();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
@@ -101,8 +104,27 @@ export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBa
 	const prevStRef = useRef(0);
 	/** 用户已主动离开底部：流式结束 / finalize 塌缩时不再自动吸回。 */
 	const escapedRef = useRef(false);
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		const saved = scrollPositions.get(state.conversationId);
+		if (el && saved) {
+			stickRef.current = saved.bottom;
+			escapedRef.current = !saved.bottom;
+			setStickBottom(saved.bottom);
+			el.scrollTop = saved.bottom ? el.scrollHeight : saved.top;
+		}
+		return () => {
+			if (el) {
+				scrollPositions.delete(state.conversationId);
+				scrollPositions.set(state.conversationId, { top: el.scrollTop, bottom: stickRef.current, hidden: hiddenRef.current, expanded: expandedRef.current, heights: heightsRef.current });
+				if (scrollPositions.size > 24) scrollPositions.delete(scrollPositions.keys().next().value!);
+			}
+		};
+	}, [state.conversationId]);
 	/** Messages the user expanded from the collapsed view — stay expanded. */
-	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+	const [expanded, setExpanded] = useState<Set<string>>(() => scrollPositions.get(state.conversationId)?.expanded ?? new Set());
+	const expandedRef = useRef(expanded);
+	expandedRef.current = expanded;
 	/** 会话内搜索栏（Ctrl+F / Cmd+F）。 */
 	const [searchOpen, setSearchOpen] = useState(false);
 	/** Persisted messages + the live in-progress assistant message (if any). */
@@ -151,11 +173,11 @@ export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBa
 	// 视口缓冲带之外的重型消息替换为等高占位 div；滚动临近时换回真实内容并
 	// 在同一帧内补偿 scrollTop。占位保留 data-msg-id，导航/跳转/搜索不受影响。
 	/** 当前处于占位状态的消息 id。 */
-	const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+	const [hidden, setHidden] = useState<Set<string>>(() => scrollPositions.get(state.conversationId)?.hidden ?? new Set());
 	/** 用户跳转过的消息——永久保持真实渲染，避免占位符闪现。 */
 	const [pinned, setPinned] = useState<Set<string>>(() => new Set());
 	/** 已实测的消息高度（隐藏时用作占位高度）。 */
-	const heightsRef = useRef(new Map<string, number>());
+	const heightsRef = useRef(scrollPositions.get(state.conversationId)?.heights ?? new Map<string, number>());
 	/** 所有受管外层元素（sweep 测量用；挂载时注册，消息移除时清理）。 */
 	const elsRef = useRef(new Map<string, HTMLDivElement>());
 	const sweepRafRef = useRef(0);
@@ -742,4 +764,7 @@ export function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBa
 			)}
 		</div>
 	);
-}
+} , (prev, next) => {
+	if (prev.active === false && next.active === false && prev.state.conversationId === next.state.conversationId) return true;
+	return Object.keys(next).every((key) => prev[key as keyof MessageListProps] === next[key as keyof MessageListProps]);
+});

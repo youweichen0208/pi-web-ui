@@ -27,7 +27,7 @@
 
 ### 协议
 
-客户端发 `scm_status`（status+branches(含远程,for-each-ref)+numstat）/ `scm_history`（提交图，懒加载——切到「提交树」tab 才查）/ `scm_filediff`（单文件 staged+worktree diff）/ `scm_commit`（hash 白名单校验后 git show），服务端必回一条 `scm_data`（echo reqId + kind，ok/error/notRepo），前端按 reqId 匹配 pending 槽位——每个请求必有且仅有一个响应，UI 不可能卡 loading；sendScm 在 socket 断开时不占槽位不置 busy（防转圈卡死）。路径校验：filediff 的 path 必须 resolve 后仍在工作区内；非 git 仓库返回 ok:true + notRepo:true（面板显示提示而非报错）。15s 超时/maxBuffer 16MB。
+客户端发 `scm_status`（status+branches(含远程,for-each-ref)+numstat）/ `scm_history`（提交图，懒加载——切到「提交树」tab 才查）/ `scm_filediff`（单文件 staged+worktree diff；未跟踪文本返回最多 512KB 的内容，二进制与目录返回类型提示）/ `scm_commit`（hash 白名单校验后 git show），服务端必回一条 `scm_data`（echo reqId + kind，ok/error/notRepo），前端按 reqId 匹配 pending 槽位——每个请求必有且仅有一个响应，UI 不会卡在 loading；sendScm 在 socket 断开时不占槽位不置 busy。路径校验：filediff 的 path 必须 resolve 后仍在工作区内；未跟踪文件预览还校验真实路径，防止符号链接越界；非 git 仓库返回 ok:true + notRepo:true。15s 超时/maxBuffer 16MB。
 
 ### git 目录 watcher
 
@@ -70,3 +70,5 @@ macOS 下若服务由 launchd 拉起（`process.ppid === 1`，LaunchAgent/孤儿
 ## Windows shell 解析
 
 `terminals.ts` 的 `resolveShell()` 每次创建终端时解析，优先 bash——`PI_WEB_SHELL` 显式 → `$SHELL` → Git Bash（ProgramFiles）→ busybox 兜底（`~/.pi-web/bin/bash.exe`，`ensure-bash.ts` 无 Git Bash 时自动下载 busybox-w32）→ `$COMSPEC` → powershell。与 SDK bash 工具（Git Bash / PATH 上的 bash）保持一致，避免 PowerShell/bash 混用挂死。
+
+底栏通过 `get_git_branch` / `git_branch` 显示当前工作区分支，替代费用显示。查询仅执行 `symbolic-ref`（分离 HEAD 时回退短提交号），不扫描文件状态；复用 Git 目录 watcher，在切换工作区、Git 变化或窗口重新聚焦时刷新。结果携带 cwd 防止串项目，非仓库显示 `—`。回归：`tests/footer-branch-test.mjs`。

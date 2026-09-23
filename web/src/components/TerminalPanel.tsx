@@ -16,6 +16,7 @@ import { TermXterm } from "./TermXterm";
 import { useT } from "../i18n";
 
 interface TerminalPanelProps {
+	active: boolean;
 	chat: ChatState;
 	send: (msg: ClientMessage) => boolean;
 	terminal: {
@@ -44,7 +45,7 @@ const EMPTY_DRAFT: Draft = { name: "", command: "", cwd: "${pwd}" };
  *          (on mobile this whole column slides in as a drawer)
  *   right: the active terminal (one xterm per tab, kept mounted)
  */
-export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
+export function TerminalPanel({ chat, send, terminal, active }: TerminalPanelProps) {
 	const t = useT();
 	const [activeId, setActiveId] = useState<string | null>(null);
 	// Mobile: the left column (commands + tabs) slides in as a drawer.
@@ -401,7 +402,7 @@ export function TerminalPanel({ chat, send, terminal }: TerminalPanelProps) {
 							terminalId={t.id}
 							command={t.command}
 							cwd={t.cwd}
-							active={t.id === activeId}
+							active={active && t.id === activeId}
 							send={send}
 							register={terminal.register}
 						/>

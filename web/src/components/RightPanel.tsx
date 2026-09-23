@@ -19,6 +19,7 @@ type AttachMode = "inline" | "reference";
  *  stable while tokens stream in, so the shallow-compared memo() below skips
  *  re-reconciling the file tree on every delta. */
 interface RightPanelProps {
+	active: boolean;
 	files: FileListing | null;
 	/** Last dir-changed push (path = listed directory) — triggers a refresh. */
 	fileChanged: { path: string } | null;
@@ -39,6 +40,7 @@ interface RightPanelProps {
 }
 
 export const RightPanel = memo(function RightPanel({
+	active,
 	files,
 	fileChanged,
 	widgets,
@@ -94,24 +96,26 @@ export const RightPanel = memo(function RightPanel({
 	// root; otherwise poll the current directory silently so the tree stays fresh
 	// without a manual refresh button.
 	useEffect(() => {
+		if (!active || !cwd) return;
 		if (cwd !== lastCwd.current) {
 			lastCwd.current = cwd;
-			request("", { silent: true });
+			request(files?.path ?? "", { silent: true });
 			return;
 		}
+		request(currentPath, { silent: true });
 		const timer = setInterval(() => {
 			if (document.visibilityState === "hidden") return;
 			request(currentPath, { silent: true });
 		}, AUTO_REFRESH_MS);
 		return () => clearInterval(timer);
-	}, [cwd, currentPath, request]);
+	}, [active, cwd, currentPath, request]);
 	// The server fs.watches the listed directory and pushes `file_changed` on any
 	// change — refresh right away instead of waiting for the 10s poll. The path
 	// guard drops events for a directory the user has already navigated away from.
 	useEffect(() => {
-		if (fileChanged && fileChanged.path === currentPath)
+		if (active && fileChanged && fileChanged.path === currentPath)
 			request(currentPath, { silent: true });
-	}, [fileChanged, currentPath, request]);
+	}, [active, fileChanged, currentPath, request]);
 
 	// Enter a directory.
 	const openDir = (path: string) => request(path);

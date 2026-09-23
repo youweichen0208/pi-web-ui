@@ -293,9 +293,11 @@ export type ClientMessage =
 	/** SCM refresh payload: status + branches + numstat (history loads
 	 *  lazily via scm_history so big repos don't pay for it every refresh). */
 	| { type: "scm_status"; reqId: number }
+	/** Lightweight footer query: no worktree status/diff scan. */
+	| { type: "get_git_branch" }
 	/** Commit graph for the history tab (lazy-loaded). */
 	| { type: "scm_history"; reqId: number }
-	/** Staged + worktree diffs for one file. */
+	/** Staged + worktree diffs, or bounded content for an untracked file. */
 	| { type: "scm_filediff"; reqId: number; path: string }
 	/** Full patch of one commit. */
 	| { type: "scm_commit"; reqId: number; hash: string }
@@ -330,7 +332,7 @@ export type ClientMessage =
 	| { type: "list_models" }
 	| { type: "set_model"; modelId: string }
 	| { type: "set_thinking"; level: string }
-	| { type: "set_cwd"; path: string }
+	| { type: "set_cwd"; path: string; requestId?: string }
 	| { type: "complete_path"; path: string }
 	| { type: "dialog_response"; id: number; value: string | boolean | null }
 	// -- self-update ----------------------------------------------------------
@@ -942,7 +944,7 @@ export type ServerMessage =
 	| { type: "terminal_exit"; conversationId?: string; terminalId: string; exitCode: number | null }
 	| { type: "terminal_list"; conversationId?: string; terminals: TerminalInfo[] }
 	// -- command list (.pi/commands.json) ------------------------------------
-	| { type: "commands"; commands: CommandDef[]; path: string }
+	| { type: "commands"; cwd: string; commands: CommandDef[]; path: string }
 	/** The slash-command catalog for the chat input (builtin + extension +
 	 *  prompt template + skill commands). Pushed on attach, on project switch
 	 *  and on request (get_commands). */
@@ -953,11 +955,13 @@ export type ServerMessage =
 	| { type: "scm_changed" }
 	/** Sent every ~10s so clients can detect half-open connections. */
 	| { type: "heartbeat" }
-	| { type: "sessions"; sessions: SessionSummary[] }
+	| { type: "cwd_result"; requestId: string; cwd: string; ok: boolean; error?: string; timing?: { startedAt: number; preparedAt: number; snapshotAt: number } }
+	| { type: "sessions"; cwd: string; sessions: SessionSummary[] }
 	/** Filename matches for the global search panel (reqId echo). Always sent
 	 *  in reply to a search_files request — ok:false means the walk failed. */
 	| {
 			type: "search_files_result";
+			cwd: string;
 			reqId: number;
 			ok: boolean;
 			results: FileSearchResult[];
@@ -965,10 +969,12 @@ export type ServerMessage =
 			truncated?: boolean;
 	  }
 	| { type: "projects"; projects: ProjectSummary[] }
+	| { type: "git_branch"; cwd: string; branch: string | null; detached: boolean }
 	/** Directory listing for the workspace picker (see `browse_dirs`). */
 	| ({ type: "dir_browse" } & DirBrowse)
 	| {
 			type: "files";
+			cwd: string;
 			path: string;
 			parent: string | null;
 			entries: FileEntry[];
@@ -986,6 +992,7 @@ export type ServerMessage =
 	| { type: "file_changed"; path: string }
 	| {
 			type: "file_content";
+			cwd: string;
 			path: string;
 			name: string;
 			/**
@@ -1040,6 +1047,7 @@ export type ServerMessage =
 	// -- source-control panel results (see scm_status / scm_filediff / scm_commit) --
 	| {
 			type: "scm_data";
+			cwd: string;
 			reqId: number;
 			kind: "status" | "history" | "filediff" | "commit";
 			ok: boolean;
@@ -1061,6 +1069,9 @@ export type ServerMessage =
 			stagedText?: string;
 			worktreeText?: string;
 			untracked?: boolean;
+			untrackedText?: string;
+			untrackedKind?: "text" | "binary" | "directory";
+			untrackedTruncated?: boolean;
 			/** commit payload */
 			text?: string;
   }

@@ -534,6 +534,7 @@ wss.on("connection", (ws) => {
 			pending.push(msg);
 			return;
 		}
+		if (cs.switchingWorkspace && msg.type !== "set_cwd" && msg.type !== "get_state") return;
 		switch (msg.type) {
 			case "prompt":
 				void cs.prompt(msg.text, msg.attachments, msg.queue);
@@ -603,6 +604,9 @@ wss.on("connection", (ws) => {
 			case "search_files":
 				void cs.searchFiles(msg.query, msg.reqId);
 				break;
+			case "get_git_branch":
+				void cs.gitBranch();
+				break;
 			case "scm_status":
 				void cs.scmQuery("status", msg.reqId);
 				break;
@@ -631,7 +635,7 @@ wss.on("connection", (ws) => {
 				cs.setThinking(msg.level);
 				break;
 			case "set_cwd":
-				void cs.setCwd(msg.path);
+				void cs.setCwd(msg.path, msg.requestId);
 				break;
 			case "complete_path":
 				void cs.completePath(msg.path);

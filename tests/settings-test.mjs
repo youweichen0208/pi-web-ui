@@ -170,7 +170,9 @@ try {
 		const s = st3.settings.skills.find((x) => x.name === skillName);
 		check("disabled skill still listed (re-enableable)", s && !s.enabled);
 		c.send({ type: "set_settings", disabledSkills: [] });
-		const st4 = await c.waitFor("settings_state", 8000, (m) => m.settings.disabledSkills.length === 0);
+		// The immediate settings push precedes SDK reload; wait for the refreshed catalog.
+		const st4 = await c.waitFor("settings_state", 8000, (m) =>
+			m.settings.disabledSkills.length === 0 && m.settings.skills.find((x) => x.name === skillName)?.enabled === true);
 		check("skill re-enabled", st4.settings.skills.find((x) => x.name === skillName)?.enabled === true);
 	} else {
 		console.log("  (no skills loaded — skipping)");

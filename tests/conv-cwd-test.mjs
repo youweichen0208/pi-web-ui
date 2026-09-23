@@ -1,12 +1,4 @@
-/**
- * Per-project conversation isolation + unlisted-idle dismissal:
- *
- *   conv1 (A, startup) → new_chat REUSES it while it is blank (ac5a4c8) →
- *   set_cwd(B) creates B's own conversation → set_cwd(A) creates a NEW A
- *   conversation (the old one was dismissed) → conversation ids never leak
- *   between projects, the running-conversation list stays empty (nothing was
- *   ever displaced while streaming), and the file tree follows the project.
- */
+/** Per-project warm conversation reuse and visible-panel directory refresh. */
 import { portUp, freePort } from "./lib/port-utils.mjs";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
@@ -19,7 +11,7 @@ import { randomUUID } from "node:crypto";
 // fileURLToPath: URL.pathname 在 Windows 下是 /E:/... 形式，直接当 cwd 会失败
 const REPO_ROOT = fileURLToPath(new globalThis.URL("../", import.meta.url));
 
-const PORT = 8898;
+const PORT = 8998;
 const PROJ = REPO_ROOT;
 const A = mkdtempSync(join(tmpdir(), "pi-proj-a-"));
 const B = mkdtempSync(join(tmpdir(), "pi-proj-b-"));
@@ -40,7 +32,7 @@ try {
 }
 const server = spawn("node", ["dist/server/index.js"], {
 	cwd: PROJ,
-	env: { ...process.env, PORT: String(PORT), PI_WEB_CWD: A },
+	env: { ...process.env, PORT: String(PORT), PI_WEB_CWD: A, PI_WEB_DATA_DIR: mkdtempSync(join(tmpdir(), "pi-cwd-data-")), PI_CODING_AGENT_DIR: mkdtempSync(join(tmpdir(), "pi-cwd-agent-")) },
 	stdio: "ignore",
 });
 for (let i = 0; i < 40 && !(await portUp(PORT)); i++) await sleep(250);
@@ -120,9 +112,10 @@ check(
 	`${conversations.length} listed`,
 );
 
-// --- set_cwd(B): A's conv2 is dismissed (never ran); B gets its own conversation ---
+// B gets its own conversation; A stays warm.
 send({ type: "set_cwd", path: B });
 await waitFor(() => snapshot?.cwd === B, "cwd=B");
+send({ type: "list_files" });
 const convB = snapshot.conversationId;
 check(
 	"set_cwd(B) → B gets its OWN conversation id",
@@ -139,13 +132,14 @@ check(
 	files?.entries?.some((e) => e.name === "only-in-B.txt"),
 );
 
-// --- set_cwd(A): B's conv (never ran) is dismissed; A gets a NEW conversation ---
+// Returning to A reuses its runtime.
 send({ type: "set_cwd", path: A });
 await waitFor(() => snapshot?.cwd === A, "cwd=A");
+send({ type: "list_files" });
 const convA2 = snapshot.conversationId;
 check(
-	"set_cwd(A) → fresh A conversation (old A conv was dismissed)",
-	convA2 && convA2 !== convB && convA2 !== conv2,
+	"set_cwd(A) → reuse A conversation",
+	convA2 && convA2 !== convB && convA2 === conv2,
 	`${convB} → ${convA2}`,
 );
 await waitFor(
@@ -157,23 +151,23 @@ check(
 	files?.entries?.some((e) => e.name === "only-in-A.txt"),
 );
 
-// --- set_cwd(B) again: B's previous conv was dismissed; a new one is created ---
+// Returning to B reuses its runtime.
 send({ type: "set_cwd", path: B });
 await waitFor(
-	() => snapshot?.cwd === B && snapshot?.conversationId !== convB,
+	() => snapshot?.cwd === B && snapshot?.conversationId === convB,
 	"cwd=B again",
 );
 check(
-	"set_cwd(B) again → new B conversation (previous B conv was dismissed)",
-	snapshot?.conversationId !== convB,
+	"set_cwd(B) again → reuse B conversation",
+	snapshot?.conversationId === convB,
 	`${convB} → ${snapshot?.conversationId}`,
 );
 
 // --- conversations summary: only current project, and nothing listed ---
 await sleep(300);
 check(
-	"conversations list stays empty (per-project + only listed)",
-	conversations.length === 0,
+	"conversation summaries belong to B",
+	conversations.every((c) => c.cwd === B),
 	`${conversations.length} listed`,
 );
 check(

@@ -46,6 +46,9 @@ writeFileSync(join(repo, "a.txt"), "two\n");
 execSync("git add -A && git commit -m feature-work", { cwd: repo, stdio: "ignore" });
 execSync("git push -u origin feature", { cwd: repo, stdio: "ignore", env: process.env });
 execSync("git checkout main", { cwd: repo, stdio: "ignore" });
+writeFileSync(join(repo, "new.txt"), "untracked content\nsecond line\n");
+writeFileSync(join(repo, "binary.bin"), Buffer.from([0, 1, 2, 3]));
+writeFileSync(join(repo, "large.txt"), "x".repeat(600 * 1024));
 
 const server = spawn(NODE, [join(here, "dist", "server", "index.js")], {
 	cwd: here,
@@ -116,6 +119,12 @@ async function main() {
 		!!remFeat && remFeat.remote === "origin",
 	);
 	check("history absent from status payload", !Array.isArray(st.history));
+	const untracked = await send({ type: "scm_filediff", path: "new.txt" });
+	check("untracked text returned", untracked.ok && untracked.untracked === true && untracked.untrackedKind === "text" && untracked.untrackedText === "untracked content\nsecond line\n");
+	const binary = await send({ type: "scm_filediff", path: "binary.bin" });
+	check("untracked binary identified", binary.ok && binary.untracked === true && binary.untrackedKind === "binary" && !binary.untrackedText);
+	const large = await send({ type: "scm_filediff", path: "large.txt" });
+	check("untracked text capped at 512 KB", large.ok && large.untrackedTruncated === true && large.untrackedText?.length === 512 * 1024);
 
 	// -- lazy history ----
 	const hist = await send({ type: "scm_history" });

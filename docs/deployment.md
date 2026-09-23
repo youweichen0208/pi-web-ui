@@ -60,6 +60,12 @@ npm run publish:electron       # 同 build，但 --publish always——本地跑
   避免两边同时跑时抢 `client-state.json` 等运行时状态；对话历史本身走 SDK 的
   `~/.pi/agent`，两边共享，不受影响。
 - 关闭窗口 → 最小化到托盘（不退出）；托盘菜单可重新打开 / 退出。
+- 桌面窗口共用一条内容顶栏：macOS 隐藏系统标题栏、保留左侧原生红黄绿按钮；
+  Windows/Linux 使用无边框窗口和右侧自绘最小化、最大化、关闭按钮。可拖动区域
+  仅在项目标题，导航和菜单不参与拖动；双击标题区、系统缩放和全屏仍由 Electron
+  处理。沙箱兼容的 `preload.cjs` 仅暴露固定窗口操作和窗口状态通知，关闭按钮继续隐藏到托盘。
+- Electron 渲染页加 `pi-desktop` 类，桌面顶栏把次要操作收进“更多”；窗口宽度
+  ≤1100px 时右侧文件栏变为抽屉。普通浏览器页不加该类，继续使用原有布局。
 - 原生模块（`node-pty`）：`electron-builder.yml` 里 `npmRebuild: true`，打包时自动
   rebuild 成 Electron 的 Node ABI，不需要手动 `electron-rebuild`；本机需要装好
   Xcode Command Line Tools（mac）/ Visual Studio Build Tools（win）。
@@ -80,3 +86,5 @@ npm run publish:electron       # 同 build，但 --publish always——本地跑
 - 在非 Windows 机器上要出 zip（`-c.npmRebuild=false`）时，跳过的是重编译这一步，实际用的是 `node-pty` 包自带的 `prebuilds/win32-x64/pty.node`（跟 mac 版同理，不是本项目编译的，是 node-pty 官方发布时带的预编译产物）。electron-builder 会自动把 `.node` 原生模块解到 `app.asar.unpacked/`（不进 asar 压缩包），不需要手动配 `asarUnpack`。这条路径下**终端功能在 Windows 上是否正常没有用真机验证过**，其余功能（聊天/文件树/模型管理）不依赖 node-pty，应该没问题。
 - `npm run build:electron:win` 默认的 `nsis`/`portable` 两个 target 要跑 `makensis`，在非 Windows 机器上必须装 `wine`（本仓库开发用的沙箱环境没有 root 权限装不了）——要出正式的安装包，得在真机 Windows 上跑，或者接 GitHub Actions 的 `windows-latest` runner。
 - `artifactName` 模板别用 `${name}`——`package.json` 的 `name` 是 `@youweichen/pi-web-ui`（带 npm scope），`${name}` 里那个斜杠会被当成路径分隔符，实际文件会跑到 `release/@youweichen/` 子目录里而不是 `release/` 根目录，CI 里按 `release/*.exe` 收集产物会直接漏掉。已经全部改成 `${productName}`（就是 `pi-web-ui`，干净的，不带 scope）。
+
+桌面测试可设置 `PI_WEB_DATA_DIR` 指向临时数据目录；未设置时继续使用 `~/.pi-web-desktop`。Chromium 配置可用 `--user-data-dir` 隔离。

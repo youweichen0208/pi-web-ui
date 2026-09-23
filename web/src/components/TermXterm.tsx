@@ -38,6 +38,8 @@ export function TermXterm({
 	register,
 }: TermXtermProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
+	const activeRef = useRef(active);
+	activeRef.current = active;
 	const termRef = useRef<{ term: Terminal; fit: FitAddon } | null>(null);
 	// Metadata snapshots recreate the command object; use a value key so a
 	// terminal is not torn down when only its running/exit metadata changes.
@@ -104,6 +106,7 @@ export function TermXterm({
 		});
 
 		const sendDims = () => {
+			if (!activeRef.current || !container.clientWidth || !container.clientHeight) return;
 			try {
 				fit.fit();
 				send({

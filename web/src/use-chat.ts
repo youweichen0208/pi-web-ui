@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, useMemo } from "react";
+import { ProjectCache } from "./project-cache";
 import { randomUuid } from "./uuid";
 import { withToken } from "./auth-token";
 import type {
@@ -72,6 +73,7 @@ export interface ChatState {
 	dirBrowse: DirBrowse | null;
 	/** Workspace file listing for the right panel. */
 	files: FileListing | null;
+	gitBranch: Extract<ServerMessage, { type: "git_branch" }> | null;
 	/** Latest file content fetched for the preview panel (path-matched in the modal). */
 	fileContent: FileContent | null;
 
@@ -208,6 +210,7 @@ type Action =
 	| { type: "projects"; projects: ProjectSummary[] }
 	| { type: "dir_browse"; dirBrowse: DirBrowse }
 	| { type: "files"; files: FileListing }
+	| { type: "git_branch"; data: Extract<ServerMessage, { type: "git_branch" }> }
 
 	| { type: "file_changed"; path: string }
 	| { type: "file_content"; content: FileContent }
@@ -434,6 +437,7 @@ function reducer(state: ChatState, action: Action): ChatState {
 				...state,
 				ready: true,
 				state: action.state,
+				...(state.state?.cwd !== action.state.cwd ? { sessions: [], files: null, fileContent: null, scmData: null } : {}),
 				activeConversationId: action.state.conversationId,
 				liveOutputs: pruneLiveOutputs(state.liveOutputs, action.state),
 				toolStatuses: pruneToolStatuses(state.toolStatuses, action.state),
@@ -532,6 +536,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, projects: action.projects };
 		case "dir_browse":
 			return { ...state, dirBrowse: action.dirBrowse };
+		case "git_branch":
+			return { ...state, gitBranch: action.data };
 		case "files":
 			return { ...state, files: action.files };
 		case "file_changed":
@@ -683,6 +689,7 @@ export function useChat() {
 		projects: [],
 		dirBrowse: null,
 		files: null,
+		gitBranch: null,
 
 		fileChanged: null,
 		fileContent: null,
@@ -714,6 +721,30 @@ export function useChat() {
 		protocolMismatch: false,
 		pendingEcho: null,
 	});
+	const authoritative = useRef(chat);
+	authoritative.current = chat;
+	const cache = useRef(new ProjectCache<Pick<ChatState, "state" | "sessions" | "files">>());
+	const [switching, setSwitching] = useState<{ id: string; path: string; display?: Pick<ChatState, "state" | "sessions" | "files"> } | null>(null);
+	const switchRef = useRef(switching);
+	const confirmedCwd = useRef("");
+	const snapshotReady = useRef(false);
+	const [hasSnapshot, setHasSnapshot] = useState(false);
+	const acknowledged = useRef<string | null>(null);
+	const [switchError, setSwitchError] = useState<string | null>(null);
+	useEffect(() => {
+		if (switching && acknowledged.current === switching.id && chat.state?.cwd === confirmedCwd.current) {
+			switchRef.current = null;
+			setSwitching(null);
+		}
+	}, [chat.state, switching]);
+	useEffect(() => {
+		if (!switching?.display) return;
+		const frame = requestAnimationFrame(() => {
+			performance.clearMeasures("project-switch:cached-content");
+			performance.measure("project-switch:cached-content", "project-switch:click");
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [switching]);
 	const wsRef = useRef<WebSocket | null>(null);
 	/** Terminal output bridge (writers keyed by terminalId). */
 	const bridgeRef = useRef(makeTerminalBridge());
@@ -751,7 +782,7 @@ export function useChat() {
 		const map = lastDeltaSeqRef.current;
 		const last = map.get(conversationId);
 		if (last !== undefined && seq !== last + 1) {
-			const c = chatApi.current.chat;
+			const c = authoritative.current;
 			const active = c.activeConversationId || c.state?.conversationId;
 			if (conversationId === active) {
 				// Missed deltas (should not happen on a healthy WS) — resync via a
@@ -772,6 +803,24 @@ export function useChat() {
 	const send = useCallback((msg: ClientMessage) => {
 		const ws = wsRef.current;
 		if (ws && ws.readyState === WebSocket.OPEN) {
+			if (!snapshotReady.current && msg.type !== "get_state") return false;
+			if (msg.type === "set_cwd") {
+				const current = authoritative.current;
+				const display = cache.current.get(msg.path);
+				if (!switchRef.current && current.state) cache.current.set(current.state.cwd, {
+					state: current.state, sessions: current.sessions, files: current.files,
+				});
+				setSwitchError(null);
+				const id = randomUuid();
+				const pending = { id, path: msg.path, display };
+				switchRef.current = pending;
+				setSwitching(pending);
+				performance.clearMarks("project-switch:click");
+				performance.mark("project-switch:click");
+				msg = { ...msg, requestId: id };
+			} else if (switchRef.current && msg.type !== "get_state") {
+				return false;
+			}
 			ws.send(JSON.stringify(msg));
 			return true;
 		}
@@ -823,9 +872,6 @@ export function useChat() {
 					// on disk (listAll scans ALL projects), too heavy for the
 					// connect critical path.
 					ws.send(
-						JSON.stringify({ type: "list_files" } satisfies ClientMessage),
-					);
-					ws.send(
 						JSON.stringify({ type: "list_models" } satisfies ClientMessage),
 					);
 					ws.send(
@@ -838,7 +884,28 @@ export function useChat() {
 						JSON.stringify({ type: "check_update" } satisfies ClientMessage),
 					);
 					break;
+				case "cwd_result":
+					if (msg.requestId === switchRef.current?.id) {
+						confirmedCwd.current = msg.cwd;
+						acknowledged.current = msg.requestId;
+						if (!msg.ok) setSwitchError(switchRef.current.path);
+						if (!msg.ok || authoritative.current.state?.cwd === msg.cwd) {
+							switchRef.current = null;
+							setSwitching(null);
+						} else {
+							// The snapshot may be queued in React or retried after backpressure.
+							ws.send(JSON.stringify({ type: "get_state" }));
+						}
+					}
+					break;
 				case "snapshot":
+					snapshotReady.current = true;
+					setHasSnapshot(true);
+					if (!switchRef.current) confirmedCwd.current = msg.state.cwd;
+					if (switchRef.current && acknowledged.current === switchRef.current.id && confirmedCwd.current === msg.state.cwd) {
+						switchRef.current = null;
+						setSwitching(null);
+					}
 					// Snapshot is authoritative — delta sequence tracking restarts.
 					lastDeltaSeqRef.current = new Map();
 					dispatch({ type: "snapshot", state: msg.state });
@@ -847,7 +914,7 @@ export function useChat() {
 					// Gap detection BEFORE dispatch: if this incremental checkpoint
 					// doesn't chain onto our current rev (a message was dropped under
 					// backpressure, or we're stale), schedule one debounced full resync.
-					const cur = chatApi.current.chat.state;
+					const cur = authoritative.current.state;
 					if (
 						!cur ||
 						cur.conversationId !== msg.conversationId ||
@@ -883,6 +950,7 @@ export function useChat() {
 					break;
 				}
 				case "sessions":
+					if (msg.cwd !== confirmedCwd.current) break;
 					dispatch({ type: "sessions", sessions: msg.sessions });
 					break;
 				case "conversations":
@@ -906,13 +974,19 @@ export function useChat() {
 						},
 					});
 					break;
+				case "git_branch":
+					if (msg.cwd !== confirmedCwd.current || switchRef.current) break;
+					dispatch({ type: "git_branch", data: msg });
+					break;
 				case "files":
+					if (msg.cwd !== confirmedCwd.current) break;
 					dispatch({ type: "files", files: msg });
 					break;
 				case "file_changed":
 					dispatch({ type: "file_changed", path: msg.path });
 					break;
 				case "file_content":
+					if (msg.cwd !== confirmedCwd.current || switchRef.current) break;
 					dispatch({ type: "file_content", content: msg });
 					break;
 				case "models":
@@ -959,9 +1033,11 @@ export function useChat() {
 					});
 					break;
 				case "scm_data":
+					if (msg.cwd !== confirmedCwd.current || switchRef.current) break;
 					dispatch({ type: "scm_data", data: msg });
 					break;
 				case "search_files_result":
+					if (msg.cwd !== confirmedCwd.current || switchRef.current) break;
 					dispatch({
 						type: "file_search_result",
 						result: {
@@ -1006,7 +1082,7 @@ export function useChat() {
 					break;
 				case "terminal_output":
 					bridgeRef.current.write(
-						msg.conversationId ?? chatApi.current.chat.activeConversationId,
+						msg.conversationId ?? authoritative.current.activeConversationId,
 						msg.terminalId,
 						msg.data,
 					);
@@ -1027,6 +1103,7 @@ export function useChat() {
 					});
 					break;
 				case "commands":
+					if (msg.cwd !== confirmedCwd.current || switchRef.current) break;
 					dispatch({
 						type: "commands",
 						commands: msg.commands,
@@ -1066,6 +1143,10 @@ export function useChat() {
 			// this socket's close) — do not spawn a third connection that would
 			// shadow the live one and drop its incoming messages.
 			if (wsRef.current && wsRef.current !== ws) return;
+			switchRef.current = null;
+			setSwitching(null);
+			snapshotReady.current = false;
+			setHasSnapshot(false);
 			dispatch({ type: "status", status: "closed" });
 			// Reconnect with exponential backoff (1s → 2s → 4s → … capped at 10s).
 			const delay = Math.min(1000 * 2 ** retryRef.current, 10_000);
@@ -1104,6 +1185,10 @@ export function useChat() {
 		return () => {
 			aliveRef.current = false;
 			clearInterval(watchdog);
+			if (resyncTimerRef.current) {
+				clearTimeout(resyncTimerRef.current);
+				resyncTimerRef.current = null;
+			}
 			if (timerRef.current) {
 				clearTimeout(timerRef.current);
 				timerRef.current = null;
@@ -1148,18 +1233,20 @@ export function useChat() {
 		[],
 	);
 
+	const terminalApi = useMemo(() => ({
+		create: terminalCreate,
+		close: terminalClose,
+		register: terminalRegister,
+		restart: terminalRestart,
+	}), [terminalCreate, terminalClose, terminalRegister, terminalRestart]);
+
 	const chatApi = useRef({
 		chat,
 		send,
 		pushNotice,
 		dismissNotice,
 		setPendingEcho,
-		terminal: {
-			create: terminalCreate,
-			close: terminalClose,
-			register: terminalRegister,
-			restart: terminalRestart,
-		},
+		terminal: terminalApi,
 	});
 	chatApi.current = {
 		chat,
@@ -1167,12 +1254,18 @@ export function useChat() {
 		pushNotice,
 		dismissNotice,
 		setPendingEcho,
-		terminal: {
-			create: terminalCreate,
-			close: terminalClose,
-			register: terminalRegister,
-			restart: terminalRestart,
-		},
+		terminal: terminalApi,
 	};
-	return chatApi.current;
+	const displayChat = switching ? {
+		...chat,
+		state: switching.display?.state ?? null,
+		sessions: switching.display?.sessions ?? [],
+		files: switching.display?.files ?? null,
+		activeConversationId: switching.display?.state?.conversationId ?? `pending:${switching.path}`,
+		ready: false,
+		liveOutputs: new Map(),
+		toolStatuses: new Map(),
+		dialog: null,
+	} : { ...chat, ready: chat.ready && hasSnapshot, files: chat.files ?? cache.current.get(chat.state?.cwd ?? "")?.files ?? null };
+	return { ...chatApi.current, chat: displayChat, switching: switching?.path ?? null, switchError };
 }

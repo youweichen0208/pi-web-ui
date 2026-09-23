@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useLayoutEffect, useEffect, useRef, useState } from "react";
 import { FiSend, FiSquare, FiPaperclip, FiArrowUp } from "react-icons/fi";
 import type { ClientMessage, ModelInfo, SlashCommandInfo, UiMessage, UiState } from "../types";
 import { useT, useI18n } from "../i18n";
@@ -86,7 +86,18 @@ export const ChatInput = memo(function ChatInput({
 		locale === "en" && c.descriptionEn ? c.descriptionEn : (c.description ?? "");
 	const slashHint = (c: SlashCommandInfo) =>
 		locale === "en" && c.argumentHintEn ? c.argumentHintEn : (c.argumentHint ?? "");
+	const drafts = useRef(new Map<string, string>());
+	const draftKey = useRef(activeConversationId);
 	const [text, setText] = useState("");
+	useLayoutEffect(() => {
+		if (draftKey.current !== activeConversationId) {
+			if (text) drafts.current.set(draftKey.current, text);
+			else drafts.current.delete(draftKey.current);
+			draftKey.current = activeConversationId;
+			setText(drafts.current.get(activeConversationId) ?? "");
+			drafts.current.delete(activeConversationId);
+		}
+	}, [activeConversationId, text]);
 	const [dragOver, setDragOver] = useState(false);
 	/** Slash-command picker: non-null while open (filtered by the current input). */
 	const [completions, setCompletions] = useState<SlashCommandInfo[] | null>(

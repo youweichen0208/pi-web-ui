@@ -19,6 +19,7 @@ import {
 	gitDirOf,
 	isNotRepoError,
 	scmStatus,
+	scmCurrentBranch,
 	scmHistory,
 	scmFileDiff,
 	scmCommitDetail,
@@ -183,9 +184,20 @@ export class FilesService {
 
 	constructor(private readonly host: FilesHost) {}
 
+	private listingRequests = new Map<string, Promise<void>>();
 	async listFiles(relPath?: string): Promise<void> {
+		const cwd = this.host.getCwd();
+		const key = `${cwd}\0${relPath ?? ""}`;
+		const existing = this.listingRequests.get(key);
+		if (existing) return existing;
+		const pending = this.scanFiles(cwd, relPath).finally(() => this.listingRequests.delete(key));
+		this.listingRequests.set(key, pending);
+		return pending;
+	}
+
+	private async scanFiles(cwd: string, relPath?: string): Promise<void> {
 		const { resolve, sep, relative } = await import("node:path");
-		const root = resolve(this.host.getCwd());
+		const root = resolve(cwd);
 		const target = relPath ? resolve(root, relPath) : root;
 		const rawRel = relative(root, target);
 		if (rawRel.startsWith("..") || rawRel.includes(`${sep}..`)) {
@@ -211,6 +223,7 @@ export class FilesService {
 		}
 		this.host.emit({
 			type: "files",
+			cwd,
 			path: rel === "" ? "" : rel,
 			parent:
 				rel === ""
@@ -228,7 +241,7 @@ export class FilesService {
 		// macOS's FSEvents); doing it inline before the emit made every
 		// project switch wait on that registration instead of just seeing the
 		// file list immediately and having the watcher arm a beat later.
-		this.watchDir(target, rel);
+		if (cwd === this.host.getCwd()) this.watchDir(target, rel);
 	}
 
 	/**
@@ -240,14 +253,15 @@ export class FilesService {
 	 * stalls (ok:false on unexpected failure).
 	 */
 	async searchFiles(query: string, reqId: number): Promise<void> {
+		const cwd = this.host.getActiveCwd();
 		const { join } = await import("node:path");
 		const fsp = await import("node:fs/promises");
 		const q = query.trim().toLowerCase();
 		if (!q) {
-			this.host.emit({ type: "search_files_result", reqId, ok: true, results: [] });
+			this.host.emit({ type: "search_files_result", cwd, reqId, ok: true, results: [] });
 			return;
 		}
-		const root = resolve(this.host.getActiveCwd());
+		const root = resolve(cwd);
 		const ignored = ignoredEntries();
 		const MAX_RESULTS = 50;
 		const MAX_VISITED = 20000;
@@ -299,14 +313,14 @@ export class FilesService {
 		try {
 			await walk(root, "", 0);
 			this.host.emit({
-				type: "search_files_result",
+				type: "search_files_result", cwd,
 				reqId,
 				ok: true,
 				results,
 				...(truncated ? { truncated: true } : {}),
 			});
 		} catch {
-			this.host.emit({ type: "search_files_result", reqId, ok: false, results: [] });
+			this.host.emit({ type: "search_files_result", cwd, reqId, ok: false, results: [] });
 		}
 	}
 
@@ -316,6 +330,20 @@ export class FilesService {
 	 * reqId so the client's request matching never stalls. Also (re)arms the
 	 * git-dir watcher so external repo changes push scm_changed.
 	 */
+	private branchRequests = new Map<string, Promise<void>>();
+	async gitBranch(): Promise<void> {
+		const cwd = this.host.getActiveCwd();
+		const pending = this.branchRequests.get(cwd);
+		if (pending) return pending;
+		const request = (async () => {
+			await this.watchGitDir(cwd);
+			const info = await scmCurrentBranch(cwd);
+			this.host.emit({ type: "git_branch", cwd, ...info });
+		})().finally(() => this.branchRequests.delete(cwd));
+		this.branchRequests.set(cwd, request);
+		return request;
+	}
+
 	async scmQuery(
 		kind: "status" | "history" | "filediff" | "commit",
 		reqId: number,
@@ -326,12 +354,12 @@ export class FilesService {
 		try {
 			if (kind === "status") {
 				const data = await scmStatus(cwd);
-				this.host.emit({ type: "scm_data", reqId, kind, ok: true, ...data });
+				this.host.emit({ type: "scm_data", cwd, reqId, kind, ok: true, ...data });
 				return;
 			}
 			if (kind === "history") {
 				const history = await scmHistory(cwd);
-				this.host.emit({ type: "scm_data", reqId, kind, ok: true, history });
+				this.host.emit({ type: "scm_data", cwd, reqId, kind, ok: true, history });
 				return;
 			}
 			if (kind === "filediff" && arg?.path) {
@@ -340,16 +368,20 @@ export class FilesService {
 				const { resolve, relative } = await import("node:path");
 				const rel = relative(resolve(cwd), resolve(cwd, arg.path));
 				if (rel.startsWith("..") || rel === "") throw new Error("路径超出工作区");
-				const { staged, worktree } = await scmFileDiff(cwd, arg.path);
+				const diff = await scmFileDiff(cwd, arg.path);
 				this.host.emit({
-					type: "scm_data", reqId, kind, ok: true,
-					stagedText: staged, worktreeText: worktree,
+					type: "scm_data", cwd, reqId, kind, ok: true,
+					stagedText: diff.staged, worktreeText: diff.worktree,
+					untracked: diff.untracked,
+					untrackedText: diff.untrackedText,
+					untrackedKind: diff.untrackedKind,
+					untrackedTruncated: diff.untrackedTruncated,
 				});
 				return;
 			}
 			if (kind === "commit" && arg?.hash && /^[0-9a-f]{7,40}$/i.test(arg.hash)) {
 				const text = await scmCommitDetail(cwd, arg.hash);
-				this.host.emit({ type: "scm_data", reqId, kind, ok: true, text });
+				this.host.emit({ type: "scm_data", cwd, reqId, kind, ok: true, text });
 				return;
 			}
 			throw new Error("无效的 scm 查询参数");
@@ -357,7 +389,7 @@ export class FilesService {
 			if (isNotRepoError(err)) {
 				// Not a repo — a valid empty answer so the panel shows its hint.
 				this.host.emit({
-					type: "scm_data", reqId, kind, ok: true, notRepo: true,
+					type: "scm_data", cwd, reqId, kind, ok: true, notRepo: true,
 					branch: "", detached: false, upstream: null,
 					ahead: 0, behind: 0, upstreamGone: false,
 					files: [], branches: [], stats: {}, history: [],
@@ -366,7 +398,7 @@ export class FilesService {
 				return;
 			}
 			this.host.emit({
-				type: "scm_data",
+				type: "scm_data", cwd,
 				reqId,
 				kind,
 				ok: false,
@@ -381,13 +413,15 @@ export class FilesService {
 	 * queried workspace changes. Uses `git rev-parse --absolute-git-dir` so
 	 * worktrees and submodules resolve to the real dir.
 	 */
+	private gitWatchGeneration = 0;
 	private async watchGitDir(cwd: string): Promise<void> {
 		if (this.gitWatchCwd === cwd && this.gitWatcher) return;
 		this.unwatchGit();
 		this.gitWatchCwd = cwd;
+		const generation = this.gitWatchGeneration;
 		try {
 			const gitDir = await gitDirOf(cwd);
-			if (!gitDir) return;
+			if (!gitDir || this.host.isDisposed() || this.gitWatchGeneration !== generation) return;
 			this.gitWatcher = watch(gitDir, { persistent: false }, () => {
 				if (this.host.isDisposed() || this.gitDirtyTimer) return;
 				// Debounce: one checkout/commit fires several fs events.
@@ -402,11 +436,12 @@ export class FilesService {
 			});
 		} catch {
 			// no .git here (or git missing) — watcher stays off; queries still work
-			this.unwatchGit();
+			if (this.gitWatchGeneration === generation) this.unwatchGit();
 		}
 	}
 
 	unwatchGit(): void {
+		this.gitWatchGeneration++;
 		if (this.gitWatcher) {
 			try {
 				this.gitWatcher.close();
@@ -542,9 +577,10 @@ export class FilesService {
 
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
 	async readFile(relPath: string): Promise<void> {
+		const cwd = this.host.getCwd();
 		try {
 			const fs = await import("node:fs/promises");
-			const root = this.host.getCwd();
+			const root = cwd;
 			const wp = workspacePath(resolve(root), relPath);
 			if (!wp) {
 				this.host.emit({
@@ -571,6 +607,7 @@ export class FilesService {
 			if (kind === "image" || kind === "video") {
 				this.host.emit({
 					type: "file_content",
+				cwd,
 					path: rel,
 					name,
 					text: "",
@@ -594,6 +631,7 @@ export class FilesService {
 				if (looksLikeText(data)) {
 					this.host.emit({
 						type: "file_content",
+				cwd,
 						path: rel,
 						name,
 						text: decodeText(data),
@@ -606,6 +644,7 @@ export class FilesService {
 				} else {
 					this.host.emit({
 						type: "file_content",
+				cwd,
 						path: rel,
 						name,
 						text: hexDump(data),
@@ -630,8 +669,9 @@ export class FilesService {
 
 	/** Save text from the file preview panel within the active workspace. */
 	async writeFile(relPath: string, text: string): Promise<void> {
+		const cwd = this.host.getCwd();
 		try {
-			const root = this.host.getCwd();
+			const root = cwd;
 			const wp = workspacePath(resolve(root), relPath);
 			if (!wp) {
 				this.host.emit({
@@ -666,7 +706,7 @@ export class FilesService {
 			});
 			// Re-read through the same path as the preview request so the client
 			// gets the canonical content, line count and file size after saving.
-			await this.readFile(wp.rel);
+			if (cwd === this.host.getCwd()) await this.readFile(wp.rel);
 		} catch (err) {
 			this.host.emit({
 				type: "notice",
@@ -749,4 +789,3 @@ export class FilesService {
 		}
 	}
 }
-

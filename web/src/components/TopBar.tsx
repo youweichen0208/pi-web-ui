@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	FiFolder,
 	FiGitBranch,
@@ -11,7 +11,12 @@ import {
 	FiSettings,
 	FiLayers,
 	FiTerminal,
+	FiMinus,
+	FiSquare,
+	FiCopy,
+	FiX,
 } from "react-icons/fi";
+import { desktopAPI, type DesktopWindowState } from "../desktop";
 import type { ChatState } from "../use-chat";
 import type { ClientMessage, CommandDef } from "../types";
 import { Dropdown, DropdownItem } from "./Dropdown";
@@ -77,6 +82,9 @@ export function TopBar({
 	const { locale, setLocale, t } = useI18n();
 	const [langOpen, setLangOpen] = useState(false);
 	const [moreOpen, setMoreOpen] = useState(false);
+	const [windowState, setWindowState] = useState<DesktopWindowState>({ maximized: false, fullscreen: false });
+	useEffect(() => desktopAPI?.onWindowState(setWindowState), []);
+	const projectName = chat.state?.cwd?.split(/[\\/]/).filter(Boolean).at(-1);
 
 	const LANGUAGES: { value: Locale; label: string }[] = [
 		{ value: "zh", label: t("langZh") },
@@ -103,6 +111,11 @@ export function TopBar({
 				</button>
 				<span className="brand-logo">π</span>
 				<span className="brand-name">pi-web-ui</span>
+				{desktopAPI && (
+					<span className="desktop-window-title" title={chat.state?.cwd ?? ""}>
+						pi <span className="desktop-title-separator">/</span> {projectName || t("desktopWorkspace")}
+					</span>
+				)}
 				<span className={`conn-dot ${connClass}`} title={connLabel} />
 				<span className="conn-label">{connLabel}</span>
 			</div>
@@ -254,7 +267,6 @@ export function TopBar({
 						open={moreOpen}
 						onOpenChange={setMoreOpen}
 					>
-						<div className="dd-header">{t("sound")}</div>
 						<div className="dd-header">{t("settings")}</div>
 						<DropdownItem
 							onClick={() => {
@@ -310,6 +322,13 @@ export function TopBar({
 					<FiFolder />
 				</button>
 			</div>
+			{desktopAPI && desktopAPI.platform !== "darwin" && (
+				<div className="desktop-window-controls" aria-label={t("windowControls")}>
+					<button type="button" title={t("minimizeWindow")} aria-label={t("minimizeWindow")} onClick={() => desktopAPI?.windowAction("minimize")}><FiMinus /></button>
+					<button type="button" title={windowState.maximized || windowState.fullscreen ? t("restoreWindow") : t("maximizeWindow")} aria-label={windowState.maximized || windowState.fullscreen ? t("restoreWindow") : t("maximizeWindow")} onClick={() => desktopAPI?.windowAction("toggle-maximize")}>{windowState.maximized || windowState.fullscreen ? <FiCopy /> : <FiSquare />}</button>
+					<button type="button" className="desktop-window-close" title={t("closeWindow")} aria-label={t("closeWindow")} onClick={() => desktopAPI?.windowAction("close")}><FiX /></button>
+				</div>
+			)}
 		</header>
 	);
 }

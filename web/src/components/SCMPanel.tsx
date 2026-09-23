@@ -127,6 +127,9 @@ export function ScmPanel({
 		staged: string;
 		worktree: string;
 		untracked: boolean;
+		untrackedText?: string;
+		untrackedKind?: "text" | "binary" | "directory";
+		untrackedTruncated?: boolean;
 	} | null>(null);
 	const [diffLoading, setDiffLoading] = useState(false);
 	const [busy, setBusy] = useState(false);
@@ -216,7 +219,10 @@ export function ScmPanel({
 					file,
 					staged: data.stagedText ?? "",
 					worktree: data.worktreeText ?? "",
-					untracked: false,
+					untracked: !!data.untracked,
+					untrackedText: data.untrackedText,
+					untrackedKind: data.untrackedKind,
+					untrackedTruncated: data.untrackedTruncated,
 				});
 			} else if (data.reqId === historyReqRef.current) {
 				historyReqRef.current = -1;
@@ -307,17 +313,15 @@ export function ScmPanel({
 			setSelected(f);
 			setSelectedCommit(null);
 			selectedFileRef.current = f;
-			if (f.x === "?" && f.y === "?") {
-				setFileDiff({ file: f, staged: "", worktree: "", untracked: true });
-				return;
-			}
+			setFileDiff(null);
 			setDiffLoading(true);
 			setError(null);
 			if (!sendScm({ type: "scm_filediff", path: f.path }, diffReqRef)) {
 				setDiffLoading(false);
+				setError(t("scmConnecting"));
 			}
 		},
-		[sendScm],
+		[sendScm, t],
 	);
 
 	const showCommitDetail = useCallback(
@@ -746,15 +750,11 @@ export function ScmPanel({
 										title={kindLabels[kind]}
 										onClick={() => showFileDiff(f)}
 									>
-										<span
-											className={`scm-file-xy ${kind === "untracked" ? "q" : "x"}`}
-										>
-											{f.x !== " " ? f.x : "\u00a0"}
+										<span className="scm-file-xy x">
+											{kind === "untracked" ? "\u00a0" : f.x !== " " ? f.x : "\u00a0"}
 										</span>
-										<span
-											className={`scm-file-xy ${kind === "untracked" ? "q" : "y"}`}
-										>
-											{f.y !== " " ? f.y : "\u00a0"}
+										<span className={`scm-file-xy y${kind === "untracked" ? " untracked" : ""}`} aria-label={kind === "untracked" ? t("scmUntracked") : undefined}>
+											{kind === "untracked" ? t("scmUntrackedBadge") : f.y !== " " ? f.y : "\u00a0"}
 										</span>
 										<span className="scm-file-path">{f.path}</span>
 										{st && (st.add > 0 || st.del > 0) && (
@@ -838,7 +838,17 @@ export function ScmPanel({
 									<div className="scm-empty">{t("scmLoading")}</div>
 								)}
 								{selected && fileDiff && fileDiff.untracked && (
-									<div className="scm-empty">{t("scmUntrackedNote")}</div>
+									<>
+										<div className="scm-diff-section">{t("scmUntracked")}</div>
+										{fileDiff.untrackedKind === "text" ? (
+											fileDiff.untrackedText ? (
+												<pre className="scm-diff-pre scm-untracked-content">{fileDiff.untrackedText}</pre>
+											) : <div className="scm-empty">{t("scmEmptyFile")}</div>
+										) : (
+											<div className="scm-empty">{t(fileDiff.untrackedKind === "directory" ? "scmUntrackedDirectory" : "scmUntrackedBinary")}</div>
+										)}
+										{fileDiff.untrackedTruncated && <div className="scm-empty">{t("scmPreviewTruncated")}</div>}
+									</>
 								)}
 								{selected && fileDiff && !fileDiff.untracked && (
 									<>
