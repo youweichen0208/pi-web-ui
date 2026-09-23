@@ -103,11 +103,37 @@ jobs:
         run: |
           echo "::warning::Terminal smoke test failed (outcome=${{ steps.smoke_test.outcome }}) — 很可能是 node-pty 的已知 AttachConsole 上游 bug（见 verify-windows-desktop.yml / release-desktop.yml 里的注释），已跳过阻断继续打包，但建议下载这次产物手动确认终端功能。"
 
-      - name: Build + publish Electron (Windows)
-        run: npx electron-builder build --win --x64 --publish always
+      - name: Build Electron (Windows)
+        run: npx electron-builder build --win --x64 --publish never
+
+      - name: Verify packaged server and portable relaunch
+        shell: pwsh
+        run: |
+          node tests/packaged-server-start-test.mjs release/win-unpacked/pi.exe release/win-unpacked/resources/app
+          if ($LASTEXITCODE -ne 0) { throw "Packaged server cannot start" }
+          $portable = Get-ChildItem release/*win-x64.exe | Select-Object -First 1
+          ./tests/portable-relaunch-test.ps1 -PortableExe $portable.FullName
+
+      - name: Publish verified Windows packages
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Windows 签名（可选）——CSC_LINK/CSC_KEY_PASSWORD 没配的话就是未签名构建
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "v$version"
+          gh release view $tag
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --verify-tag --title $tag --notes "Desktop release $version"
+            if ($LASTEXITCODE -ne 0) {
+              # Another platform may have created the release concurrently.
+              gh release view $tag
+              if ($LASTEXITCODE -ne 0) { throw "Cannot create release" }
+            }
+          }
+          $assets = Get-ChildItem release -File | Where-Object { $_.Extension -in '.exe', '.zip', '.blockmap' -or $_.Name -eq 'latest.yml' }
+          if ($assets.Count -lt 5) { throw "Windows release assets are incomplete" }
+          gh release upload $tag @($assets.FullName) --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Release upload failed" }
 
   build-linux:
     if: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'linux' }}

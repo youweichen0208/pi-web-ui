@@ -1,6 +1,6 @@
 # pi-web-ui Electron 打包配置
 # 构建：npm run build:electron 或 npm run build:electron:mac / :win / :linux
-# （发布到 GitHub Releases 的 CI 流程当前未接，需要时再补 publish 配置）
+# 推送 v* 标签后由 release-desktop.yml 构建并发布到 GitHub Releases。
 
 appId: com.youweichen.pi-web-ui
 productName: pi
@@ -113,6 +113,13 @@ win:
   # 不签名
   signAndEditExecutable: false
   artifactName: "${productName}-${version}-win-x64.${ext}"
+
+# electron-builder 26.15.3: true omits UNPACK_DIR_NAME, so NSIS uses its
+# per-launch $PLUGINSDIR. The default build-wide directory lets a second
+# launch delete modules still used by the first instance. (The upstream
+# option comment says false, but this pinned version's implementation uses true.)
+portable:
+  unpackDirName: true
 
 nsis:
   oneClick: false

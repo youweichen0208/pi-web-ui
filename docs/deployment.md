@@ -90,3 +90,9 @@ npm run publish:electron       # 同 build，但 --publish always——本地跑
 桌面测试可设置 `PI_WEB_DATA_DIR` 指向临时数据目录；未设置时继续使用 `~/.pi-web-desktop`。Chromium 配置可用 `--user-data-dir` 隔离。
 
 桌面文件编辑与 Web 共用右栏组件。关闭窗口到托盘保留草稿；退出或刷新遇到未保存内容时，主进程通过 `will-prevent-unload` 显示原生放弃确认，取消后服务继续运行。
+
+### Windows 便携版临时目录
+
+`electron-builder.yml` 的 `portable.unpackDirName: true` 让锁定的 electron-builder 26.15.3 不定义 `UNPACK_DIR_NAME`，NSIS 为每次启动分配独立 `$PLUGINSDIR`。该版本上游类型注释写的是 false，但实际实现需要 true。默认每个构建复用同一临时目录，重复打开时第二个单实例进程退出会删除第一个实例仍在使用的 SDK 文件，导致 `ERR_MODULE_NOT_FOUND`（如 `anthropic-messages.js`）。不要恢复默认值。
+
+Windows 发布先构建，再执行 `tests/packaged-server-start-test.mjs`（使用打包后的 Electron 加载懒加载 provider 并启动包内服务端）及 `tests/portable-relaunch-test.ps1`（首次启动、重复打开、原进程存活及模块保留），通过后才上传安装包；这些检查失败会阻断 Windows 发布。手动运行 `Verify Windows desktop build` 时传入 `release_tag`，可直接验证已发布的 ZIP、NSIS 和便携 EXE，无需重新构建。

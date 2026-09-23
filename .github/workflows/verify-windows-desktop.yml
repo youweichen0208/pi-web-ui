@@ -58,28 +58,13 @@ jobs:
       - name: Build Electron desktop app (real npmRebuild)
         run: npm run build:electron:win
 
-      # 用打包出来的 pi-web-ui.exe 本身（内置的 Electron 运行时）以
-      # ELECTRON_RUN_AS_NODE=1 跑一遍同一个终端冒烟测试 —— 这跟 electron/main.mjs
-      # 里 fork() server 子进程的方式完全一致，是对生产路径最贴近的验证：
-      # 确认 electron-rebuild 出来的 node-pty 在真实 Electron 里也能用，
-      # 不只是在普通 Node 下能用。
-      # 同上：node-pty 的 AttachConsole 已知上游 bug 在这一步也可能出现，
-      # continue-on-error，失败时打 warning 注解而不是整个 job 标红。
-      - name: Terminal smoke test (under packaged Electron runtime)
-        id: smoke_test_packaged
-        continue-on-error: true
+      - name: Verify packaged server and portable relaunch
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Recurse -Filter "pi-web-ui.exe" -Path release | Select-Object -First 1
-          if (-not $exe) { throw "pi-web-ui.exe not found under release/" }
-          Write-Host "Using $($exe.FullName)"
-          $env:ELECTRON_RUN_AS_NODE = "1"
-          & $exe.FullName "tests/terminal-smoke-test.mjs"
-          if ($LASTEXITCODE -ne 0) { throw "terminal smoke test failed under packaged Electron runtime (exit $LASTEXITCODE)" }
-
-      - name: Warn if packaged-runtime smoke test failed
-        if: steps.smoke_test_packaged.outcome == 'failure'
-        run: echo "::warning::Packaged-Electron terminal smoke test failed — likely the known node-pty AttachConsole upstream bug, continuing anyway."
+          node tests/packaged-server-start-test.mjs release/win-unpacked/pi.exe release/win-unpacked/resources/app
+          if ($LASTEXITCODE -ne 0) { throw "Packaged server cannot start" }
+          $portable = Get-ChildItem release/*win-x64.exe | Select-Object -First 1
+          ./tests/portable-relaunch-test.ps1 -PortableExe $portable.FullName
 
       - name: Upload installers
         uses: actions/upload-artifact@v4

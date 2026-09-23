@@ -1,15 +1,23 @@
 // Exercise the shipped server with the shipped Electron runtime, without using
 // the checkout's node_modules. No model calls or user configuration are needed.
 import assert from "node:assert/strict";
-import { fork } from "node:child_process";
+import { fork, execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "node:net";
 import { once } from "node:events";
+import { pathToFileURL } from "node:url";
 
 const [executable, appRoot] = process.argv.slice(2).map((p) => resolve(p));
 assert(executable && appRoot, "Usage: node tests/packaged-server-start-test.mjs <executable> <resources/app>");
+// Loading the lazy provider is essential: startup alone does not import it.
+const provider = pathToFileURL(join(appRoot, "node_modules/@earendil-works/pi-ai/dist/api/anthropic-messages.js")).href;
+execFileSync(executable, ["--input-type=module", "--eval", `await import(${JSON.stringify(provider)})`], {
+	env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NODE_PATH: "", NODE_OPTIONS: "" },
+	timeout: 30000,
+	stdio: "pipe",
+});
 const temp = mkdtempSync(join(tmpdir(), "pi-packaged-start-"));
 const workspace = join(temp, "workspace");
 mkdirSync(workspace);
@@ -69,7 +77,7 @@ try {
 	console.error(output);
 	throw error;
 } finally {
-	if (child.exitCode === null && child.signalCode === null) {
+	if (child.pid && child.exitCode === null && child.signalCode === null) {
 		const exited = once(child, "exit");
 		child.kill();
 		await exited;
