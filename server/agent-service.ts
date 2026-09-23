@@ -2617,16 +2617,16 @@ export class ClientSession {
 	/** Remove a conversation from the running list and free its runtime. The
 	 *  session stays persisted on disk, so it remains recoverable from the
 	 *  history list. Never removes the active conversation. */
-	private removeConversation(id: string): void {
+	private removeConversation(id: string): Promise<void> {
 		const conv = this.convs.get(id);
-		if (!conv || id === this.activeId) return;
+		if (!conv || id === this.activeId) return Promise.resolve();
 		conv.titleJob.lock();
 		this.convs.delete(id);
 		this.clearAllToolWatchdogs(conv);
 		conv.terminals.killAll();
 		conv.unsubscribe?.();
 		conv.unsubscribe = undefined;
-		void conv.runtime.dispose().catch(() => {});
+		return conv.runtime.dispose().catch(() => {});
 	}
 
 	/** Switch the ACTIVE conversation without interrupting any other chat. */
@@ -2753,18 +2753,28 @@ export class ClientSession {
 				});
 				return;
 			}
-			// Refuse to pull the file out from under a live conversation.
-			for (const conv of this.convs.values()) {
-				if (conv.session.sessionFile === abs) {
+			// Warm, idle runtimes are caches, not active use. Protect actual work
+			// before releasing any matching runtimes and deleting the transcript.
+			const owners = [...this.convs.values()].filter((conv) =>
+				conv.session.sessionFile && resolve(conv.session.sessionFile) === abs);
+			for (const conv of owners) {
+				if (conv.id === this.activeId || conv.session.isStreaming ||
+					conv.goal.reviewing || conv.wizardRunning ||
+					conv.queueSteering.length > 0 || conv.queueFollowUp.length > 0 ||
+					conv.terminals.list().length > 0) {
 					this.emit({
 						type: "notice",
 						level: "warning",
-						text: "该对话正在使用中，请先切换到其他对话再删除",
+						text: conv.id === this.activeId
+							? "该对话正在使用中，请先切换到其他对话再删除"
+							: "该对话仍有后台任务或终端，请先停止任务并关闭终端再删除",
 					});
 					return;
 				}
 			}
+			await Promise.all(owners.map((conv) => this.removeConversation(conv.id)));
 			rmSync(abs, { force: true });
+			this.emitConversations();
 			await this.refreshSessions();
 		} catch (err) {
 			this.emit({

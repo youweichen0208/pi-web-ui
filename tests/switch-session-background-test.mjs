@@ -222,6 +222,10 @@ try {
 		),
 	);
 	console.log("✓ history switch leaves the active stream running in background");
+	client.send({ type: "delete_session", path: streamingState.sessionFile });
+	await client.waitForType("notice", (m) => m.level === "warning" && m.text.includes("后台任务"));
+	console.log("✓ deleting a background streaming session is refused");
+
 
 	await client.waitForType(
 		"conversations",

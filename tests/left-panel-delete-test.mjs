@@ -162,6 +162,15 @@ async function run() {
 	const paths1 = (s1.sessions ?? []).map((x) => x.path);
 	check("list_sessions 命中两条种子会话", paths1.includes(sess1) && paths1.includes(sess2), paths1.join(","));
 
+	// Visit both sessions: the first remains warm after selecting the second.
+	for (const path of [sess1, sess2]) {
+		c.send({ type: "switch_session", path });
+		await c.next((m) => (m.type === "snapshot" || m.type === "snapshot_delta") && m.state?.sessionFile === path, "selected session");
+	}
+	c.send({ type: "delete_session", path: sess2 });
+	await c.next((m) => m.type === "notice" && m.level === "warning", "active session protected");
+	check("当前会话不能删除", existsSync(sess2));
+
 	// 2) delete_session 删除一条 → 磁盘消失 + 列表刷新只剩一条
 	// （attach 后有防抖的后台重复推送，必须等“确实不含被删项”的那一份）
 	c.send({ type: "delete_session", path: sess1 });
@@ -170,6 +179,7 @@ async function run() {
 			m.type === "sessions" &&
 			!(m.sessions ?? []).some((x) => x.path === sess1),
 		"sessions #2（不含被删项）",
+		3000,
 	);
 	const paths2 = (s2.sessions ?? []).map((x) => x.path);
 	check("删除后文件从磁盘消失", !existsSync(sess1), sess1);
