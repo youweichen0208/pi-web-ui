@@ -1,5 +1,5 @@
 /**
- * node-pty × Node `--watch` compatibility patches (dev-server noise).
+ * node-pty compatibility patches for Node `--watch` and Windows ConPTY.
  *
  * Node's `--watch` mode (the dev script runs `node --watch --import tsx`)
  * pushes `watch:require` / `watch:import` messages over the IPC channels of
@@ -19,6 +19,9 @@
  * Both are benign protocol noise: the ConPTY worker only ever sends its READY
  * sentinel and the agent only sends `{ consoleProcessList }` — both of which
  * node-pty handles. These patches make node-pty ignore unrelated IPC traffic.
+ * The console-list helper also needs to report an empty list when a shell has
+ * already exited: node-pty 1.1.0 lets AttachConsole throw at module scope,
+ * producing an uncaught stack trace and making its parent wait five seconds.
  *
  * IMPORTANT: this module MUST be imported before node-pty (see terminals.ts) —
  * it rewrites the installed copies on disk so the subsequently-compiled
@@ -87,6 +90,24 @@ function applyPatches(): void {
 			"                    resolve(message.consoleProcessList);",
 			"                }",
 			"            });",
+		].join("\n"),
+	);
+	// 3. A shell may exit before the console-list helper attaches. Always reply
+	//    to the parent so a normal terminal close cannot print an uncaught error
+	//    or hold its cleanup path for the full five-second fallback timeout.
+	patchFile(
+		pkgDir,
+		"lib/conpty_console_list_agent.js",
+		"var consoleProcessList = getConsoleProcessList(shellPid);\nprocess.send({ consoleProcessList: consoleProcessList });",
+		[
+			"try {",
+			"    var consoleProcessList = getConsoleProcessList(shellPid);",
+			"    process.send({ consoleProcessList: consoleProcessList });",
+			"} catch (error) {",
+			"    if (!error || error.message !== 'AttachConsole failed') throw error;",
+			"    // pi-web-ui: the console may already be gone during ConPTY teardown",
+			"    process.send({ consoleProcessList: [] });",
+			"}",
 		].join("\n"),
 	);
 }

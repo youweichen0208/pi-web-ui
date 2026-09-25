@@ -31,9 +31,21 @@ const server = spawn(
 server.on("error", (e) => console.error("[srv spawn error]", e));
 server.on("exit", (code) => console.error(`[srv exited early: ${code}]`));
 server.stdout.on("data", (d) => process.stdout.write(`[srv] ${d}`));
-server.stderr.on("data", (d) => process.stdout.write(`[srv!] ${d}`));
+let serverStderr = "";
+server.stderr.on("data", (d) => {
+	serverStderr += d.toString();
+	process.stdout.write(`[srv!] ${d}`);
+});
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function waitFor(predicate, timeoutMs = 8000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return true;
+		await sleep(50);
+	}
+	return Boolean(predicate());
+}
 let passed = 0;
 const check = (name, cond) => {
 	if (cond) {
@@ -255,14 +267,11 @@ async function main() {
 		cols: 80,
 		rows: 24,
 	});
-	await sleep(600);
-	check("shell produced output", (outputs.get(t1) ?? "").length > 0);
 	check("terminal_list identifies the active conversation", snapshotReply?.conversationId && snapshotReply.conversationId.length > 0);
 	send({ type: "terminal_input", terminalId: t1, data: "echo WS_ECHO_OK\r" });
-	await sleep(800);
 	check(
 		"input echoes through PTY",
-		(outputs.get(t1) ?? "").includes("WS_ECHO_OK"),
+		await waitFor(() => (outputs.get(t1) ?? "").includes("WS_ECHO_OK")),
 	);
 
 	send({ type: "terminal_resize", terminalId: t1, cols: 100, rows: 40 });
@@ -317,12 +326,10 @@ async function main() {
 
 	// -- kill / exit -----------------------------------------------------------
 	send({ type: "terminal_kill", terminalId: t1 });
-	await sleep(400);
-	check("terminal_kill emits exit", exits.has(t1));
+	check("terminal_kill emits exit", await waitFor(() => exits.has(t1)));
 
 	send({ type: "terminal_input", terminalId: t2, data: "exit\r" });
-	await sleep(600);
-	check("shell exit emits terminal_exit", exits.has(t2));
+	check("shell exit emits terminal_exit", await waitFor(() => exits.has(t2)));
 	// Exited PTYs leave the live map: the same name can be created again and
 	// accepts input, proving exited entries do not consume the terminal limit.
 	send({
@@ -332,14 +339,12 @@ async function main() {
 		cols: 80,
 		rows: 24,
 	});
-	await sleep(500);
 	send({ type: "terminal_input", terminalId: t2, data: "echo REUSED_OK\r" });
-	await sleep(600);
-	check("exited terminal name can be reused", (outputs.get(t2) ?? "").includes("REUSED_OK"));
+	check("exited terminal name can be reused", await waitFor(() => (outputs.get(t2) ?? "").includes("REUSED_OK")));
 
 	// The command-list spawn path must enforce the same live-terminal cap as
 	// terminal_create; otherwise unique browser IDs could bypass the limit.
-	const capIds = Array.from({ length: 15 }, (_, i) => `cap-${i}`);
+	const capIds = Array.from({ length: 16 }, (_, i) => `cap-${i}`);
 	for (const id of capIds) {
 		send({ type: "terminal_create", terminalId: id, cwd: workdir, cols: 40, rows: 12 });
 	}
@@ -351,8 +356,7 @@ async function main() {
 		cols: 40,
 		rows: 12,
 	});
-	await sleep(500);
-	check("run_command enforces terminal limit", notices.some((text) => text.includes("终端数量已达上限")));
+	check("run_command enforces terminal limit", await waitFor(() => notices.some((text) => text.includes("终端数量已达上限"))));
 	for (const id of capIds) send({ type: "terminal_kill", terminalId: id });
 
 	// -- key encoding (pure + byte-exact) ------------------------------------
@@ -391,7 +395,7 @@ async function main() {
 			cols: 40,
 			rows: 12,
 		});
-		await sleep(400);
+		await waitFor(() => notices.slice(before).filter((n) => n.includes("终端名称无效")).length >= 2);
 		check(
 			"terminal_create + run_command both reject an invalid id",
 			notices.slice(before).filter((n) => n.includes("终端名称无效")).length >= 2,
@@ -439,19 +443,30 @@ async function main() {
 		const toolManager = new TerminalManager(() => {}, workdir);
 		const tools = new Map(makePersistentTerminalTools(toolManager, workdir).map((tool) => [tool.name, tool]));
 		const invoke = async (name, params) => tools.get(name).execute("tool-smoke", params, undefined, undefined, undefined);
+		const readUntil = async (terminalId, cursor, needle) => {
+			const deadline = Date.now() + 8000;
+			let output = "";
+			while (Date.now() < deadline && !output.includes(needle)) {
+				const reply = await invoke("terminal_read", { terminalId, cursor, waitMs: 2000, maxBytes: 4000 });
+				const chunk = JSON.parse(reply.content[0].text);
+				output += chunk.data;
+				cursor = chunk.cursor;
+			}
+			return { output, cursor };
+		};
 		try {
 			await invoke("terminal_create", { terminalId: "agent-smoke", cwd: ".", cols: 40, rows: 12 });
 			const listed = await invoke("terminal_list", {});
 			check("agent terminal_create/list works", JSON.parse(listed.content[0].text).some((t) => t.id === "agent-smoke"));
 			const initial = await invoke("terminal_read", { terminalId: "agent-smoke", cursor: 0, maxBytes: 2000 });
 			const initialRead = JSON.parse(initial.content[0].text);
-			await invoke("terminal_input", { terminalId: "agent-smoke", data: "printf TOOL_WAIT_OK\r" });
-			const waited = await invoke("terminal_read", { terminalId: "agent-smoke", cursor: initialRead.cursor, waitMs: 2000, maxBytes: 4000 });
-			check("agent terminal_read waits for incremental output", JSON.parse(waited.content[0].text).data.includes("TOOL_WAIT_OK"));
-			await invoke("terminal_input", { terminalId: "agent-smoke", data: "printf TOOL_KEY_OK" });
+			await invoke("terminal_input", { terminalId: "agent-smoke", data: "printf 'TOOL_%s_OK' WAIT\r" });
+			const waited = await readUntil("agent-smoke", initialRead.cursor, "TOOL_WAIT_OK");
+			check("agent terminal_read waits for incremental output", waited.output.includes("TOOL_WAIT_OK"));
+			await invoke("terminal_input", { terminalId: "agent-smoke", data: "printf 'TOOL_%s_OK' KEY" });
 			await invoke("terminal_key", { terminalId: "agent-smoke", key: "Enter" });
-			const keyed = await invoke("terminal_read", { terminalId: "agent-smoke", cursor: JSON.parse(waited.content[0].text).cursor, waitMs: 2000, maxBytes: 4000 });
-			check("agent terminal_key sends named keys", JSON.parse(keyed.content[0].text).data.includes("TOOL_KEY_OK"));
+			const keyed = await readUntil("agent-smoke", waited.cursor, "TOOL_KEY_OK");
+			check("agent terminal_key sends named keys", keyed.output.includes("TOOL_KEY_OK"));
 			await invoke("terminal_close", { terminalId: "agent-smoke" });
 			const afterClose = await invoke("terminal_list", {});
 			check("agent terminal_close releases the PTY", JSON.parse(afterClose.content[0].text).length === 0);
@@ -465,6 +480,7 @@ async function main() {
 	send({ type: "terminal_resize", terminalId: "nope", cols: 10, rows: 10 });
 	await sleep(200);
 	check("server still alive after bogus messages", true);
+	check("ConPTY cleanup has no uncaught AttachConsole error", !serverStderr.includes("AttachConsole failed"));
 
 	ws.close();
 	await sleep(300);

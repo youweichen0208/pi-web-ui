@@ -36,20 +36,9 @@ jobs:
 
       # 先在普通 Node 下跑一遍终端冒烟测试：确认 node-pty 自带的
       # prebuilds/win32-x64/pty.node 在真机 Windows 上能正常 spawn/收发数据。
-      #
-      # continue-on-error：node-pty 在 Windows 上有个已知上游 bug —— 清理阶段
-      # conpty_console_list_agent.js 里 getConsoleProcessList() 偶发
-      # "AttachConsole failed"（openai/codex #25272 #25372、opencode #32389 等
-      # 多个项目都中招，上游没吞掉这个异常，不是我们代码的问题）。这个是一次性
-      # 验证工作流，出这个已知噪音不该拦住后面继续跑，靠下面的 warning 注解留痕。
+      # 终端失败需要直接阻断验证，不能用 continue-on-error 掩盖读写问题。
       - name: Terminal smoke test (plain Node)
-        id: smoke_test_plain
-        continue-on-error: true
         run: node tests/terminal-smoke-test.mjs
-
-      - name: Warn if plain-node smoke test failed
-        if: steps.smoke_test_plain.outcome == 'failure'
-        run: echo "::warning::Plain-node terminal smoke test failed — likely the known node-pty AttachConsole upstream bug, continuing anyway."
 
       # electron-builder 默认 npmRebuild: true，会用 @electron/rebuild + node-gyp
       # 把 node-pty 针对 Electron 的 Node ABI 重新编译一遍（这一步在 mac/Linux 上

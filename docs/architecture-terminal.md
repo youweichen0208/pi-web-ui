@@ -17,9 +17,11 @@
 
 **终端输出微批合并**（`terminals.ts` 的 `queueOut`/`flushPending`，窗口 `OUTPUT_FLUSH_MS=16ms`）：`pty.onData` 每 chunk 先入 `pendingOut` 缓冲再统一 flush 一条 `terminal_output`——构建等场景每秒数百上千个小 chunk 的 WS 帧风暴降 10~50 倍；exit/kill/原地重启先 flush 再发退出事件保证顺序。
 
-## node-pty × Node `--watch` 兼容自愈
+## node-pty 兼容补丁与 Windows 验证
 
 `server/patch-node-pty.ts`（必须排在 node-pty 之前 import）：dev 脚本用 `node --watch`，watch 模式会向 node-pty 的 ConPTY worker / console-list agent 的 IPC 通道推 `watch:require`/`watch:import` 消息——node-pty 1.1.0 不识别，导致①每条都 `console.warn('Unexpected ConoutWorkerMessage')` 刷屏；②kill 路径把 watch 消息当 agent 回复，`message.consoleProcessList` 为 undefined 直接 `.forEach` 崩溃。补丁模块在启动时幂等地改写安装副本（仿 spawn-helper chmod 先例）；`terminals.ts` 里另有一层 console.warn 过滤兜底。生产（无 `--watch`）不受影响。
+
+Windows ConPTY 关闭终端时还有一个 node-pty 1.1.0 竞态：console-list helper 可能在伪终端销毁后才调用 `AttachConsole`，抛出未捕获异常并让父进程等待五秒超时。补丁让 helper 在这个特定错误下立即回传空列表；其他错误仍抛出。`tests/terminal-smoke-test.mjs` 在真机 Windows runner 上以终端输出/退出事件为准等待，失败会阻断桌面版发布，不能再用 `continue-on-error` 掩盖读写问题。
 
 ## SCM 源代码管理
 
