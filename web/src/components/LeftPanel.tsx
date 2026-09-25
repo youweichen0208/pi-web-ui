@@ -1,10 +1,11 @@
 import { memo, useEffect, useState } from "react";
 import {
 	FiCheck,
-	FiEdit2,
-	FiFolder,
+	FiChevronDown,
+	FiChevronRight,
+	FiMoreHorizontal,
 	FiPlus,
-	FiTrash2,
+	FiSettings,
 	FiX,
 } from "react-icons/fi";
 import type {
@@ -16,7 +17,8 @@ import type {
 import { FolderPickerModal } from "./FolderPickerModal";
 import type { ConnStatus } from "../use-chat";
 import { skillAwarePreview } from "../skill-block";
-import { useT } from "../i18n";
+import { conversationDisplayTitle } from "../conversation-display-title";
+import { useI18n } from "../i18n";
 
 /** Props are deliberately NARROW (no whole-ChatState object): every field is
  *  stable while tokens stream in, so the shallow-compared memo() below skips
@@ -24,6 +26,8 @@ import { useT } from "../i18n";
  *  and conversation lists on every delta. Add a prop here when adding a chat
  *  field usage — TypeScript enforces it at the call site. */
 interface LeftPanelProps {
+	onOpenSettings: () => void;
+	onNewChat: () => void;
 	ready: boolean;
 	status: ConnStatus;
 	cwd: string;
@@ -53,18 +57,21 @@ interface LeftPanelProps {
 	active: boolean;
 }
 
-function formatModified(ts: number): string {
+function formatModified(ts: number, yesterday: string): string {
 	const d = new Date(ts);
 	const now = new Date();
 	const sameDay = d.toDateString() === now.toDateString();
 	if (sameDay) {
 		return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 	}
+	const previous = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+	if (d.toDateString() === previous.toDateString()) return yesterday;
 	return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFile, conversations, sessions, projects, dirBrowse, activeConversationId, send, active }: LeftPanelProps) {
-	const t = useT();
+export const LeftPanel = memo(function LeftPanel({
+	onOpenSettings, onNewChat, ready, status, cwd, sessionFile, conversations, sessions, projects, dirBrowse, activeConversationId, send, active }: LeftPanelProps) {
+	const { t, locale } = useI18n();
 	const currentFile = sessionFile;
 	const currentCwd = cwd;
 	// Two-step delete confirm: which row ("proj:<path>" / "sess:<path>") is
@@ -75,6 +82,20 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 	// draft text. Empty draft clears the name (list falls back to first message).
 	const [renaming, setRenaming] = useState<string | null>(null);
 	const [renameDraft, setRenameDraft] = useState("");
+	const [openMenu, setOpenMenu] = useState<string | null>(null);
+	const [collapsedActive, setCollapsedActive] = useState(false);
+	useEffect(() => setCollapsedActive(false), [cwd]);
+	useEffect(() => {
+		if (!openMenu) return;
+		const closeOutside = (event: PointerEvent) => {
+			const zone = event.target instanceof Element ? event.target.closest<HTMLElement>(".lp-menu-zone") : null;
+			if (zone?.dataset.menuKey !== openMenu) setOpenMenu(null);
+		};
+		const closeEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpenMenu(null); };
+		document.addEventListener("pointerdown", closeOutside);
+		document.addEventListener("keydown", closeEscape);
+		return () => { document.removeEventListener("pointerdown", closeOutside); document.removeEventListener("keydown", closeEscape); };
+	}, [openMenu]);
 
 	// "Open folder": the recent-project list only ever grew as a side effect
 	// of the /cwd slash command — this is the panel's own entry point. Opens
@@ -111,8 +132,8 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 		// raw first-user-message, which for a skill invocation is the entire
 		// expanded SKILL.md body — collapse that to "skill:name · args"
 		// instead of dumping (and truncating mid-sentence) the raw text.
-		const title = s.name || skillAwarePreview(s.firstMessage);
-		return title.length > 0 ? title : t("emptyChat");
+		const title = s.name || convByFile.get(s.path)?.title || skillAwarePreview(s.firstMessage);
+		return conversationDisplayTitle(title.length > 0 ? title : t("emptyChat"), s.firstMessage, s.name, s.messageCount, locale);
 	};
 
 	// 运行中的对话原来单独列一段，放在历史对话上面。问题是它平时是空的，一新建
@@ -135,121 +156,14 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 		(conv) => !conv.sessionFile || !sessionPaths.has(conv.sessionFile),
 	);
 
-	const projectName = (path: string): string =>
-		path.split(/[\\/]/).pop() || path;
-
-	/** The directory the project SITS IN, for the row's second line.
-	 *
-	 *  Showing the full absolute path there repeated the project name (its
-	 *  own last segment) on every row, spending the wider line on the least
-	 *  distinguishing part of the path — two sibling checkouts looked
-	 *  identical until the very end of a string that had already been
-	 *  ellipsized. Empty for roots ("/" or "C:\\") and for top-level entries
-	 *  like /Users, where the parent adds nothing and the row renders as a
-	 *  single line instead of repeating itself. */
-	const projectParent = (path: string): string => {
-		const norm = path.replace(/[\\/]+$/, "");
-		const idx = Math.max(norm.lastIndexOf("/"), norm.lastIndexOf("\\"));
-		return idx <= 0 ? "" : norm.slice(0, idx);
+	const projectName = (path: string): string => {
+		const normalized = path.replace(/\\/g, "/").replace(/\/$/, "") || "/";
+		if (normalized === "/" || /^[A-Za-z]:$/.test(normalized)) return t("rootDir");
+		if (/^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\/Users\/[^/]+)$/.test(normalized)) return "~";
+		return normalized.split("/").at(-1) || normalized;
 	};
 
-	/** Hover-revealed delete button with two-step confirm (the .lp-row wrapper
-	 *  positions it; stopPropagation keeps the row click from firing). */
-	const delButton = (
-		key: string,
-		hint: string,
-		confirmHint: string,
-		onConfirm: () => void,
-	) => {
-		const armed = confirmDel === key;
-		return (
-			<button
-				type="button"
-				className={`lp-del ${armed ? "confirm" : ""}`}
-				title={armed ? confirmHint : hint}
-				onClick={(e) => {
-					e.stopPropagation();
-					if (armed) {
-						setConfirmDel(null);
-						onConfirm();
-					} else {
-						setConfirmDel(key);
-					}
-				}}
-			>
-				{armed ? <FiCheck /> : <FiTrash2 />}
-			</button>
-		);
-	};
-
-	return (
-		<aside className="panel panel-left">
-			<div className="panel-projects">
-				{/* 加项目收进分组标题行：它是个偶尔用一次的动作，不值得在列表
-				    最上面常驻一整行。 */}
-				<div className="panel-section-title">
-					<span>{t("recentProjects")}</span>
-					<button
-						type="button"
-						className="lp-add-project"
-						title={t("openFolder")}
-						aria-label={t("openFolder")}
-						onClick={() => setPicking(true)}
-					>
-						<FiPlus />
-					</button>
-				</div>
-				<div className="projects-scroll">
-					{projects.map((p) => {
-						const active = currentCwd === p.path;
-						const pending = !active && pendingCwd === p.path;
-						return (
-							<div
-								className="lp-row"
-								key={p.path}
-								onMouseLeave={() =>
-									setConfirmDel((k) => (k === `proj:${p.path}` ? null : k))
-								}
-							>
-								<button
-									type="button"
-									className={`project-item ${active ? "active" : ""} ${pending ? "pending" : ""}`}
-									title={p.path}
-									onClick={() => {
-										if (!active) {
-											setPendingCwd(p.path);
-											send({ type: "set_cwd", path: p.path });
-										}
-									}}
-								>
-									<FiFolder className="project-icon" />
-									<span className="project-info">
-										<span className="project-name">{projectName(p.path)}</span>
-										{projectParent(p.path) && (
-											<span className="project-path">
-												{projectParent(p.path)}
-											</span>
-										)}
-									</span>
-									{pending ? (
-										<span className="thinking-spinner project-spinner" aria-hidden="true" />
-									) : (
-										<span className="project-time">
-											{formatModified(p.lastUsed)}
-										</span>
-									)}
-								</button>
-								{delButton(
-									`proj:${p.path}`,
-									t("deleteProject"),
-									t("deleteProjectConfirm"),
-									() => send({ type: "remove_project", path: p.path }),
-								)}
-							</div>
-						);
-					})}
-				</div>
-			</div>
+	const history = (
 			<div className="panel-sessions">
 				<div className="panel-section-title">{t("historySessions")}</div>
 				<div className="sessions-scroll">
@@ -275,12 +189,13 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 									title={c.isStreaming ? t("streaming") : undefined}
 								/>
 								<span className="session-info">
-									<span className="session-title">{c.title}</span>
+									<span className="session-title">{conversationDisplayTitle(c.title, undefined, undefined, c.messageCount, locale)}</span>
 								</span>
+								<span className="session-time">{formatModified(c.createdAt ?? Date.now(), t("yesterday"))}</span>
 							</button>
 						);
 					})}
-					{sessions.map((s) => {
+					{[...sessions].sort((a, b) => Number(convByFile.get(b.path)?.id === activeConversationId) - Number(convByFile.get(a.path)?.id === activeConversationId)).map((s) => {
 						const conv = convByFile.get(s.path);
 						const active = conv
 							? activeConversationId === conv.id
@@ -363,32 +278,106 @@ export const LeftPanel = memo(function LeftPanel({ ready, status, cwd, sessionFi
 										</span>
 									)}
 									<span className="session-time">
-										{formatModified(s.modified)}
+										{formatModified(s.modified, t("yesterday"))}
 									</span>
 								</button>
-								<button
-									type="button"
-									className="lp-rename"
-									title={t("renameSession")}
-									onClick={(e) => {
-										e.stopPropagation();
-										setRenameDraft(s.name ?? "");
-										setRenaming(s.path);
-									}}
-								>
-									<FiEdit2 />
-								</button>
-								{delButton(
-									`sess:${s.path}`,
-									t("deleteSession"),
-									t("deleteSessionConfirm"),
-									() => send({ type: "delete_session", path: s.path }),
-								)}
+								<div className={`lp-menu-zone${openMenu === `sess:${s.path}` ? " is-open" : ""}`} data-menu-key={`sess:${s.path}`}>
+									<button type="button" className="lp-menu-trigger" aria-label={`${displayName(s)} · ${t("more")}`} aria-haspopup="menu" aria-expanded={openMenu === `sess:${s.path}`} onClick={() => setOpenMenu((key) => key === `sess:${s.path}` ? null : `sess:${s.path}`)}><FiMoreHorizontal /></button>
+									{openMenu === `sess:${s.path}` && <div className="lp-menu-popover" role="menu">
+										<button type="button" role="menuitem" onClick={() => { setRenameDraft(s.name ?? displayName(s)); setRenaming(s.path); setOpenMenu(null); }}>{t("renameSession")}</button>
+										<button type="button" role="menuitem" className={confirmDel === `sess:${s.path}` ? "danger" : ""} onClick={() => {
+											if (confirmDel === `sess:${s.path}`) { send({ type: "delete_session", path: s.path }); setConfirmDel(null); setOpenMenu(null); }
+											else setConfirmDel(`sess:${s.path}`);
+										}}>{confirmDel === `sess:${s.path}` ? t("deleteSessionConfirm") : t("deleteSession")}</button>
+									</div>}
+								</div>
 							</div>
 						);
 					})}
 				</div>
 			</div>
+	);
+	return (
+		<aside className="panel panel-left">
+			<div className="sidebar-brand"><img src="/favicon.svg" alt="" /><strong>pi-web-ui</strong></div>
+			<div className="sidebar-new"><button type="button" onClick={onNewChat}><span><FiPlus />{t("newChat")}</span><kbd>{navigator.platform.includes("Mac") ? "⌘" : "Ctrl+"}N</kbd></button></div>
+			<div className="panel-projects">
+				{/* 加项目收进分组标题行：它是个偶尔用一次的动作，不值得在列表
+				    最上面常驻一整行。 */}
+				<div className="panel-section-title">
+					<span>{t("workspaceProjects")}</span>
+					<button
+						type="button"
+						className="lp-add-project"
+						title={t("openFolder")}
+						aria-label={t("openFolder")}
+						onClick={() => setPicking(true)}
+					>
+						<FiPlus />
+					</button>
+				</div>
+				<div className="projects-scroll">
+					{[...projects].sort((a, b) => Number(b.path === currentCwd) - Number(a.path === currentCwd)).map((p) => {
+						const active = currentCwd === p.path;
+						const pending = !active && pendingCwd === p.path;
+						const expanded = active && !collapsedActive;
+						const count = active ? Math.max(p.conversationCount ?? 0, sessions.length + pendingConvs.length) : p.conversationCount ?? 0;
+						return (
+							<div
+								className="lp-row"
+								key={p.path}
+								onMouseLeave={() =>
+									setConfirmDel((k) => (k === `proj:${p.path}` ? null : k))
+								}
+							>
+								<button
+									type="button"
+									className={`project-item ${active ? "active" : ""} ${pending ? "pending" : ""}`}
+									title={p.path}
+									onClick={() => {
+										if (active) setCollapsedActive((value) => !value);
+										else {
+											setCollapsedActive(false);
+											setPendingCwd(p.path);
+											send({ type: "set_cwd", path: p.path });
+										}
+									}}
+								>
+									{expanded ? <FiChevronDown className="project-chevron" /> : <FiChevronRight className="project-chevron" />}
+									<span className="project-info">
+										<span className="project-name">{projectName(p.path)}</span>
+										<span className="project-count">· {count}</span>
+									</span>
+									{pending ? (
+										<span className="thinking-spinner project-spinner" aria-hidden="true" />
+									) : (
+										<span className="project-time">
+											{formatModified(p.path === currentCwd && sessions.length ? Math.max(...sessions.map((session) => session.modified)) : (p.lastConversationAt ?? p.lastUsed), t("yesterday"))}
+										</span>
+									)}
+								</button>
+								<div className={`lp-menu-zone${openMenu === `proj:${p.path}` ? " is-open" : ""}`} data-menu-key={`proj:${p.path}`}>
+									<button type="button" className="lp-menu-trigger" aria-label={`${projectName(p.path)} · ${t("more")}`} aria-haspopup="menu" aria-expanded={openMenu === `proj:${p.path}`} onClick={() => setOpenMenu((key) => key === `proj:${p.path}` ? null : `proj:${p.path}`)}><FiMoreHorizontal /></button>
+									{openMenu === `proj:${p.path}` && <div className="lp-menu-popover" role="menu">
+										<button type="button" role="menuitem" className={confirmDel === `proj:${p.path}` ? "danger" : ""} onClick={() => {
+											if (confirmDel === `proj:${p.path}`) { send({ type: "remove_project", path: p.path }); setConfirmDel(null); setOpenMenu(null); }
+											else setConfirmDel(`proj:${p.path}`);
+										}}>{confirmDel === `proj:${p.path}` ? t("deleteProjectConfirm") : t("deleteProject")}</button>
+									</div>}
+								</div>
+								{expanded && history}
+							</div>
+						);
+					})}
+				</div>
+			</div>
+
+			{!projects.some((project) => project.path === currentCwd) && history}
+			<div className="sidebar-footer">
+				<span className="sidebar-connection"><i className={ready ? "ok" : "busy"} />{t(ready ? "connected" : "connecting")}</span>
+				<span id="sidebar-settings-slot"><button type="button" onClick={onOpenSettings}><FiSettings aria-hidden="true" /> {t("settings")}</button></span>
+			</div>
+
 			{picking && (
 				<FolderPickerModal
 					dirBrowse={dirBrowse}

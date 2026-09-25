@@ -32,11 +32,12 @@ interface Props {
 	onManageModels: () => void;
 	/** Compact triggers for narrow toolbars (mobile input row). */
 	compact?: boolean;
+	segmented?: boolean;
 }
 
 /** Model picker + thinking-level picker. Rendered in the top bar on desktop
  * and in the input row on mobile — same dropdowns, different trigger styles. */
-export const ModelThinking = memo(function ModelThinking({ state, models, modelsLoading, send, onManageModels, compact = false }: Props) {
+export const ModelThinking = memo(function ModelThinking({ state, models, modelsLoading, send, onManageModels, compact = false, segmented = false }: Props) {
 	const t = useT();
 	const model = state?.model;
 	// snapshot model.id is the bare id; list ids are "provider/id".
@@ -79,6 +80,11 @@ export const ModelThinking = memo(function ModelThinking({ state, models, models
 		label: t(`thinking.${v}`),
 		supported: supportedThinking ? supportedThinking.has(v) : true,
 	}));
+	const modes = [
+		{ label: t("thinking.minimal"), values: ["minimal", "low", "off"] },
+		{ label: t("thinkingStandard"), values: ["medium"] },
+		{ label: t("thinkingDeep"), values: ["high", "xhigh"] },
+	];
 	const thinkingLabel = (level: string): string =>
 		thinkingLevels.find((l) => l.value === level)?.label ?? level;
 
@@ -171,6 +177,7 @@ export const ModelThinking = memo(function ModelThinking({ state, models, models
 							</DropdownItem>
 						))}
 					</div>
+					{segmented && <div className="dd-thinking-levels"><span>{t("thinkingLevel")}</span>{thinkingLevels.filter((level) => level.supported).map((level) => <button type="button" key={level.value} aria-pressed={state?.thinkingLevel === level.value} onClick={() => send({ type: "set_thinking", level: level.value })}>{level.label}</button>)}</div>}
 					{/* Fixed footer — refresh / manage never scroll away. */}
 					<div className="dd-footer">
 						<button
@@ -193,7 +200,12 @@ export const ModelThinking = memo(function ModelThinking({ state, models, models
 					</div>
 				</Dropdown>
 
-			<Dropdown
+			{segmented ? <div className="thinking-segments" role="group" aria-label={t("thinkingLevel")}>
+				{modes.map((mode) => {
+					const value = mode.values.find((candidate) => !supportedThinking || supportedThinking.has(candidate));
+					return <button type="button" key={mode.label} disabled={!value} aria-pressed={mode.values.includes(state?.thinkingLevel ?? "off")} title={value ? thinkingLabel(value) : t("thinkingLevel")} onClick={() => value && send({ type: "set_thinking", level: value })}>{mode.label}</button>;
+				})}
+			</div> : <Dropdown
 				trigger={
 					<>
 						<FiZap />
@@ -224,7 +236,7 @@ export const ModelThinking = memo(function ModelThinking({ state, models, models
 						{l.label}
 					</DropdownItem>
 				))}
-			</Dropdown>
+			</Dropdown>}
 		</>
 	);
 });

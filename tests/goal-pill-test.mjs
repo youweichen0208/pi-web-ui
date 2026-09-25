@@ -39,6 +39,7 @@ async function startServer() {
 			PORT: String(PORT),
 			PI_WEB_DATA_DIR: mkdtempSync(join(tmpdir(), "pi-web-goalpill-")),
 			PI_WEB_CWD: PROJ,
+			PI_CODING_AGENT_DIR: mkdtempSync(join(tmpdir(), "pi-web-goal-agent-")),
 		},
 		stdio: "ignore",
 	});
@@ -59,23 +60,13 @@ async function run() {
 	const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 	const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 	await page.goto(URL);
-	await page.waitForSelector(".goalbar", { timeout: 20000 });
-
-	// 1. Idle collapsed = compact pill, no bordered panel.
-	const pill = page.locator(".goalbar.collapsed, .goalbar-collapsed");
-	const pillCount = await pill.count();
-	check("idle shows compact pill (not panel)", pillCount > 0, `pillCount=${pillCount}`);
-	if (pillCount > 0) {
-		const hasBorder = await page
-			.locator(".goalbar-collapsed")
-			.evaluate((el) => getComputedStyle(el).borderTopStyle);
-		check("collapsed pill has no heavy border", hasBorder === "none", hasBorder);
-	}
-
-	// 2. Expand the editor.
-	await page.locator(".goalbar-hint").first().click();
+	await page.locator(".setup-modal .modal-close").waitFor();
+	await page.locator(".setup-modal .modal-close").click();
+	check("idle goal leaves the composer clear", !(await page.locator(".goalbar-collapsed").isVisible()));
+	await page.locator("#sidebar-settings-slot .chip").click();
+	await page.locator("#sidebar-settings-slot .dd-item", { hasText: "目标" }).click();
 	await page.waitForSelector(".goalbar-input", { timeout: 8000 });
-	check("clicking pill opens editor", true);
+	check("settings menu opens goal editor", true);
 
 	// 3. Type a goal, then open the model dropdown; assert dd-up + upward anchored.
 	await page.locator(".goalbar-input").fill("做一个小工具");

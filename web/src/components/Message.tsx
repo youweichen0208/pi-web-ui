@@ -1,7 +1,6 @@
-import { memo, useState } from "react";
+import { memo, useState, type ReactNode } from "react";
 import {
 	FiChevronDown,
-	FiBookOpen,
 	FiChevronRight,
 	FiChevronUp,
 	FiEdit3,
@@ -23,11 +22,12 @@ import { LeakedThinkingBlock } from "./LeakedThinkingBlock";
 import { Markdown } from "./Markdown";
 import { StreamMarkdown } from "./StreamMarkdown";
 import { ThinkingBlock } from "./ThinkingBlock";
-import { ToolCallBlock, type ToolView } from "./ToolCallBlock";
+import { GrepSummary, isSubagentCall, ReadGroup, SubagentGroup, ToolCallBlock, type ToolView } from "./ToolCallBlock";
 import { useT, type Translate } from "../i18n";
 import { splitLeakedThinking } from "../leaked-thinking";
 import { parseSkillBlock, type SkillBlock } from "../skill-block";
 import { isRasterImage, fileToProcessedImage } from "../image-paste";
+import { splitFrontmatter } from "../read-presentation";
 
 /** 编辑重问编辑器里直接拖入/粘贴文件的上限（与服务端 MAX_UPLOAD_BYTES 一致）。 */
 const MAX_EDIT_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -102,6 +102,7 @@ function editAttLabel(att: PromptAttachment, t: Translate): string {
 }
 
 interface MessageProps {
+	continuation?: boolean;
 	message: UiMessage;
 	/** toolResult messages by toolCallId (precomputed in MessageList, memoized). */
 	toolResults: ReadonlyMap<string, UiMessage>;
@@ -141,6 +142,7 @@ interface MessageProps {
 }
 
 export const Message = memo(function Message({
+	continuation,
 	message,
 	toolResults,
 	liveOutputs,
@@ -303,10 +305,47 @@ export const Message = memo(function Message({
 		message.role === "custom" &&
 		(message.customType === "goal-review" || message.customType === "goal-wizard");
 	const isGoalWizard = message.role === "custom" && message.customType === "goal-wizard";
+	const renderContentBlocks = (skipText: boolean): ReactNode[] => {
+		const elements: ReactNode[] = [];
+		const viewFor = (item: UiToolCallBlock): ToolView => ({ result: toolResults.get(item.id), liveOutput: liveOutputs.get(item.id)?.text, status: toolStatuses.get(item.id), streaming });
+		for (let i = 0; i < message.content.length; i++) {
+			const block = message.content[i];
+			if (skipText && block.type === "text") continue;
+			const first = asToolCall(block);
+			if (first?.name === "read") {
+				const reads: UiToolCallBlock[] = [first];
+				while (i + 1 < message.content.length) {
+					const next = asToolCall(message.content[i + 1]);
+					if (next?.name !== "read") break;
+					reads.push(next);
+					i++;
+				}
+				elements.push(<ReadGroup key={`${message.id}-${first.id}`} items={reads.map((item) => ({ block: item, view: viewFor(item) }))} wrap={toolsWrap} />);
+				continue;
+			}
+			if (first && isSubagentCall(first)) {
+				const agents: UiToolCallBlock[] = [first];
+				while (i + 1 < message.content.length) {
+					const next = asToolCall(message.content[i + 1]);
+					if (!next || !isSubagentCall(next)) break;
+					agents.push(next);
+					i++;
+				}
+				elements.push(<SubagentGroup key={`${message.id}-${first.id}`} items={agents.map((item) => ({ block: item, view: viewFor(item) }))} wrap={toolsWrap} startedAt={message.timestamp} />);
+				continue;
+			}
+			if (first?.name === "grep") {
+				elements.push(<GrepSummary key={`${message.id}-${first.id}`} block={first} view={viewFor(first)} wrap={toolsWrap} />);
+				continue;
+			}
+			elements.push(<Block key={`${message.id}-${i}`} block={block} toolResults={toolResults} liveOutputs={liveOutputs} toolStatuses={toolStatuses} streaming={streaming} isLast={isLast && i === message.content.length - 1} onKillBash={onKillBash} toolsWrap={toolsWrap} thinkingWrap={thinkingWrap} />);
+		}
+		return elements;
+	};
 
 	return (
 		<div
-			className={`msg msg-${message.role}${isGoalReview ? " msg-goal-review" : ""}`}
+			className={`msg msg-${message.role}${isGoalReview ? " msg-goal-review" : ""}${continuation ? " msg-continuation" : ""}`}
 			data-role={message.role}
 			data-msg-id={message.id}
 		>
@@ -333,7 +372,7 @@ export const Message = memo(function Message({
 						title={t("collapseMsg")}
 						onClick={() => onCollapse(message.id)}
 					>
-						<FiChevronUp /> {t("collapseMsg")}
+						<FiChevronDown /> {t("collapseMsg")}
 					</button>
 				)}
 				{qnIndex !== undefined && onJump && (
@@ -481,45 +520,12 @@ export const Message = memo(function Message({
 										<Markdown text={skillBlock.userMessage} />
 									</div>
 								)}
-								{message.content.map((block, i) =>
-									block.type === "text" ? null : (
-										<Block
-											key={`${message.id}-${i}`}
-											block={block}
-											toolResults={toolResults}
-											liveOutputs={liveOutputs}
-											toolStatuses={toolStatuses}
-											streaming={streaming}
-											isLast={isLast}
-											onKillBash={onKillBash}
-										toolsWrap={toolsWrap}
-											thinkingWrap={thinkingWrap}
-										/>
-									),
-								)}
+								{renderContentBlocks(true)}
 							</>
 						) : (
-							message.content.map((block, i) => (
-								<Block
-									key={`${message.id}-${i}`}
-									block={block}
-									toolResults={toolResults}
-									liveOutputs={liveOutputs}
-									toolStatuses={toolStatuses}
-									streaming={streaming}
-									isLast={isLast}
-							onKillBash={onKillBash}
-							toolsWrap={toolsWrap}
-							thinkingWrap={thinkingWrap}
-								/>
-							))
+							renderContentBlocks(false)
 						)}
-						{isEmptyStreaming && (
-							<div className="thinking-wait">
-								{t("thinkingWait")}
-								<span className="dot" />
-							</div>
-						)}
+
 					</>
 				)}
 			</div>
@@ -661,6 +667,7 @@ function stripFileWrapper(text: string): string {
 function SkillCard({ block }: { block: SkillBlock }) {
 	const t = useT();
 	const [expanded, setExpanded] = useState(false);
+	const content = splitFrontmatter(block.content);
 	return (
 		<div className={`skillcard${expanded ? " expanded" : ""}`}>
 			<button
@@ -669,11 +676,9 @@ function SkillCard({ block }: { block: SkillBlock }) {
 				onClick={() => setExpanded((v) => !v)}
 				title={block.location}
 			>
-				<span className="skillcard-icon">
-					<FiBookOpen />
-				</span>
-				<span className="skillcard-name">{block.name}</span>
-				<span className="skillcard-path">{block.location}</span>
+				<span className="skillcard-icon" aria-hidden="true">◆</span>
+				<span className="skillcard-name">{t("skillLabel")} · {block.name}</span>
+				{expanded && <span className="skillcard-path">{block.location}</span>}
 				<span className="skillcard-action">
 					{expanded ? <FiChevronUp /> : <FiChevronDown />}
 					{expanded ? t("collapseMsg") : t("expandMsg")}
@@ -681,7 +686,8 @@ function SkillCard({ block }: { block: SkillBlock }) {
 			</button>
 			{expanded && (
 				<div className="skillcard-body">
-					<Markdown text={block.content} />
+					{content.fields.length > 0 && <dl className="toolcall-frontmatter">{content.fields.map(({ name, value }) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>}
+					<Markdown text={content.body} />
 				</div>
 			)}
 		</div>
@@ -741,6 +747,7 @@ function Block({
 		return (
 			<ThinkingBlock
 				thinking={thinking.thinking}
+				durationMs={thinking.durationMs}
 				streaming={streaming && isLast}
 				wrap={thinkingWrap}
 			/>

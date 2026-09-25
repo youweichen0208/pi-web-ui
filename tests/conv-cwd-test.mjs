@@ -1,6 +1,7 @@
 /** Per-project warm conversation reuse and visible-panel directory refresh. */
-import { portUp, freePort } from "./lib/port-utils.mjs";
+import { portUp } from "./lib/port-utils.mjs";
 import { fileURLToPath } from "node:url";
+import { createServer } from "node:net";
 import WebSocket from "ws";
 import { execSync, spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -11,7 +12,10 @@ import { randomUUID } from "node:crypto";
 // fileURLToPath: URL.pathname 在 Windows 下是 /E:/... 形式，直接当 cwd 会失败
 const REPO_ROOT = fileURLToPath(new globalThis.URL("../", import.meta.url));
 
-const PORT = 8998;
+const portProbe = createServer();
+await new Promise((resolve) => portProbe.listen(0, "127.0.0.1", resolve));
+const PORT = portProbe.address().port;
+await new Promise((resolve) => portProbe.close(resolve));
 const PROJ = REPO_ROOT;
 const A = mkdtempSync(join(tmpdir(), "pi-proj-a-"));
 const B = mkdtempSync(join(tmpdir(), "pi-proj-b-"));
@@ -95,7 +99,8 @@ check("conv1 cwd = A", snapshot?.cwd === A, snapshot?.cwd);
 const conv1 = snapshot.conversationId;
 
 // --- new_chat: conv1 is BLANK → reused in place (ac5a4c8 semantics: the
-// active blank chat IS the new chat; clicking 新对话 must not pile up ids) ---
+// active blank chat IS the new chat; clicking 新对话 must not pile up ids).
+// The active blank chat is visible in the sidebar immediately. ---
 send({ type: "new_chat" });
 await sleep(600); // any snapshot/delta would have arrived by now
 const conv2 = snapshot.conversationId;
@@ -107,8 +112,8 @@ check(
 check("conv2 cwd = A", snapshot?.cwd === A);
 await sleep(300);
 check(
-	"no running conversations listed (nothing was displaced while streaming)",
-	conversations.length === 0,
+	"blank active conversation is listed once in the sidebar",
+	conversations.length === 1 && conversations[0]?.id === conv1,
 	`${conversations.length} listed`,
 );
 

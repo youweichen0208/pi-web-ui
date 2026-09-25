@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { FiChevronDown } from "react-icons/fi";
+import { FiChevronRight } from "react-icons/fi";
 import type { UiMessage } from "../types";
 import { useT } from "../i18n";
 import {
@@ -138,7 +138,7 @@ export const CollapsedGroup = memo(function CollapsedGroup({
 				<span className="msg-collapsed-time">{formatTime(head.timestamp)}</span>
 			) : null}
 			<span className="msg-collapsed-action" aria-hidden="true">
-				<FiChevronDown />
+				<FiChevronRight />
 			</span>
 		</button>
 	);

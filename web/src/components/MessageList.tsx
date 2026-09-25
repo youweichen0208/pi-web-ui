@@ -1,7 +1,10 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { activeTool, assistantPredecessors, toolTarget } from "../agent-activity";
+import { WorkingStatus } from "./WorkingStatus";
+import { goalEventText, goalCompletedText, groupGoalEvents } from "../goal-events";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal, flushSync } from "react-dom";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { FiArrowDown } from "react-icons/fi";
 import type {
 	PromptAttachment,
@@ -10,12 +13,13 @@ import type {
 	UiState,
 } from "../types";
 import type { PendingEcho } from "../use-chat";
-import { Message, asText, roleLabel } from "./Message";
+import { Message, asText } from "./Message";
 
 import { collectQuestionAttachments } from "../question-attachments";
 
 import { parseSkillBlock } from "../skill-block";
 import { buildCollapsedGroups } from "../collapsed-groups";
+import { messageTimeGaps } from "../time-gaps";
 import { CollapsedGroup } from "./CollapsedGroup";
 import { LazyMount } from "./LazyMount";
 import {
@@ -154,6 +158,17 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 		() => collectQuestionAttachments(state.messages),
 		[state.messages],
 	);
+	const goalEvents = useMemo(() => groupGoalEvents(state.messages), [state.messages]);
+	const timeGaps = useMemo(() => messageTimeGaps(state.messages), [state.messages]);
+	const predecessors = assistantPredecessors(messages);
+	const lastUserIndex = state.messages.findLastIndex((message) => message.role === "user");
+	const runningTool = state.isStreaming ? activeTool(messages, toolStatuses) : undefined;
+	const currentAssistant = state.messages.slice(lastUserIndex + 1).findLast((message) => message.role === "assistant");
+	const lastBlock = state.streamingMessage?.content.at(-1) ?? currentAssistant?.content.at(-1);
+	const completedTool = lastBlock?.type === "toolCall" && typeof lastBlock.id === "string" && (toolStatuses.has(lastBlock.id) || toolResults.has(lastBlock.id));
+	const activityLabel = runningTool ? runningTool.name === "bash" ? t("waitingCommand") : t(runningTool.name === "read" ? "activityReading" : "activityTool", { name: runningTool.name === "read" ? toolTarget(runningTool) : runningTool.name }) : t(completedTool ? "waitingModel" : lastBlock?.type === "text" ? "activityReply" : "activityAnalyze");
+	const activityPhase = `${state.conversationId}:${runningTool?.id ?? state.streamingMessage?.id ?? "waiting"}:${state.streamingMessage?.content.length ?? 0}:${lastBlock?.type ?? ""}`;
+	const awaitingFirstAssistant = state.isStreaming && !state.streamingMessage && lastUserIndex >= 0 && !state.messages.slice(lastUserIndex + 1).some((message) => message.role === "assistant");
 	const lastId = messages.length > 0 ? messages[messages.length - 1].id : null;
 	// Only the last KEEP_RECENT persisted messages are fully rendered; older
 	// ones collapse to summary rows (unless the user expanded them).
@@ -165,8 +180,8 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 	// transcript 里是 8 条 assistant 消息，一条一行会把历史区堆成 8 条长得一模
 	// 一样的条带。纯逻辑在 collapsed-groups.ts（有单测）。
 	const collapsed = useMemo(
-		() => buildCollapsedGroups(state.messages, recentStart, expanded),
-		[state.messages, recentStart, expanded],
+		() => buildCollapsedGroups(state.messages, recentStart, expanded, new Set(timeGaps.keys())),
+		[state.messages, recentStart, expanded, timeGaps],
 	);
 
 	// ---- 惰性窗口化（lazy windowing，纯函数见 lazy-window.ts）----------------
@@ -287,7 +302,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 	const questions = useMemo(() => {
 		const qs: { id: string; text: string }[] = [];
 		for (const m of state.messages) {
-			if (m.role !== "user") continue;
+			if (m.role !== "user" || goalEventText(m) || goalCompletedText(m)) continue;
 			const joined = m.content
 				.map((b) => asText(b)?.text ?? "")
 				.filter(Boolean)
@@ -552,7 +567,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 				{state.messages.length === 0 && !state.streamingMessage && (
 					<div className="empty-state">
 						<div className="empty-logo-wrap">
-							<div className="empty-logo">π</div>
+							<img className="empty-logo" src="/favicon.svg" alt="" />
 						</div>
 						<h2 className="empty-title">{t("welcomeTitle")}</h2>
 						<p className="empty-sub">{t("welcomeSub")}</p>
@@ -581,6 +596,18 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 					</div>
 				)}
 				{state.messages.map((m, i) => {
+					if (goalEvents.absorbed.has(m.id)) return null;
+					const withGap = (content: ReactNode) => {
+						const label = timeGaps.get(i);
+						return label ? <Fragment key={m.id}><div className="time-gap" aria-label={t("timeGapAt", { time: label })}><span>{label}</span></div>{content}</Fragment> : content;
+					};
+					const event = goalEvents.groups.get(m.id);
+					if (event) return withGap(<div key={m.id} className={`goal-event ${event.kind}`} data-msg-id={m.id}>
+						<span aria-hidden="true">{event.kind === "complete" ? "✓" : "◎"}</span><span>{t(event.kind === "complete" ? "goalEventComplete" : "goalEventSet", { text: event.text })}</span>
+						{event.ids.length > 1 && <span className="goal-event-count">×{event.ids.length}</span>}
+						{event.kind === "complete" && <details className="goal-event-details"><summary>{t("goalReviewDetails")}</summary><pre>{m.content.map(block => block.type === "text" ? block.text : "").join("\n")}</pre></details>}
+						{event.ids.slice(1).map((id) => <span key={id} data-msg-id={id} />)}
+					</div>);
 					const isOld = i < recentStart;
 					const isExpandedOld = isOld && expanded.has(m.id);
 					if (isOld && !isExpandedOld) {
@@ -589,7 +616,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 						if (collapsed.absorbed.has(i)) return null;
 						const group = collapsed.groupAt.get(i);
 						if (!group) return null;
-						return (
+						return withGap(
 							<CollapsedGroup
 								key={m.id}
 								messages={group}
@@ -603,7 +630,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 						alwaysSet.has(m.id) ||
 						pinned.has(m.id) ||
 						!hidden.has(m.id);
-					return (
+					return withGap(
 						<LazyMount
 							key={m.id}
 							id={m.id}
@@ -619,6 +646,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 						<Message
 							key={m.id}
 							message={m}
+							continuation={!!predecessors.get(m.id) && !hidden.has(predecessors.get(m.id)!) && !(i < recentStart && !expanded.has(predecessors.get(m.id)!))}
 							qnIndex={qIdx}
 							qnActive={qIdx !== undefined ? qIdx === activeIdx : undefined}
 							onJump={jumpTo}
@@ -641,6 +669,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 					<Message
 						key={state.streamingMessage.id}
 						message={state.streamingMessage}
+						continuation={!!predecessors.get(state.streamingMessage.id)}
 						toolResults={toolResults}
 						liveOutputs={
 							hasToolCall(state.streamingMessage) ? liveOutputs : EMPTY_LIVE
@@ -654,27 +683,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 						thinkingWrap={thinkingWrap}
 					/>
 				)}
-				{state.isStreaming && messages.length === 0 && (
-					<div className="streaming-wait">{t("waitingResponse")}</div>
-				)}
-				{/* 已有历史消息时的"助手正在处理"提示：isStreaming 已经由服务端确认为
-				 *  true，但 streamingMessage 要等 SDK 真正吐出第一个内容块（可能是权限
-				 *  检查/压缩/扩展钩子处理完之后）才会出现——这段空档之前完全没有任何
-				 *  视觉反馈，看起来像卡住了。上面那个大号居中提示只在"全新空会话"时
-                 *  才触发（messages.length === 0），这里补一条内联小气泡覆盖其余情况。 */}
-				{state.isStreaming && !state.streamingMessage && messages.length > 0 && (
-					<div className="msg msg-assistant assistant-wait-msg" data-role="assistant">
-						<div className="msg-meta">
-							<span className="msg-role">{roleLabel("assistant", t)}</span>
-						</div>
-						<div className="msg-body">
-							<span className="assistant-wait">
-								<span className="thinking-spinner" aria-hidden="true" />
-								{t("waitingResponse")}
-							</span>
-						</div>
-					</div>
-				)}
+				{state.isStreaming && (awaitingFirstAssistant ? <div className="msg msg-assistant agent-working-placeholder"><div className="msg-meta"><span className="msg-role">{t("role.assistant")}</span>{state.model?.id && <span className="msg-model">{state.model.id}</span>}<span className="msg-time">{new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div><WorkingStatus key={state.conversationId} label={activityLabel} phase={activityPhase} /></div> : <WorkingStatus key={state.conversationId} label={activityLabel} phase={activityPhase} durationMs={!runningTool && lastBlock?.type === "thinking" && typeof lastBlock.durationMs === "number" ? lastBlock.durationMs : undefined} />)}
 				{/* 乐观本地回显：刚点发送、服务端确认（snapshot_delta 追加）之前，
 				 *  立刻把用户刚输入的文字显示出来，避免等待服务端往返的空白期。
 				 *  一旦真实消息落地（reducer 里 appended.length>0）就会清空 pendingEcho，
@@ -710,15 +719,11 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 					</div>
 				))}
 			</div>
-			{!stickBottom && (
-				<button
-					type="button"
-					className="scroll-bottom"
-					onClick={scrollToBottom}
-				>
-					<FiArrowDown /> {t("backToBottom")}
-				</button>
-			)}
+			{!stickBottom && (() => {
+				const button = <button type="button" className="scroll-bottom" onClick={scrollToBottom}><FiArrowDown /> {t("backToBottom")}</button>;
+				const composer = document.querySelector<HTMLElement>(".design-workspace .view-pane:not(.hidden) .main > .inputbar");
+				return composer ? createPortal(button, composer) : button;
+			})()}
 			<SearchBar
 				containerRef={scrollRef}
 				messages={messages}

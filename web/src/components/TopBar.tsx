@@ -1,6 +1,7 @@
+import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import {
-	FiFolder,
+	FiSidebar,
 	FiGitBranch,
 	FiGlobe,
 	FiMenu,
@@ -24,6 +25,8 @@ import { ModelThinking } from "./ModelThinking";
 import { SoundSettingsPanel } from "./SoundSettings";
 import type { SoundKind, SoundSettings } from "../sounds";
 import { useI18n, type Locale } from "../i18n";
+import { skillAwarePreview } from "../skill-block";
+import { conversationDisplayTitle } from "../conversation-display-title";
 
 interface TopBarProps {
 	chat: ChatState;
@@ -55,6 +58,7 @@ interface TopBarProps {
 	onOpenSettings: () => void;
 	/** Open the background-task panel (AI-started servers — stop individually or all). */
 	onOpenBgTasks: () => void;
+	onOpenGoal: () => void;
 	/** Open the global search panel (sessions / projects / workspace files). */
 	onOpenGlobalSearch: () => void;
 	/** Sound notification settings + change handler (owned by App). */
@@ -74,6 +78,7 @@ export function TopBar({
 	onManageModels,
 	onOpenSettings,
 	onOpenBgTasks,
+	onOpenGoal,
 	onOpenGlobalSearch,
 	sound,
 	onSoundChange,
@@ -82,9 +87,27 @@ export function TopBar({
 	const { locale, setLocale, t } = useI18n();
 	const [langOpen, setLangOpen] = useState(false);
 	const [moreOpen, setMoreOpen] = useState(false);
+	const [menuHost, setMenuHost] = useState<HTMLElement | null>(null);
+	useEffect(() => {
+		const query = window.matchMedia("(min-width: 1201px)");
+		const sync = () => setMenuHost(query.matches ? document.getElementById("sidebar-settings-slot") : null);
+		sync();
+		query.addEventListener("change", sync);
+		return () => query.removeEventListener("change", sync);
+	}, []);
 	const [windowState, setWindowState] = useState<DesktopWindowState>({ maximized: false, fullscreen: false });
 	useEffect(() => desktopAPI?.onWindowState(setWindowState), []);
 	const projectName = chat.state?.cwd?.split(/[\\/]/).filter(Boolean).at(-1);
+
+	const session = chat.sessions.find((item) => item.path === chat.state?.sessionFile);
+	const conversation = chat.conversations.find((item) => item.id === chat.activeConversationId);
+	const conversationTitle = conversationDisplayTitle(
+		conversation?.title || skillAwarePreview(session?.firstMessage ?? "") || t("newChat"),
+		session?.firstMessage,
+		session?.name,
+		session?.messageCount ?? conversation?.messageCount ?? 0,
+		locale,
+	);
 
 	const LANGUAGES: { value: Locale; label: string }[] = [
 		{ value: "zh", label: t("langZh") },
@@ -98,6 +121,65 @@ export function TopBar({
 			: t("connecting");
 	const connClass = chat.ready ? "ok" : "busy";
 
+	const settingsMenu = (
+				<div className="topbar-more">
+					<Dropdown
+						trigger={
+							<>
+								{menuHost ? <FiSettings aria-hidden="true" /> : <FiMoreHorizontal />}
+								<span className="chip-sub">{t(menuHost ? "settings" : "more")}</span>
+							</>
+						}
+						open={moreOpen}
+						onOpenChange={setMoreOpen}
+					>
+						<div className="dd-header">{t("settings")}</div>
+						<DropdownItem onClick={() => { setMoreOpen(false); onOpenGoal(); }}>{t("goalBarTitle")}</DropdownItem>
+						<DropdownItem
+							onClick={() => {
+								setMoreOpen(false);
+								onOpenSettings();
+							}}
+						>
+							<FiSettings /> {t("settingsTitle")}
+						</DropdownItem>
+						<DropdownItem
+							onClick={() => {
+								setMoreOpen(false);
+								onOpenGlobalSearch();
+							}}
+						>
+							<FiSearch /> {t("searchGlobal")}
+						</DropdownItem>
+						<DropdownItem
+							onClick={() => {
+								setMoreOpen(false);
+								onOpenBgTasks();
+							}}
+						>
+							<FiLayers /> {t("bgTasks")}
+							{chat.bgServers.length > 0 && (
+								<em className="bg-task-badge">{chat.bgServers.length}</em>
+							)}
+						</DropdownItem>
+						<SoundSettingsPanel
+							settings={sound}
+							onChange={onSoundChange}
+							onPreview={onSoundPreview}
+						/>
+						<div className="dd-header">{t("language")}</div>
+						{LANGUAGES.map((l) => (
+							<DropdownItem
+								key={l.value}
+								active={locale === l.value}
+								onClick={() => setLocale(l.value)}
+							>
+								{l.label}
+							</DropdownItem>
+						))}
+					</Dropdown>
+				</div>
+	);
 	return (
 		<header className="topbar">
 			<div className="brand">
@@ -109,7 +191,7 @@ export function TopBar({
 				>
 					<FiMenu />
 				</button>
-				<span className="brand-logo">π</span>
+				<img className="brand-logo" src="/favicon.svg" alt="" />
 				<span className="brand-name">pi-web-ui</span>
 				{desktopAPI && (
 					<span className="desktop-window-title" title={chat.state?.cwd ?? ""}>
@@ -120,6 +202,7 @@ export function TopBar({
 				<span className="conn-label">{connLabel}</span>
 			</div>
 
+			<div className="header-location"><span title={chat.state?.cwd}>{projectName || t("desktopWorkspace")}</span><i>/</i><strong title={conversationTitle}>{conversationTitle}</strong></div>
 			<div className="topbar-actions">
 				<div
 					className="view-switch"
@@ -129,6 +212,8 @@ export function TopBar({
 					<button
 						type="button"
 						role="tab"
+						aria-label={t("chat")}
+						title={t("chat")}
 						aria-selected={view === "chat"}
 						className={view === "chat" ? "active" : ""}
 						onClick={() => onViewChange("chat")}
@@ -139,6 +224,8 @@ export function TopBar({
 					<button
 						type="button"
 						role="tab"
+						aria-label={t("terminal")}
+						title={t("terminal")}
 						aria-selected={view === "terminal"}
 						className={view === "terminal" ? "active" : ""}
 						onClick={() => onViewChange("terminal")}
@@ -149,6 +236,8 @@ export function TopBar({
 					<button
 						type="button"
 						role="tab"
+						aria-label={t("scmTab")}
+						title={t("scmTab")}
 						aria-selected={view === "git"}
 						className={view === "git" ? "active" : ""}
 						onClick={() => onViewChange("git")}
@@ -156,6 +245,7 @@ export function TopBar({
 						<FiGitBranch />
 						<span>{t("scmTab")}</span>
 					</button>
+					<button type="button" className="workspace-jobs" onClick={onOpenBgTasks} title={t("bgTasksTip")}><FiLayers /><span>{t("bgTasks")}</span>{chat.bgServers.length > 0 && <em className="bg-task-badge">{chat.bgServers.length}</em>}</button>
 					{plugins.map((p) => {
 						const tip = p.error
 							? `${p.name}: ${p.error}`
@@ -256,62 +346,7 @@ export function TopBar({
 				</button>
 
 				{/* Mobile "⋯" panel — folds sound / language. */}
-				<div className="topbar-more">
-					<Dropdown
-						trigger={
-							<>
-								<FiMoreHorizontal />
-								<span className="chip-sub">{t("more")}</span>
-							</>
-						}
-						open={moreOpen}
-						onOpenChange={setMoreOpen}
-					>
-						<div className="dd-header">{t("settings")}</div>
-						<DropdownItem
-							onClick={() => {
-								setMoreOpen(false);
-								onOpenSettings();
-							}}
-						>
-							<FiSettings /> {t("settingsTitle")}
-						</DropdownItem>
-						<DropdownItem
-							onClick={() => {
-								setMoreOpen(false);
-								onOpenGlobalSearch();
-							}}
-						>
-							<FiSearch /> {t("searchGlobal")}
-						</DropdownItem>
-						<DropdownItem
-							onClick={() => {
-								setMoreOpen(false);
-								onOpenBgTasks();
-							}}
-						>
-							<FiLayers /> {t("bgTasks")}
-							{chat.bgServers.length > 0 && (
-								<em className="bg-task-badge">{chat.bgServers.length}</em>
-							)}
-						</DropdownItem>
-						<SoundSettingsPanel
-							settings={sound}
-							onChange={onSoundChange}
-							onPreview={onSoundPreview}
-						/>
-						<div className="dd-header">{t("language")}</div>
-						{LANGUAGES.map((l) => (
-							<DropdownItem
-								key={l.value}
-								active={locale === l.value}
-								onClick={() => setLocale(l.value)}
-							>
-								{l.label}
-							</DropdownItem>
-						))}
-					</Dropdown>
-				</div>
+				{menuHost ? createPortal(settingsMenu, menuHost) : settingsMenu}
 
 				<button
 					type="button"
@@ -319,7 +354,7 @@ export function TopBar({
 					title={t("openFiles")}
 					onClick={() => onOpenPanel("right")}
 				>
-					<FiFolder />
+					<FiSidebar />
 				</button>
 			</div>
 			{desktopAPI && desktopAPI.platform !== "darwin" && (

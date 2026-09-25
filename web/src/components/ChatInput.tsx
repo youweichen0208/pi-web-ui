@@ -1,9 +1,6 @@
-import type { MutableRefObject } from "react";
-import type { CurrentFileContext, ReadCurrentFile } from "../current-file";
-import { mergeCurrentFile } from "../current-file";
 import { randomUuid } from "../uuid";
 import { memo, useLayoutEffect, useEffect, useRef, useState } from "react";
-import { FiSend, FiSquare, FiPaperclip, FiArrowUp } from "react-icons/fi";
+import { FiPlus, FiSquare, FiPaperclip, FiArrowUp } from "react-icons/fi";
 import type { ClientMessage, PromptAttachment, ServerMessage, ModelInfo, SlashCommandInfo, UiMessage, UiState } from "../types";
 import { useT, useI18n } from "../i18n";
 import { isRasterImage } from "../image-paste";
@@ -15,8 +12,7 @@ import { ModelThinking } from "./ModelThinking";
  *  by the server when the persisted set is unchanged), so the shallow-compared
  *  memo() below skips this input bar on every text delta. */
 interface ChatInputProps {
-	currentFile: CurrentFileContext | null;
-	contextReader: MutableRefObject<ReadCurrentFile | null>;
+	contextUsage?: UiState["stats"]["contextUsage"];
 	promptResult: Extract<ServerMessage, { type: "prompt_result" }> | null;
 	ready: boolean;
 	streaming: boolean;
@@ -69,7 +65,8 @@ interface ChatInputProps {
 }
 
 export const ChatInput = memo(function ChatInput({
-	ready, currentFile, contextReader, promptResult,
+	contextUsage,
+	ready, promptResult,
 	streaming,
 	messages,
 	slashCommands,
@@ -88,8 +85,6 @@ export const ChatInput = memo(function ChatInput({
 	onManageModels,
 }: ChatInputProps) {
 	const t = useT();
-	const [dismissed, setDismissed] = useState<Record<string, string>>({});
-	const autoFile = currentFile && dismissed[activeConversationId] !== currentFile.id ? currentFile : null;
 	const pendingSubmit = useRef<{ id: string; conversation: string; text: string; attachments: ChatInputProps["attachments"] } | null>(null);
 
 	const { locale } = useI18n();
@@ -317,19 +312,7 @@ export const ChatInput = memo(function ChatInput({
 		// in agent-service.ts. The 补充 (supplement) button passes queue=true,
 		// which the server delivers as followUp instead — the prompt is sent
 		// only after the WHOLE run finishes ("AI 生成结束才发送").
-		let outgoing: PromptAttachment[] = attachments.map(({ key, isDir, ...attachment }) => attachment);
-		if (autoFile) {
-			const snapshot = contextReader.current?.(autoFile.id);
-			if (!snapshot?.editorSnapshot || snapshot.path !== autoFile.path || snapshot.editorSnapshot.cwd !== autoFile.cwd) {
-				onNotice("error", t("currentFileUnavailable"));
-				return;
-			}
-			if (new TextEncoder().encode(snapshot.editorSnapshot.text).length > 512 * 1024) {
-				onNotice("error", t("currentFileTooLarge"));
-				return;
-			}
-			outgoing = mergeCurrentFile(outgoing, snapshot);
-		}
+		const outgoing: PromptAttachment[] = attachments.map(({ key, isDir, ...attachment }) => attachment);
 		const requestId = randomUuid();
 		if (send({ type: "prompt", text: trimmed, queue, requestId, attachments: outgoing })) {
 			pendingSubmit.current = { id: requestId, conversation: activeConversationId, text, attachments };
@@ -365,7 +348,7 @@ export const ChatInput = memo(function ChatInput({
 		}
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
-			submit();
+			submit(streaming && (e.metaKey || e.ctrlKey));
 		}
 	};
 
@@ -375,16 +358,8 @@ export const ChatInput = memo(function ChatInput({
 		<div className="inputbox-actions">
 			{streaming ? (
 				<>
-					{text.trim() !== "" && (
-						<button
-							type="button"
-							className="btn supplement"
-							title={t("supplementTip")}
-							onClick={() => submit(true)}
-						>
-							<FiSend /> {t("supplement")}
-						</button>
-					)}
+					<button type="button" className="btn supplement" title={t("supplementTip")} disabled={!connected || !text.trim()} onClick={() => submit(true)}>{t("supplement")}</button>
+					<button type="button" className="btn steer" disabled={!connected || !text.trim()} onClick={() => submit(false)}>{t("steerSend")}</button>
 					<button
 						type="button"
 						className="btn stop"
@@ -436,63 +411,6 @@ export const ChatInput = memo(function ChatInput({
 			{dragOver && (
 				<div className="drop-overlay">
 					<span>📎 {t("dropHereToAttach")}</span>
-				</div>
-			)}
-			{(attachments.length > 0 || autoFile) && (
-				<div className="attach-row">
-					{autoFile && <span className="attach-chip current-file" title={`${autoFile.cwd}/${autoFile.path}`}>
-						@{autoFile.name}{autoFile.dirty ? ` · ${t("currentFileUnsaved")}` : ""}
-						<button type="button" className="attach-remove" title={t("removeAttachment")}
-							onClick={() => setDismissed((previous) => ({ ...previous, [activeConversationId]: autoFile.id }))}>×</button>
-					</span>}
-					{attachments.map((a) => (
-						<span
-							key={a.key ?? `${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}`}
-							className={`attach-chip ${a.imageData ? "image" : a.fileData ? "file" : a.mode}`}
-							title={
-								a.imageData
-									? t("attachImage", { name: a.name })
-									: a.fileData
-										? t("attachFile", { name: a.name })
-										: a.isDir
-											? t("folderRef", { path: a.path })
-											: a.mode === "reference"
-												? t("refOnly", { path: a.path })
-												: a.mode === "lines" && a.lines
-													? t("attachLines", {
-															path: a.path,
-															start: a.lines.start,
-															end: a.lines.end,
-														})
-													: t("attachContent", { path: a.path })
-							}
-						>
-							{a.imageData
-								? "🖼"
-								: a.fileData
-									? "📄"
-									: a.isDir
-										? "📁"
-										: a.mode === "reference"
-											? "🔗"
-											: "📎"}{" "}
-							{a.name}
-							{a.mode === "lines" && a.lines && (
-								<span className="attach-range">
-									L{a.lines.start}-{a.lines.end}
-								</span>
-							)}
-							<button
-								type="button"
-								className="attach-remove"
-								title={t("removeAttachment")}
-								onClick={() => onRemoveAttachment(a.key ?? a.path)}
-							>
-								×
-							</button>
-						</span>
-					))}
-					<span className="attach-hint">{t("attachHint")}</span>
 				</div>
 			)}
 			{completions && completions.length > 0 && (
@@ -565,7 +483,60 @@ export const ChatInput = memo(function ChatInput({
 					</div>
 				</div>
 			)}
-			<div className="inputbox">
+			<div className={`inputbox${text.length > 0 ? " has-draft" : ""}`}>
+			{attachments.length > 0 && (
+				<div className="attach-row">
+					{attachments.map((a) => (
+						<span
+							key={a.key ?? `${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}`}
+							className={`attach-chip ${a.imageData ? "image" : a.fileData ? "file" : a.mode}`}
+							title={
+								a.imageData
+									? t("attachImage", { name: a.name })
+									: a.fileData
+										? t("attachFile", { name: a.name })
+										: a.isDir
+											? t("folderRef", { path: a.path })
+											: a.mode === "reference"
+												? t("refOnly", { path: a.path })
+												: a.mode === "lines" && a.lines
+													? t("attachLines", {
+															path: a.path,
+															start: a.lines.start,
+															end: a.lines.end,
+														})
+													: t("attachContent", { path: a.path })
+							}
+						>
+							{a.imageData
+								? "🖼"
+								: a.fileData
+									? "📄"
+									: a.isDir
+										? "📁"
+										: a.mode === "reference"
+											? "🔗"
+											: "📎"}{" "}
+							{a.name}
+							{a.mode === "lines" && a.lines && (
+								<span className="attach-range">
+									L{a.lines.start}-{a.lines.end}
+								</span>
+							)}
+							<button
+								type="button"
+								className="attach-remove"
+								title={t("removeAttachment")}
+								onClick={() => onRemoveAttachment(a.key ?? a.path)}
+							>
+								×
+							</button>
+						</span>
+					))}
+					<span className="attach-hint">{t("attachHint")}</span>
+				</div>
+			)}
+
 				<input
 					ref={fileInputRef}
 					type="file"
@@ -594,7 +565,7 @@ export const ChatInput = memo(function ChatInput({
 															connected
 																? streaming
 																	? t("placeholderStreaming")
-																	: t("placeholderIdle")
+																	: t("composerPlaceholder")
 																: t("placeholderConnecting")
 														}
 														disabled={!connected}
@@ -611,6 +582,7 @@ export const ChatInput = memo(function ChatInput({
 				    bar folds those away on phones (styles.css ≤768px). */}
 				<div className="input-tools">
 					<div className="input-tools-left">
+						<button type="button" className="btn composer-attach" title={t("uploadFile")} disabled={!connected} onClick={() => fileInputRef.current?.click()}><FiPlus /></button>
 						<ModelThinking
 							state={modelState}
 							models={models}
@@ -618,9 +590,11 @@ export const ChatInput = memo(function ChatInput({
 							send={send}
 							onManageModels={onManageModels}
 							compact
+							segmented
 						/>
 					</div>
 					<div className="input-tools-right">
+						{contextUsage && <span className="composer-context" title={t("context")}><span className="composer-meter"><i style={{ width: `${Math.min(contextUsage.percent ?? 0, 100)}%`, minWidth: (contextUsage.tokens ?? 0) > 0 ? 2 : 0 }} /></span><span>{contextUsage.tokens === null ? "—" : `${new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(contextUsage.tokens)} / ${new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(contextUsage.contextWindow)}`}</span></span>}
 						<button
 							type="button"
 							className="btn attach-img"
@@ -634,6 +608,7 @@ export const ChatInput = memo(function ChatInput({
 					</div>
 				</div>
 			</div>
+			<div className="composer-hint">{streaming ? t("composerHintWorking", { key: navigator.platform.includes("Mac") ? "⌘" : "Ctrl+" }) : t("composerHint")}</div>
 		</div>
 	);
 });

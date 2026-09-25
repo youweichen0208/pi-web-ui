@@ -1,12 +1,9 @@
-import { memo, useEffect, useState } from "react";
+import { numberedOutputLine, differentCommandDirectory, isSearchCommand } from "../bash-presentation";
+import { WorkspacePathContext } from "../workspace-context";
+import { memo, useContext, useEffect, useRef, useState } from "react";
 import {
-	FiCheckCircle,
 	FiChevronDown,
 	FiChevronRight,
-	FiChevronsDown,
-	FiChevronsUp,
-	FiCopy,
-	FiMaximize2,
 	FiSquare,
 	FiTerminal,
 	FiX,
@@ -15,6 +12,8 @@ import type { ToolStatus, UiMessage, UiToolCallBlock } from "../types";
 import { useT } from "../i18n";
 import { Markdown } from "./Markdown";
 import { highlightLine, langFromPath } from "../hljs-lite";
+import { displayReadPath, readPath, splitFrontmatter } from "../read-presentation";
+import { bashCommand, parseBashDiagnostics, parseLabeledBashSteps, type BashStepRun } from "../bash-steps";
 
 export interface ToolView {
 	/** Tool result message if the tool already finished. */
@@ -30,6 +29,96 @@ export interface ToolView {
 
 /** Kill just the running bash command(s) — the agent run itself continues. */
 export type KillBashHandler = () => void;
+
+/** Consecutive reads form one quiet step. Each file remains inspectable. */
+export function ReadGroup({ items, wrap }: { items: { block: UiToolCallBlock; view: ToolView }[]; wrap?: boolean }) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	const paths = items.map(({ block }) => readPath(block.argumentsText) ?? block.name);
+	const pending = items.some(({ view }) => view.streaming && !view.result && !view.status);
+	const completed = items.every(({ view }) => view.result || view.status);
+	const failed = items.some(({ view }) => view.result?.isError || view.status?.isError);
+	const duration = items.reduce((sum, { view }) => sum + (view.status?.durationMs ?? 0), 0);
+	return <div className={`read-group ${failed ? "err" : pending ? "run" : completed ? "ok" : "idle"}`}>
+		<button type="button" className="read-group-head" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+			<span aria-hidden="true">{open ? "⌄" : "›"}</span><span aria-hidden="true">📄</span>
+			<strong>{t("readFiles", { n: items.length })}</strong>
+			<span className="read-group-paths" title={paths.join("\n")}>{paths.map((path) => path.split("/").slice(-2).join("/")).join(", ")}</span>
+			<span className="read-group-status">{failed ? t("error") : pending ? t("running") : completed ? `${t("done")}${duration ? ` · ${formatDuration(duration)}` : ""}` : t("toolQueued")}</span>
+		</button>
+		{open && <div className="read-group-items">{items.map(({ block, view }) => <ReadFileRow key={block.id} block={block} view={view} wrap={wrap} />)}</div>}
+	</div>;
+}
+
+function ReadFileRow({ block, view, wrap }: { block: UiToolCallBlock; view: ToolView; wrap?: boolean }) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	const path = readPath(block.argumentsText) ?? block.name;
+	const content = view.result?.content.map((part) => part.type === "text" && typeof part.text === "string" ? part.text : "").join("") ?? view.liveOutput ?? "";
+	const count = content ? content.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n").length : 0;
+	return <div className="read-file-row"><button type="button" className="read-file-head" title={path} aria-expanded={open} onClick={() => setOpen((value) => !value)}><FiChevronRight className={open ? "open" : ""} /><span>{t("readVerb")}</span><code>{displayReadPath(path)}</code>{count > 0 && <span>{t("toolLineCount", { n: count })}</span>}<i className={view.result?.isError || view.status?.isError ? "error" : view.result || view.status ? "done" : "pending"} /></button>{open && <ToolCallBlock block={block} view={view} wrap={wrap} />}</div>;
+}
+
+export function GrepSummary({ block, view, wrap }: { block: UiToolCallBlock; view: ToolView; wrap?: boolean }) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	let pattern = "";
+	let path = "";
+	try {
+		const args = JSON.parse(block.argumentsText ?? "{}") as { pattern?: unknown; path?: unknown; glob?: unknown };
+		if (typeof args.pattern === "string") pattern = args.pattern;
+		if (typeof args.path === "string") path = args.path;
+		else if (typeof args.glob === "string") path = args.glob;
+	} catch { /* unparseable calls keep their normal result below */ }
+	const resultText = view.result?.content.map((part) => part.type === "text" && typeof part.text === "string" ? part.text : "").join("") ?? view.liveOutput ?? "";
+	const noMatches = /^\s*(?:No matches|没有匹配)/i.test(resultText);
+	const count = resultText.split("\n").filter((line) => /^\S+?:\d+[:-]/.test(line)).length;
+	const duration = view.status?.durationMs !== undefined ? formatDuration(view.status.durationMs) : "";
+	return <div className="grep-summary">
+		<button type="button" className="grep-summary-head" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+			<FiChevronRight className={open ? "open" : ""} /><strong>{t("grepSearch")}</strong><code title={pattern}>{pattern || block.name}</code>
+			{path && <span title={path}>{t("grepInPath", { path: displayReadPath(path) })}</span>}
+			{view.result && !view.result.isError && <span>{count || noMatches ? t("grepMatches", { n: count }) : t("toolLineCount", { n: resultText.split("\n").filter(Boolean).length })}</span>}
+			{duration && <span className="grep-summary-time">{duration}</span>}
+		</button>
+		{open && <div className="grep-summary-body"><ToolCallBlock block={block} view={view} wrap={wrap} /></div>}
+	</div>;
+}
+
+export function isSubagentCall(block: UiToolCallBlock): boolean {
+	if (/^(?:spawn_agent|subagent|sub_agent|delegate_agent)$/i.test(block.name)) return true;
+	if (block.name !== "task") return false;
+	try {
+		const args = JSON.parse(block.argumentsText ?? "{}") as Record<string, unknown>;
+		return typeof args.subagent_type === "string" || typeof args.agent === "string";
+	} catch { return false; }
+}
+
+export function SubagentGroup({ items, wrap, startedAt }: { items: { block: UiToolCallBlock; view: ToolView }[]; wrap?: boolean; startedAt?: number }) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	const allDone = items.every(({ view }) => view.result || view.status);
+	const anyFailed = items.some(({ view }) => view.result?.isError || view.status?.isError);
+	const finishedAt = Math.max(0, ...items.map(({ view }) => view.result?.timestamp ?? 0));
+	const totalMs = startedAt && finishedAt >= startedAt ? finishedAt - startedAt : 0;
+	return <div className="subagent-group">
+		<button type="button" className="subagent-group-head" aria-expanded={open} onClick={() => setOpen((value) => !value)}><strong>{t("subagentsCount", { n: items.length })}</strong><span className={allDone ? anyFailed ? "failed" : "done" : "running"}>{allDone ? anyFailed ? t("subagentsPartial") : t("allDone") : t("running")}</span><span className="subagent-group-time">{totalMs ? formatDuration(totalMs) : ""}</span><FiChevronDown className={open ? "open" : ""} /></button>
+		{open && <div className="subagent-rows">{items.map(({ block, view }) => <SubagentRow key={block.id} block={block} view={view} wrap={wrap} />)}</div>}
+	</div>;
+}
+
+function SubagentRow({ block, view, wrap }: { block: UiToolCallBlock; view: ToolView; wrap?: boolean }) {
+	const [open, setOpen] = useState(false);
+	let title = block.name;
+	try {
+		const args = JSON.parse(block.argumentsText ?? "{}") as Record<string, unknown>;
+		const candidate = args.task_name ?? args.description ?? args.prompt;
+		if (typeof candidate === "string") title = candidate.split("\n")[0].slice(0, 100);
+	} catch { /* use tool name */ }
+	const result = view.result?.content.map((part) => part.type === "text" && typeof part.text === "string" ? part.text : "").join("").trim() ?? "";
+	const summary = result.split("\n").find((line) => line.trim())?.slice(0, 180) ?? "";
+	return <div className="subagent-row"><button type="button" className="subagent-row-head" aria-expanded={open} onClick={() => setOpen((value) => !value)}><FiChevronRight className={open ? "open" : ""} /><strong>{title}</strong><span>{view.result?.isError ? "✕" : view.result || view.status ? "✓" : "⋯"} {view.status?.durationMs !== undefined ? formatDuration(view.status.durationMs) : ""}</span></button>{summary && <div className="subagent-row-summary">{summary}</div>}{open && <div className="subagent-row-body"><ToolCallBlock block={block} view={view} wrap={wrap} /></div>}</div>;
+}
 
 const TOOL_ICONS: Record<string, string> = {
 	bash: "$",
@@ -142,10 +231,14 @@ function parseDiffLines(diff: string): DiffLine[] {
  *  +/- lines with per-line syntax highlighting — same green/red convention
  *  as the git diff viewer in SCMPanel.tsx (.scm-diff-line), but this one
  *  also tokenizes each line's code the way a fenced code block would. */
-function DiffView({ diff, lang }: { diff: string; lang: string | null }) {
+function DiffView({ diff, lang, path }: { diff: string; lang: string | null; path: string }) {
 	const lines = parseDiffLines(diff);
+	const added = lines.filter((line) => line.marker === "+").length;
+	const removed = lines.filter((line) => line.marker === "-").length;
 	return (
 		<div className="toolcall-diff">
+			<div className="toolcall-diff-header"><span title={path}>{path}</span><span>+{added} −{removed}</span></div>
+			<div className="toolcall-diff-lines">
 			{lines.map((ln, i) => (
 				<div
 					key={i}
@@ -163,6 +256,7 @@ function DiffView({ diff, lang }: { diff: string; lang: string | null }) {
 					/>
 				</div>
 			))}
+			</div>
 		</div>
 	);
 }
@@ -194,6 +288,11 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 	const t = useT();
 	const [open, setOpen] = useState(wrap);
 	const [copied, setCopied] = useState(false);
+	const [lineWrap, setLineWrap] = useState(false);
+	const [bashView, setBashView] = useState<"steps" | "raw">("steps");
+	const [fullCommand, setFullCommand] = useState(false);
+	const [elapsed, setElapsed] = useState(0);
+	const cwd = useContext(WorkspacePathContext);
 	// Markdown files read by the `read` tool default to rendered preview,
 	// same convention as the file preview panel (see FilePreview.tsx).
 	const [markdownPreview, setMarkdownPreview] = useState(true);
@@ -213,6 +312,12 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 	}, [zoomed]);
 
 	const running = !view.result && view.streaming && !view.status;
+	useEffect(() => {
+		if (!running) return;
+		const start = Date.now();
+		const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+		return () => window.clearInterval(timer);
+	}, [running]);
 	const isBashRunning = block.name === "bash" && running;
 	const done = view.result !== undefined;
 	/** Command finished (tool_status fired) but the authoritative toolResult
@@ -232,12 +337,25 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 	// line-numbered) — colored +/- with per-line syntax highlighting.
 	const editDiff = editResultDiff(block, view);
 	const editLang = editDiff ? editTargetLanguage(block) : null;
+	let editPath = "";
+	if (editDiff) {
+		try { editPath = JSON.parse(block.argumentsText ?? "").path ?? ""; } catch { /* keep the diff visible for malformed arguments */ }
+	}
 
 	const output = view.result
 		? view.result.content.map((b) => (b.type === "text" ? b.text : "")).join("")
 		: (view.liveOutput ?? "");
+	const bashRun = block.name === "bash" ? parseLabeledBashSteps(block.argumentsText, output, done || waitingModel, isError, view.status?.exitCode) : null;
+	const bashDiagnostics = block.name === "bash" && isError && !bashRun ? parseBashDiagnostics(output) : [];
+	const bashExit = view.status?.exitCode ?? Number(/(?:exited with code\s*|exit(?:ed)?\s+)(\d+)/i.exec(output)?.[1] ?? NaN);
+	const outputLines = output.replace(/\r\n/g, "\n").split("\n");
+	if (outputLines.at(-1) === "") outputLines.pop();
+	const limitedOutput = block.name !== "bash" && outputLines.length > 10 && !expanded && !zoomed;
+	const visibleOutput = limitedOutput ? outputLines.slice(0, 10).join("\n") : output;
+	const markdownRead = isMarkdown && markdownPreview && !isError ? splitFrontmatter(visibleOutput) : null;
+	const targetPath = block.name === "read" ? readPath(block.argumentsText) : null;
 
-	const statusClass = isError ? "err" : done ? "ok" : running || waitingModel ? "run" : "idle";
+	const statusClass = bashRun?.status === "partial" ? "partial" : bashRun?.status === "no-match" ? "idle" : isError ? "err" : done || waitingModel ? "ok" : running ? "run" : "idle";
 	let statusLabel = isError
 		? t("error")
 		: done
@@ -245,13 +363,15 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 			: running
 				? t("running")
 				: waitingModel
-					? t("toolDoneWaitingModel")
+					? t("done")
 					: t("toolQueued");
 	const duration =
-		waitingModel && view.status?.durationMs !== undefined
+		view.status?.durationMs !== undefined
 			? formatDuration(view.status.durationMs)
 			: "";
-	if (waitingModel && duration) statusLabel = `${statusLabel} · ${duration}`;
+	if (duration) statusLabel = `${statusLabel} · ${duration}`;
+	if (bashRun) statusLabel = bashRun.status === "partial" ? t("bashPartial", { ok: bashRun.completed, total: bashRun.steps.length }) : bashRun.status === "failed" ? t("bashFailed") : bashRun.status === "no-match" ? t("bashNoMatch") : bashRun.status === "running" ? `${t("bashRunning")}${elapsed ? ` · ${elapsed}s` : ""}` : `${t("done")}${duration ? ` · ${duration}` : ""}`;
+	else if (block.name === "bash" && isError) statusLabel = `${t("bashFailed")}${Number.isFinite(bashExit) ? ` · exit ${bashExit}` : ""}${bashDiagnostics.length ? ` · ${t("bashErrorCount", { n: bashDiagnostics.length })}` : ""}`;
 
 	// tool_status doesn't carry the exit code for successful bash runs (only
 	// failures embed "exited with code N" in the error text); show it when known.
@@ -262,7 +382,9 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 
 	const copyArgs = () => {
 		if (block.argumentsText) {
-			void navigator.clipboard.writeText(block.argumentsText);
+			let text = block.argumentsText;
+			try { if (block.name === "bash") text = JSON.parse(text).command ?? text; } catch {}
+			void navigator.clipboard.writeText(text);
 			setCopied(true);
 			setTimeout(() => setCopied(false), 1200);
 		}
@@ -274,8 +396,10 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 		<>
 			{block.argumentsText && (
 				<div className="toolcall-args">
-					{block.name === "bash" && block.argumentsText.startsWith("{") ? (
-						<TerminalCommand args={block.argumentsText} />
+					{targetPath ? (
+						<button type="button" className="toolcall-read-path" title={targetPath} onClick={() => setZoomed(true)}>{displayReadPath(targetPath)}</button>
+					) : block.name === "bash" && block.argumentsText.startsWith("{") ? (
+						bashRun ? <div className="bash-command-preview"><div className={fullCommand ? "full" : "clipped"}><TerminalCommand args={block.argumentsText} /></div><button type="button" onClick={() => setFullCommand((value) => !value)}>{fullCommand ? t("collapseCode") : t("bashExpandCommand", { n: bashRun.steps.length })}</button></div> : <TerminalCommand args={block.argumentsText} />
 					) : writePreview ? (
 						writePreview.lang ? (
 							<div className="toolcall-code">
@@ -289,11 +413,11 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 					)}
 				</div>
 			)}
-			{output.length > 0 && (
+			{output.length > 0 && (block.name === "bash" ? bashRun && bashView === "steps" ? <BashSteps run={bashRun} wrap={lineWrap} /> : bashDiagnostics.length > 0 ? <BashFailure diagnostics={bashDiagnostics} output={output} wrap={lineWrap} /> : <BashOutput output={output} wrap={lineWrap} cwd={differentCommandDirectory(block.argumentsText, cwd) ?? ""} error={isError} searchOutput={isSearchCommand(block.argumentsText)} /> : (
 				<div className="toolcall-output">
 					<div className="toolcall-output-label">
-						{isError ? t("errorOutput") : t("output")}
-						{(running || waitingModel) && (
+						{isError ? t("errorOutput") : block.name === "read" ? t("modelReadOnly") : t("output")}
+						{running && (
 							<span className="thinking-spinner" aria-hidden="true" />
 						)}
 						<span className="toolcall-output-spacer" />
@@ -308,54 +432,44 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 								}
 								onClick={() => setMarkdownPreview((v) => !v)}
 							>
-								{markdownPreview ? t("showMarkdownSource") : t("showMarkdownPreview")}
+								{markdownPreview ? t("readRaw") : t("showMarkdownPreview")}
 							</button>
 						)}
 					</div>
 					{editDiff ? (
-						<DiffView diff={editDiff} lang={editLang} />
+						<DiffView diff={editDiff} lang={editLang} path={editPath} />
 					) : isMarkdown && markdownPreview && !isError ? (
 						<div className="toolcall-markdown">
-							<Markdown text={output} />
+							{markdownRead && markdownRead.fields.length > 0 && <dl className="toolcall-frontmatter">{markdownRead.fields.map(({ name, value }) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>}
+							<Markdown text={markdownRead?.body ?? visibleOutput} />
 						</div>
 					) : codeLang ? (
 						<div className="toolcall-code">
-							<Markdown text={fenceCodeBlock(output, codeLang)} />
+							<Markdown text={fenceCodeBlock(visibleOutput, codeLang)} />
 						</div>
 					) : (
-						<pre>{output}</pre>
+						<pre>{visibleOutput}</pre>
 					)}
+					{block.name !== "bash" && outputLines.length > 10 && <button type="button" className="toolcall-output-more" onClick={() => setExpanded((value) => !value)}>{expanded || zoomed ? t("collapseCode") : t("expandAllLines", { n: outputLines.length })}</button>}
 				</div>
-			)}
-			{running && output.length === 0 && (
-				<div className="toolcall-waiting">
-					<span className="thinking-live-label">
-						<span className="thinking-spinner" aria-hidden="true" />
-						{t("waitingOutput")}
-					</span>
-				</div>
-			)}
-			{waitingModel && output.length === 0 && (
-				<div className="toolcall-waiting">
-					<span className="thinking-live-label">
-						<span className="thinking-spinner" aria-hidden="true" />
-						{t("waitingModel")}
-					</span>
-				</div>
-			)}
+			))}
+
 		</>
 	);
 
 	return (
-		<div className={`toolcall ${statusClass}`}>
+		<div className={`toolcall ${statusClass} ${block.name === "bash" ? "toolcall-bash" : ""} ${bashRun ? "toolcall-steps" : ""} ${bashDiagnostics.length ? "toolcall-diagnostics" : ""}`}>
 			<div className="toolcall-head">
 				<span className="toolcall-icon">{toolIcon(block.name)}</span>
 				<span className="toolcall-name">{block.name}</span>
 				<span className="toolcall-status">
 					{statusLabel}
+					{running && block.name === "bash" && <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>}
 					{exitHint && <em className="toolcall-exit">{exitHint}</em>}
 				</span>
 				<span className="toolcall-spacer" />
+				{bashRun && <span className="bash-view-switch"><button type="button" className={bashView === "steps" ? "active" : ""} onClick={() => setBashView("steps")}>{t("bashSteps")}</button><button type="button" className={bashView === "raw" ? "active" : ""} onClick={() => setBashView("raw")}>{t("bashRaw")}</button></span>}
+				{block.name === "bash" && !bashRun && !bashDiagnostics.length && <button type="button" className="toolcall-wrap" aria-pressed={lineWrap} onClick={() => setLineWrap((value) => !value)}>{t("toolWrap")}</button>}
 				{isBashRunning && onKillBash && (
 					<button
 						type="button"
@@ -367,39 +481,42 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 						<span>{t("stopBash")}</span>
 					</button>
 				)}
-				{open && (
+				{block.name !== "read" && !bashRun && !bashDiagnostics.length && (
 					<button
 						type="button"
+						disabled={!open}
 						className="toolcall-expand"
 						title={expanded ? t("collapseCode") : t("expandCode")}
 						onClick={() => setExpanded((v) => !v)}
 					>
-						{expanded ? <FiChevronsUp /> : <FiChevronsDown />}
+						{expanded ? t("collapseCode") : t("expandCode")}
 					</button>
 				)}
-				<button
+				{!bashRun && !bashDiagnostics.length && <button
 					type="button"
 					className="toolcall-expand"
 					title={t("zoomCode")}
 					onClick={() => setZoomed(true)}
 				>
-					<FiMaximize2 />
-				</button>
+				{t("zoomCode")}
+				</button>}
 				<button
 					type="button"
 					className="toolcall-copy"
 					title={t("copyArgs")}
 					onClick={copyArgs}
 				>
-					{copied ? <FiCheckCircle /> : <FiCopy />}
+					{t(copied ? "copied" : "copy")}
 				</button>
-				<button
+				{(bashRun || bashDiagnostics.length > 0) && <details className="bash-card-more"><summary aria-label={t("more")}>⋯</summary><div><button type="button" onClick={() => setLineWrap((value) => !value)}>{t("toolWrap")}</button><button type="button" onClick={() => setZoomed(true)}>{t("zoomCode")}</button><button type="button" onClick={() => setOpen((value) => !value)}>{open ? t("collapseCode") : t("expandCode")}</button></div></details>}
+				{!bashRun && !bashDiagnostics.length && <button
 					type="button"
 					className="toolcall-toggle"
+					aria-label={open ? t("collapseCode") : t("expandCode")}
 					onClick={() => setOpen((v) => !v)}
 				>
 					{open ? <FiChevronDown /> : <FiChevronRight />}
-				</button>
+				</button>}
 			</div>
 			{open && (
 				<div className={`toolcall-body ${expanded ? "expanded" : ""}`}>
@@ -448,7 +565,7 @@ function TerminalCommand({ args }: { args: string }) {
 	if (typeof parsed.command !== "string") return <pre>{args}</pre>;
 	return (
 		<div className="termline">
-			<FiTerminal className="termline-icon" />
+			<span className="termline-icon">$</span>
 			<code>{parsed.command}</code>
 			{typeof parsed.timeout === "number" && (
 				<span className="termline-timeout">⏱ {parsed.timeout}s</span>
@@ -465,4 +582,61 @@ function formatDuration(ms?: number): string {
 	const m = Math.floor(totalSec / 60);
 	const s = Math.round(totalSec % 60);
 	return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
+/** Numbered plain output stays text-only; path styling never interprets HTML. */
+function BashSteps({ run, wrap }: { run: BashStepRun; wrap: boolean }) {
+	const t = useT();
+	const [selected, setSelected] = useState<number | null>(() => run.steps.findIndex((step) => step.state === "failed"));
+	return <div className="bash-steps">{run.steps.map((step, index) => {
+		const visible = selected === index;
+		const symbol = step.state === "done" ? "✓" : step.state === "failed" ? "×" : step.state === "running" ? "⋯" : "–";
+		return <div key={`${step.label}-${index}`} className={`bash-step ${step.state}`}>
+			<button type="button" className="bash-step-head" aria-expanded={visible} onClick={() => setSelected(visible ? null : index)}>
+				<span className="bash-step-index">{index + 1}</span><span className="bash-step-icon">{symbol}</span>
+				<strong>{step.label}</strong><code title={step.command}>{step.command}</code>
+				<span className="bash-step-count">{step.state === "no-match" ? t("bashNoMatch") : step.state === "skipped" ? t("bashSkipped") : step.state === "failed" ? run.exitCode !== undefined ? `exit ${run.exitCode}` : t("bashFailed") : step.state === "running" ? t("running") : t("toolLineCount", { n: step.lineCount })}</span>
+				<FiChevronRight className={visible ? "open" : ""} />
+			</button>
+			{visible && <div className={`bash-step-detail ${wrap ? "wrap" : ""}`}><div className="bash-step-command">$ {step.command}</div><pre>{step.output ? step.output.split("\n").map((line, lineIndex, lines) => <span key={lineIndex} className={step.state === "failed" && /\b(?:fatal|error|failed)\s*:/i.test(line) ? "error" : ""}>{line}{lineIndex < lines.length - 1 ? "\n" : ""}</span>) : t(step.state === "no-match" ? "bashNoMatch" : "waitingOutput")}</pre></div>}
+		</div>;
+	})}</div>;
+}
+
+function BashFailure({ diagnostics, output, wrap }: { diagnostics: ReturnType<typeof parseBashDiagnostics>; output: string; wrap: boolean }) {
+	const t = useT();
+	const [raw, setRaw] = useState(false);
+	return <div className="bash-failure">
+		<div className="bash-failure-list">{diagnostics.map((item, index) => <div key={`${item.path}:${item.line}:${index}`} className="bash-failure-line"><button type="button" onClick={() => window.dispatchEvent(new CustomEvent("pi-web-ui:open-tool-file", { detail: item }))}>{item.path}:{item.line}{item.column ? `:${item.column}` : ""}</button><span>{item.message}</span></div>)}</div>
+		<button type="button" className="bash-failure-toggle" onClick={() => setRaw((value) => !value)}>{raw ? t("collapseCode") : t("bashShowRaw")}</button>
+		{raw && <pre className={wrap ? "wrap" : ""}>{output}</pre>}
+	</div>;
+}
+
+function BashOutput({ output, wrap, cwd, error, searchOutput }: { output: string; wrap: boolean; cwd: string; error: boolean; searchOutput: boolean }) {
+	const t = useT();
+	const [all, setAll] = useState(false);
+	const scroller = useRef<HTMLDivElement>(null);
+	const [overflow, setOverflow] = useState(false);
+	useEffect(() => {
+		const node = scroller.current;
+		if (!node) return;
+		const update = () => setOverflow(!wrap && node.scrollWidth - node.clientWidth - node.scrollLeft > 1);
+		const observer = new ResizeObserver(update);
+		observer.observe(node); node.addEventListener("scroll", update); update();
+		return () => { observer.disconnect(); node.removeEventListener("scroll", update); };
+	}, [output, all, wrap]);
+	const lines = output.replace(/\r\n/g, "\n").split("\n");
+	if (lines.at(-1) === "") lines.pop();
+	const visible = all ? lines : lines.slice(0, 8);
+	return <div className="bash-output">
+		<div className="bash-output-label"><span>{t(error ? "errorOutput" : "output")} · {t("toolLineCount", { n: lines.length })}</span>{cwd && <span title={cwd}>{t("toolRelativeTo", { path: cwd })}</span>}</div>
+		<div ref={scroller} className={`bash-output-lines ${wrap ? "wrap" : ""} ${overflow ? "has-overflow" : ""}`}>{visible.map((rawLine, index) => {
+			const { number: lineNumber, text: line } = numberedOutputLine(rawLine, index, searchOutput);
+			const path = /^(?:[.~/\w-]+\/)*[.\w-]+(?:\.[\w-]+)$/.test(line);
+			const split = path ? line.lastIndexOf("/") + 1 : 0;
+			return <div className="bash-output-line" key={index}><span className="bash-line-number">{lineNumber}</span><span className="bash-line-text">{path ? <><span className="bash-path-dir">{line.slice(0, split)}</span><span className={split ? "bash-path-file" : "bash-root-file"}>{line.slice(split)}</span></> : line || " "}</span></div>;
+		})}</div>
+		{lines.length > 8 && <button type="button" className="bash-output-more" onClick={() => setAll((value) => !value)}>{all ? t("collapseCode") : t("toolMoreLines", { n: lines.length - 8 })}</button>}
+	</div>;
 }

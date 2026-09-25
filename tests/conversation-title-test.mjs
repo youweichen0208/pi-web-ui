@@ -38,8 +38,9 @@ const mock = createServer(async (req, res) => {
 	const naming = prompt.includes("Summarize the topic of the user request");
 	if (naming) titleRequests.push(prompt);
 	const slow = naming;
-	const first = naming ? "优化项目" : "已完成";
-	const lastChunk = naming ? "切换性能" : "缓存优化";
+	const greetingTitle = naming && prompt.includes("User request:\n你好");
+	const first = greetingTitle ? "简短" : naming ? "优化项目" : "已完成";
+	const lastChunk = greetingTitle ? "问候" : naming ? "切换性能" : "缓存优化";
 	res.writeHead(200, {
 		"content-type": "text/event-stream",
 		"cache-control": "no-cache",
@@ -200,16 +201,21 @@ try {
 	client.send({ type: "hello", clientId: "switch-session-background-test" });
 	await client.waitForType("ready");
 	client.send({ type: "list_sessions" });
-	await client.waitForState((state) => Boolean(state.conversationId));
+	const initial = await client.waitForState((state) => Boolean(state.conversationId));
+	await client.waitForType("conversations", (message) => message.conversations.some((conv) => conv.id === initial.conversationId && conv.title === "新对话"));
+	console.log("✓ active new chat appears in sidebar source");
 
 	client.send({ type: "set_model", modelId: "main/switch-session-mock" });
 	await client.waitForState((state) => state.model?.id === "switch-session-mock");
 
 	client.send({ type: "prompt", text: "你好" });
 	await client.waitForMessage((m) => m.role === "assistant");
-	await sleep(200);
-	if (titleRequests.length) throw new Error("greeting triggered naming");
-	console.log("✓ greeting defers naming");
+	await client.waitForType("conversations", (message) => message.conversations.some((conv) => conv.id === initial.conversationId && conv.title === "你好"));
+	await sleep(300);
+	if (titleRequests.length !== 0) throw new Error("casual greeting should not request a generated title");
+	console.log("✓ casual greeting keeps its original title");
+	client.send({ type: "new_chat" });
+	await client.waitForState((state) => state.conversationId !== initial.conversationId);
 	client.send({ type: "prompt", text: "优化项目切换" });
 	await client.waitForType("sessions", (m) => m.sessions.some((s) => s.name === "优化项目切换性能"));
 	if (!titleRequests[0]?.includes("Assistant response:\n已完成缓存优化")) throw new Error("missing answer context");

@@ -1,4 +1,5 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { FiBold, FiItalic, FiRotateCcw, FiRotateCw, FiSquare, FiType, FiCode, FiGrid, FiList, FiCheckSquare, FiMinus, FiMessageSquare } from "react-icons/fi";
 import { markdownImageUrl } from "../markdown-image";
 import { withToken } from "../auth-token";
 import { getClientId } from "../use-chat";
@@ -206,6 +207,7 @@ export const RichMarkdownEditor = memo(function RichMarkdownEditor({ value, read
 		{ label: "richHeading", keywords: "heading title h2 标题", action: "formatBlock", argument: "h2" },
 		{ label: "richParagraph", keywords: "paragraph text 正文", action: "formatBlock", argument: "p" },
 		{ label: "richCodeBlock", keywords: "code fence 代码", action: "insertHTML", argument: "<pre><code data-slash-insert><br></code></pre><p><br></p>" },
+		{ label: "richHighlightBlock", keywords: "highlight note callout 高亮 提示", action: "insertHTML", argument: '<blockquote class="rich-highlight" data-rich-highlight="note"><p data-slash-insert><br></p></blockquote><p><br></p>' },
 		{ label: "richTable", keywords: "table 表格", action: "insertHTML", argument: `<table><thead><tr><th data-slash-insert>${t("richColumn")} 1</th><th>${t("richColumn")} 2</th></tr></thead><tbody><tr><td>…</td><td>…</td></tr></tbody></table><p><br></p>` },
 		{ label: "richList", keywords: "bullet list 列表", action: "insertUnorderedList" },
 		{ label: "richOrderedList", keywords: "number ordered 编号", action: "insertOrderedList" },
@@ -213,21 +215,32 @@ export const RichMarkdownEditor = memo(function RichMarkdownEditor({ value, read
 		{ label: "richQuote", keywords: "quote 引用", action: "formatBlock", argument: "blockquote" },
 		{ label: "richDivider", keywords: "divider horizontal rule 分隔线", action: "insertHTML", argument: "<hr><p><br></p>" },
 	] as const;
-	const matches = items.filter((item) => `${t(item.label)} ${item.keywords}`.toLowerCase().includes(menu?.query.toLowerCase() ?? ""));
+	const icons = { richHighlightBlock: <FiSquare />, richHeading: <span>H₂</span>, richParagraph: <FiType />, richCodeBlock: <FiCode />, richTable: <FiGrid />, richList: <FiList />, richOrderedList: <span>1.</span>, richTaskList: <FiCheckSquare />, richQuote: <FiMessageSquare />, richDivider: <FiMinus /> };
+	const isBlock = (item: typeof items[number]) => item.action === "insertHTML";
+	const matches = items.filter((item) => `${t(item.label)} ${item.keywords}`.toLowerCase().includes(menu?.query.toLowerCase() ?? "")).sort((a, b) => Number(isBlock(a)) - Number(isBlock(b)));
 	const inspectSlash = () => {
 		if (readOnly) return closeMenu();
 		const selection = window.getSelection();
 		if (!selection?.isCollapsed || !selection.anchorNode || !root.current?.contains(selection.anchorNode)) return closeMenu();
 		const node = selection.anchorNode;
-		if (node.nodeType !== Node.TEXT_NODE || node.parentElement?.closest("pre, code, a, [contenteditable=false]")) return closeMenu();
+		if (node.nodeType !== Node.TEXT_NODE || node.parentElement?.closest("pre, code, a, li, [contenteditable=false]")) return closeMenu();
 		const before = node.textContent?.slice(0, selection.anchorOffset) ?? "";
-		const match = /(?:^|[^\w/:])\/([^\s/]{0,32})$/.exec(before);
+		const match = /\/([^\s/]{0,32})$/.exec(before);
 		if (!match) return closeMenu();
 		const range = selection.getRangeAt(0).cloneRange();
 		range.setStart(node, selection.anchorOffset - match[1].length - 1);
+		// Check the entire logical block, not only this text node: bold/link
+		// spans split a paragraph into several nodes but do not start a new one.
+		const block = node.parentElement?.closest("p, h1, h2, h3, h4, h5, h6, li, td, th, div");
+		if (!block || !root.current.contains(block)) return closeMenu();
+		const prefix = document.createRange();
+		prefix.selectNodeContents(block);
+		prefix.setEnd(range.startContainer, range.startOffset);
+		const preceding = prefix.cloneContents();
+		if (preceding.textContent || preceding.querySelector("br, img, input, hr, video, audio")) return closeMenu();
 		slashRange.current = range;
 		const rect = range.getBoundingClientRect();
-		setMenu({ query: match[1], x: Math.max(8, Math.min(rect.left, window.innerWidth - 268)), y: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 300)) });
+		setMenu({ query: match[1], x: Math.max(8, Math.min(rect.left, window.innerWidth - 328)), y: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - Math.min(380, window.innerHeight - 16))) });
 		setActive(0);
 	};
 	useLayoutEffect(() => {
@@ -260,7 +273,25 @@ export const RichMarkdownEditor = memo(function RichMarkdownEditor({ value, read
 			update();
 		}
 	};
+	const formatTools = [
+		{ label: t("richUndo"), icon: <FiRotateCcw />, action: "undo" },
+		{ label: t("richRedo"), icon: <FiRotateCw />, action: "redo" },
+		{ label: t("richParagraph"), icon: <FiType />, action: "formatBlock", argument: "p", separator: true },
+		{ label: `${t("richHeading")} 1`, icon: <span>H₁</span>, action: "formatBlock", argument: "h1" },
+		{ label: `${t("richHeading")} 2`, icon: <span>H₂</span>, action: "formatBlock", argument: "h2" },
+		{ label: t("richBold"), icon: <FiBold />, action: "bold", separator: true },
+		{ label: t("richItalic"), icon: <FiItalic />, action: "italic" },
+		{ label: t("richList"), icon: <FiList />, action: "insertUnorderedList", separator: true },
+		{ label: t("richOrderedList"), icon: <span>1.</span>, action: "insertOrderedList" },
+	];
 	return <div className="fp-rich-editor" onScrollCapture={(event) => { if (!(event.target as HTMLElement).closest(".fp-slash-menu")) { if (menu) inspectSlash(); } }}>
+		<div className="fp-rich-toolbar" role="toolbar" aria-label={t("richFormatToolbar")}>
+			{formatTools.map((tool) => <Fragment key={tool.label}>
+				{tool.separator && <span className="fp-rich-toolbar-separator" aria-hidden="true" />}
+				<button type="button" title={tool.label} aria-label={tool.label} disabled={readOnly}
+					onMouseDown={(event) => event.preventDefault()} onClick={() => command(tool.action, tool.argument)}>{tool.icon}</button>
+			</Fragment>)}
+		</div>
 		{tableCell?.isConnected && !readOnly && <div className="fp-table-tools" role="toolbar" aria-label={t("richTableTools")}>
 			<button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => editTable("row")}>{t("richAddRow")}</button>
 			<button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => editTable("column")}>{t("richAddColumn")}</button>
@@ -272,10 +303,12 @@ export const RichMarkdownEditor = memo(function RichMarkdownEditor({ value, read
 		{uploading && <div className="fp-notice" role="status">{t("richImageUploading")}</div>}
 		{imageError && <div className="fp-notice" role="alert">{imageError}</div>}
 		{menu && !readOnly && <div className="fp-slash-menu" role="listbox" aria-label={t("richInsertMenu")} style={{ left: menu.x, top: menu.y }}>
-			{matches.length ? matches.map((item, index) => <button type="button" role="option" aria-selected={index === active}
+			{matches.length ? matches.map((item, index) => <Fragment key={item.label}>
+				{(index === 0 || isBlock(item) !== isBlock(matches[index - 1])) && <div className="fp-slash-group" role="presentation">{t(isBlock(item) ? "richBlocksGroup" : "richTextGroup")}</div>}
+				<button type="button" role="option" aria-selected={index === active}
 				id={`fp-slash-option-${index}`} key={item.label} onMouseDown={(event) => event.preventDefault()} onClick={() => insert(index)}>
-				{t(item.label)}
-			</button>) : <span>{t("richNoElements")}</span>}
+				<span className="fp-slash-icon" aria-hidden="true">{icons[item.label]}</span><span>{t(item.label)}</span>
+			</button></Fragment>) : <span>{t("richNoElements")}</span>}
 		</div>}
 		<div className="fp-markdown msg-text">
 			<div className="fp-markdown-zoom">

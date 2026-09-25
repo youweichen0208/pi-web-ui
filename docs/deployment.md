@@ -24,6 +24,14 @@ pi-web-ui server status|restart|stop|uninstall
 
 > uninstall 会自动移除桌面图标；未装服务时桌面快捷方式启动的实例在 status/stop 中单独报告（PS1 前台+记录 PID）。
 
+## Windows 下载选择
+
+- `pi-<版本>-setup-x64.exe`：安装版，包含安装向导、安装目录选择，以及桌面和开始菜单快捷方式。
+- `pi-<版本>-win-x64.exe`：免安装便携版，双击直接启动，没有安装向导，也不自动创建快捷方式。
+- `pi-<版本>-win-x64.zip`：解压后运行 `pi.exe`。
+
+Windows 打包使用 `win.signExecutable: false` 跳过签名，保留 EXE 图标和产品信息写入；不要设置 `signAndEditExecutable: false`，它会连资源编辑一起禁用。安装器、卸载器和应用使用 `build/icon.ico` 的紫色 π 图标。
+
 ## 桌面版（Electron）
 
 不进 npm 发布包（`package.json` `files` 不含 `electron/`/`build/`）——桌面版走自己的发布渠道：
@@ -62,10 +70,11 @@ npm run publish:electron       # 同 build，但 --publish always——本地跑
 - 关闭窗口 → 最小化到托盘（不退出）；托盘菜单可重新打开 / 退出。
 - 桌面窗口共用一条内容顶栏：macOS 隐藏系统标题栏、保留左侧原生红黄绿按钮；
   Windows/Linux 使用无边框窗口和右侧自绘最小化、最大化、关闭按钮。可拖动区域
-  仅在项目标题，导航和菜单不参与拖动；双击标题区、系统缩放和全屏仍由 Electron
+  仅在品牌和项目标题，导航和菜单不参与拖动；双击标题区、系统缩放和全屏仍由 Electron
   处理。沙箱兼容的 `preload.cjs` 仅暴露固定窗口操作和窗口状态通知，关闭按钮继续隐藏到托盘。
 - Electron 渲染页加 `pi-desktop` 类，桌面顶栏把次要操作收进“更多”；窗口宽度
-  ≤1100px 时右侧文件栏变为抽屉。普通浏览器页不加该类，继续使用原有布局。
+  ≤1100px 时右侧文件树变为抽屉。Web 和桌面共用工作区布局，模型设置位于输入框底部；
+  项目栏全高显示，macOS 品牌区为原生窗口按钮留空。详见 [界面布局](ui-design.md)。
 - 原生模块（`node-pty`）：`electron-builder.yml` 里 `npmRebuild: true`，打包时自动
   rebuild 成 Electron 的 Node ABI，不需要手动 `electron-rebuild`；本机需要装好
   Xcode Command Line Tools（mac）/ Visual Studio Build Tools（win）。

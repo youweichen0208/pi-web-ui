@@ -1,255 +1,178 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import {
-	FiChevronRight,
-	FiDownload,
-	FiFile,
-	FiFolder,
-	FiLink,
-	FiMaximize2,
-	FiPlus,
-	FiX,
-} from "react-icons/fi";
-import type { FileListing } from "../types";
+import { FiChevronRight, FiDownload, FiLink, FiMaximize2, FiPlus, FiX } from "react-icons/fi";
+import type { FileEntry, FileListing, ScmFileEntry, ServerMessage, UiMessage } from "../types";
 import { useT } from "../i18n";
 import { downloadFile } from "../download";
+import { conversationFileEntries } from "../conversation-files";
 
 type AttachMode = "inline" | "reference";
-
-/** Props are deliberately NARROW (no whole-ChatState object): every field is
- *  stable while tokens stream in, so the shallow-compared memo() below skips
- *  re-reconciling the file tree on every delta. */
 interface RightPanelProps {
 	active: boolean;
 	files: FileListing | null;
-	/** Last dir-changed push (path = listed directory) — triggers a refresh. */
 	fileChanged: { path: string } | null;
+	scmData: ServerMessage | null;
+	scmDirty: number;
 	widgets: { key: string; lines: string[] }[];
+	messages: UiMessage[];
+	streamingMessage: UiMessage | null;
 	cwd: string;
-	send: (msg: { type: "list_files"; path?: string }) => boolean;
-	/** Called when the user clicks an attach button on a file or folder. */
-	onAttach: (
-		path: string,
-		name: string,
-		mode: AttachMode,
-		isDir?: boolean,
-	) => void;
-	/** Called when the user clicks a file to open the inline file editor. */
+	send: (msg: { type: "list_files"; path?: string } | { type: "scm_status"; reqId: number }) => boolean;
+	onAttach: (path: string, name: string, mode: AttachMode, isDir?: boolean) => void;
 	onPreview: (path: string, name: string) => void;
-	/** Show a transient toast (download errors etc.). */
 	onNotice: (level: "info" | "warning" | "error", text: string) => void;
 }
 
-export const RightPanel = memo(function RightPanel({
-	active,
-	files,
-	fileChanged,
-	widgets,
-	cwd,
-	send,
-	onAttach,
-	onPreview,
-	onNotice,
-}: RightPanelProps) {
+// Negative IDs keep tree status requests separate from SCMPanel's positive IDs.
+let treeStatusId = -100;
+export const RightPanel = memo(function RightPanel({ active, files, fileChanged, scmData, scmDirty, widgets, messages, streamingMessage, cwd, send, onAttach, onPreview, onNotice }: RightPanelProps) {
 	const t = useT();
-	const [currentPath, setCurrentPath] = useState<string>("");
-	// 点击放大的 widget（居中浮层展示完整宽度输出）。
 	const [expandedWidget, setExpandedWidget] = useState<string | null>(null);
-	const [loading, setLoading] = useState(false);
-
-	/** How often to silently re-poll the current directory (ms). */
-	const AUTO_REFRESH_MS = 10_000;
-
-	// Monotonic request id — responses are only trusted if they match the latest
-	// requested path (guards against out-of-order responses when navigating fast).
-	const reqSeq = useRef(0);
-	const requestedPath = useRef("");
-
-	// Last cwd we listed — when the workspace switches, jump back to its root.
-	const lastCwd = useRef<string | undefined>(undefined);
-
-	const request = useCallback(
-		(path: string, opts?: { silent?: boolean }) => {
-			const seq = ++reqSeq.current;
-			requestedPath.current = path;
-			setCurrentPath(path);
-			// Silent refreshes (polling / cwd switch) keep the current listing on
-			// screen instead of flashing the loading placeholder.
-			if (!opts?.silent) setLoading(true);
-			const ok = send({
-				type: "list_files",
-				path: path === "" ? undefined : path,
-			});
-			if (!ok) {
-				// Not connected — nothing will arrive; back off the spinner.
-				if (reqSeq.current === seq) setLoading(false);
-			}
-		},
-		[send],
-	);
-
-	// The server response arrives via chat.files; only treat it as the answer to
-	// the current navigation if its path matches (stale/out-of-order responses
-	// for other directories keep the spinner up).
+	const [directories, setDirectories] = useState<Record<string, FileListing>>({});
+	const [expanded, setExpanded] = useState<Set<string>>(new Set());
+	const [changed, setChanged] = useState<ScmFileEntry[]>([]);
+	const [notRepo, setNotRepo] = useState(false);
+	const [onlyChanged, setOnlyChanged] = useState(false);
+	const owner = useRef(cwd);
+	const seenFiles = useRef<FileListing | null>(null);
+	const queue = useRef<string[]>([]);
+	const pending = useRef<string | null>(null);
+	const statusRequest = useRef(0);
+	const expandedRef = useRef(expanded);
+	expandedRef.current = expanded;
+	const pump = useCallback(() => {
+		if (!active || pending.current !== null) return;
+		const path = queue.current.shift();
+		if (path === undefined) return;
+		pending.current = path;
+		if (!send({ type: "list_files", path: path || undefined })) pending.current = null;
+	}, [active, send]);
+	const request = useCallback((path: string) => {
+		if (pending.current !== path && !queue.current.includes(path)) queue.current.push(path);
+		pump();
+	}, [pump]);
 	useEffect(() => {
-		if (files && files.path === currentPath) setLoading(false);
-	}, [files, currentPath]);
-
-	// Auto-refresh: when the cwd changes (project switch / set_cwd) re-list its
-	// root; otherwise poll the current directory silently so the tree stays fresh
-	// without a manual refresh button.
-	useEffect(() => {
-		if (!active || !cwd) return;
-		if (cwd !== lastCwd.current) {
-			lastCwd.current = cwd;
-			request(files?.path ?? "", { silent: true });
-			return;
+		if (owner.current !== cwd) {
+			owner.current = cwd;
+			seenFiles.current = files;
+			queue.current = [];
+			pending.current = null;
+			setDirectories({});
+			setExpanded(new Set());
+			setChanged([]);
+			setNotRepo(false);
+			setOnlyChanged(false);
 		}
-		request(currentPath, { silent: true });
+		if (!active || !cwd) return;
+		request("");
 		const timer = setInterval(() => {
 			if (document.visibilityState === "hidden") return;
-			request(currentPath, { silent: true });
-		}, AUTO_REFRESH_MS);
+			// Retry a response lost during a disconnect, then refresh visible nodes.
+			pending.current = null;
+			request("");
+			for (const path of expandedRef.current) request(path);
+		}, 10000);
 		return () => clearInterval(timer);
-	}, [active, cwd, currentPath, request]);
-	// The server fs.watches the listed directory and pushes `file_changed` on any
-	// change — refresh right away instead of waiting for the 10s poll. The path
-	// guard drops events for a directory the user has already navigated away from.
+	}, [active, cwd, request]);
 	useEffect(() => {
-		// A cwd effect above may already have requested a different directory.
-		// Do not let the previous workspace's queued watcher undo that request.
-		if (active && currentPath === requestedPath.current && fileChanged && fileChanged.path === currentPath)
-			request(currentPath, { silent: true });
-	}, [active, fileChanged, currentPath, request]);
-
-	// Enter a directory.
-	const openDir = (path: string) => request(path);
-	// Go back to the parent.
-	const goUp = () => {
-		if (files?.parent !== null && files?.parent !== undefined) {
-			request(files.parent);
-		}
+		if (!files || files === seenFiles.current || owner.current !== cwd) return;
+		seenFiles.current = files;
+		setDirectories((previous) => ({ ...previous, [files.path]: files }));
+		if (pending.current === files.path) pending.current = null;
+		pump();
+	}, [files, cwd, pump]);
+	useEffect(() => {
+		if (active && fileChanged) request(fileChanged.path);
+	}, [active, fileChanged, request]);
+	useEffect(() => {
+		if (!active || !cwd) return;
+		const refresh = () => {
+			statusRequest.current = --treeStatusId;
+			send({ type: "scm_status", reqId: statusRequest.current });
+		};
+		refresh();
+		window.addEventListener("focus", refresh);
+		return () => window.removeEventListener("focus", refresh);
+	}, [active, cwd, scmDirty, send]);
+	useEffect(() => {
+		if (scmData?.type !== "scm_data" || scmData.reqId !== statusRequest.current || scmData.cwd !== cwd) return;
+		setChanged(scmData.ok ? (scmData.files ?? []).map((entry) => ({ ...entry, path: entry.path.replaceAll("\\", "/") })) : []);
+		setNotRepo(!!scmData.notRepo);
+		if (scmData.notRepo) setOnlyChanged(false);
+	}, [scmData, cwd]);
+	const toggle = (path: string) => {
+		setExpanded((previous) => {
+			const next = new Set(previous);
+			if (next.has(path)) next.delete(path); else next.add(path);
+			return next;
+		});
+		if (!expanded.has(path)) request(path);
 	};
-
-	const crumbs = currentPath.split("/").filter(Boolean);
-
-	return (
-		<aside className="panel panel-right">
-			<div className="panel-crumbs">
-				<button
-					type="button"
-					className={`crumb ${currentPath === "" ? "active" : ""}`}
-					onClick={() => request("")}
-				>
-					{t("rootDir")}
+	const directoryEntries = (path: string): { entry: FileEntry; virtual: boolean }[] => {
+		const entries = (directories[path]?.entries ?? []).map((entry) => ({ entry, virtual: false }));
+		const known = new Set(entries.map(({ entry }) => entry.name));
+		for (const change of changed) {
+			if (change.x !== "D" && change.y !== "D") continue;
+			const relative = path ? change.path.startsWith(`${path}/`) ? change.path.slice(path.length + 1) : "" : change.path;
+			if (!relative) continue;
+			const name = relative.split("/")[0];
+			if (known.has(name)) continue;
+			known.add(name);
+			entries.push({ entry: { name, path: path ? `${path}/${name}` : name, type: relative.includes("/") ? "dir" : "file" }, virtual: true });
+		}
+		return entries.sort((a, b) => a.entry.type === b.entry.type ? a.entry.name.localeCompare(b.entry.name) : a.entry.type === "dir" ? -1 : 1);
+	};
+	const renderEntry = (entry: FileEntry, depth: number, virtual: boolean) => {
+		const dir = entry.type === "dir";
+		const open = expanded.has(entry.path);
+		const count = changed.filter((change) => change.path === entry.path || (dir && change.path.startsWith(`${entry.path}/`))).length;
+		const change = !dir ? changed.find((item) => item.path === entry.path) : undefined;
+		const changeKind = change ? change.x === "D" || change.y === "D" ? "D" : change.x === "A" || change.y === "A" || change.x === "?" ? "A" : "M" : null;
+		if (onlyChanged && !count) return null;
+		return <div key={entry.path} role="treeitem" aria-expanded={dir ? open : undefined}>
+			<div className={`file-item ${dir ? "dir" : "file"}`} style={{ paddingLeft: 6 + depth * 16 }}>
+				<button type="button" data-tree-node={entry.path} className={dir ? "file-dir-main" : "file-name"} title={entry.path} disabled={virtual && !dir} onClick={() => dir ? virtual ? setExpanded((previous) => { const next = new Set(previous); if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path); return next; }) : toggle(entry.path) : onPreview(entry.path, entry.name)}>
+					<span className={`tree-caret ${open ? "open" : ""}`}>{dir && <FiChevronRight />}</span>
+					<span className={dir ? "file-name" : "file-name-text"}>{entry.name}</span>
 				</button>
-				{crumbs.map((c, i) => {
-					const path = crumbs.slice(0, i + 1).join("/");
-					return (
-						<span key={path} className="crumb-seg">
-							<FiChevronRight />
-							<button
-								type="button"
-								className={`crumb ${path === currentPath ? "active" : ""}`}
-								onClick={() => request(path)}
-							>
-								{c}
-							</button>
-						</span>
-					);
-				})}
+				{dir && count > 0 && <span className="tree-modified-count" title={t("workspaceChanges", { n: count })}>{count}</span>}
+				{changeKind && <span className={`tree-change-badge ${changeKind.toLowerCase()}`} title={changeKind === "A" ? "Added" : changeKind === "D" ? "Deleted" : "Modified"}>{changeKind}</span>}
+				{!dir && !virtual && <button type="button" className="file-attach download" title={t("downloadFile")} onClick={() => void downloadFile(entry.path, entry.name).then((result) => { if (!result.ok && !result.cancelled) onNotice("error", t("downloadFailed", { error: result.error })); })}><FiDownload /></button>}
+				{!dir && !virtual && <button type="button" className="file-attach inline" title={t("attachInlineTip")} onClick={() => onAttach(entry.path, entry.name, "inline")}><FiPlus /></button>}
+				{!virtual && <button type="button" className="file-attach ref" title={t(dir ? "linkFolderTip" : "referenceTip")} onClick={() => onAttach(entry.path, entry.name, "reference", dir)}><FiLink /></button>}
 			</div>
-			<div className="panel-body">
-				{loading && <div className="panel-empty">{t("loading")}</div>}
-				{!loading && files && files.path === currentPath && (
-					<>
-						{files.path !== "" && (
-							<button type="button" className="file-item dir" onClick={goUp}>
-								<FiFolder className="file-icon" />
-								<span className="file-name">..</span>
-							</button>
-						)}
-						{files.entries.map((e) =>
-							e.type === "dir" ? (
-								<div key={e.path} className="file-item dir">
-									<button
-										type="button"
-										className="file-dir-main"
-										onClick={() => openDir(e.path)}
-									>
-										<FiFolder className="file-icon" />
-										<span className="file-name">{e.name}</span>
-									</button>
-									<button
-										type="button"
-										className="file-attach ref"
-										data-tip={t("linkFolderTip")}
-										onClick={() => onAttach(e.path, e.name, "reference", true)}
-									>
-										<FiLink />
-									</button>
-								</div>
-							) : (
-								<div key={e.path} className="file-item file">
-									<button
-										type="button"
-										className="file-name"
-										title={`${e.path} — ${t("previewFile")}`}
-										onClick={() => onPreview(e.path, e.name)}
-									>
-										<FiFile className="file-icon" />
-										<span className="file-name-text">{e.name}</span>
-									</button>
-									{/* Download: any file, previewable or not (binary/archives
-									too). Fetched as a blob so Safe Browsing can't block the
-									HTTP download and failures show a readable error. */}
-									<button
-										type="button"
-										className="file-attach download"
-										data-tip={t("downloadFile")}
-										onClick={() => {
-											void downloadFile(e.path, e.name).then((r) => {
-												if (r.ok) return;
-												// cancelled: user dismissed the save dialog — not an error.
-												if (r.cancelled) return;
-												onNotice(
-													"error",
-													t("downloadFailed", { error: r.error }),
-												);
-											});
-										}}
-									>
-										<FiDownload />
-									</button>
-									<button
-										type="button"
-										className="file-attach inline"
-										data-tip={t("attachInlineTip")}
-										onClick={() => onAttach(e.path, e.name, "inline")}
-									>
-										<FiPlus />
-									</button>
-									<button
-										type="button"
-										className="file-attach ref"
-										data-tip={t("referenceTip")}
-										onClick={() => onAttach(e.path, e.name, "reference")}
-									>
-										<FiLink />
-									</button>
-								</div>
-							),
-						)}
-						{files.truncated && (
-							<div className="panel-empty files-truncated">
-								{t("filesTruncated")}
-							</div>
-						)}
-					</>
-				)}
-				{!loading && !files && (
-					<div className="panel-empty">{t("noFiles")}</div>
-				)}
-			</div>
+			{dir && open && <div role="group">{directories[entry.path] || virtual ? renderDirectory(entry.path, depth + 1) : <div className="tree-loading">{t("loading")}</div>}</div>}
+		</div>;
+	};
+	const renderDirectory = (path: string, depth: number): React.ReactNode => <>
+		{directoryEntries(path).map(({ entry, virtual }) => renderEntry(entry, depth, virtual))}
+		{directories[path]?.truncated && <div className="panel-empty files-truncated">{t("filesTruncated")}</div>}
+	</>;
+	const involved = conversationFileEntries(streamingMessage ? [...messages, streamingMessage] : messages, cwd);
+	return <aside className="panel panel-right">
+		<div className="panel-title"><span>{t("workspaceFiles")}</span>{notRepo ? <span className="tree-not-repo">{t("notGitRepoShort")}</span> : <button type="button" className="tree-filter" aria-pressed={onlyChanged} onClick={() => setOnlyChanged(value => !value)}>{t("onlyChanged")} ({changed.length})</button>}</div>
+		<div className="panel-body" role="tree" aria-label={t("workspaceFiles")} onKeyDown={(event) => {
+			const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-tree-node]");
+			if (!button) return;
+			const path = button.dataset.treeNode!;
+			const isDirectory = button.classList.contains("file-dir-main");
+			if (event.key === "ArrowRight" && isDirectory && !expanded.has(path)) { event.preventDefault(); toggle(path); }
+			if (event.key === "ArrowLeft") {
+				event.preventDefault();
+				if (isDirectory && expanded.has(path)) toggle(path);
+				else {
+					const parent = path.slice(0, path.lastIndexOf("/"));
+					Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-tree-node]")).find((node) => node.dataset.treeNode === parent)?.focus();
+				}
+			}
+			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+				event.preventDefault();
+				const nodes = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-tree-node]"));
+				nodes[nodes.indexOf(button) + (event.key === "ArrowDown" ? 1 : -1)]?.focus();
+			}
+		}}>
+			{onlyChanged && changed.length === 0 ? <div className="panel-empty">{t("noChangedFiles")}</div> : directories[""] ? renderDirectory("", 0) : <div className="panel-empty">{t("loading")}</div>}
+		</div>
+		{involved.length > 0 && <div className="conversation-files"><div className="conversation-files-title">{t("conversationFiles")}</div>{involved.map(({ path, action }) => <button type="button" key={path} className="conversation-file" title={path} onClick={() => onPreview(path, path.split("/").at(-1) || path)}><span className="conversation-file-main"><span>{path.split("/").at(-1)}</span><em>{action}</em></span>{path.includes("/") && <small>{path.slice(0, path.lastIndexOf("/"))}</small>}</button>)}</div>}
 			{widgets.filter((w) => w.lines.length > 0).length > 0 && (
 				<div className="panel-widgets">
 					{widgets
@@ -293,6 +216,5 @@ export const RightPanel = memo(function RightPanel({
 						</div>
 					);
 				})()}
-		</aside>
-	);
+	</aside>;
 });

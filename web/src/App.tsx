@@ -1,3 +1,4 @@
+import { WorkspacePathContext } from "./workspace-context";
 import {
 	lazy,
 	Suspense,
@@ -15,7 +16,6 @@ import { desktopAPI } from "./desktop";
 import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { MessageList } from "./components/MessageList";
-import type { CurrentFileContext, ReadCurrentFile } from "./current-file";
 import { ChatInput } from "./components/ChatInput";
 import { GoalBar } from "./components/GoalBar";
 import { FooterBar } from "./components/FooterBar";
@@ -131,12 +131,12 @@ const EMPTY_MESSAGES: UiMessage[] = [];
 // ---- 可拖拽面板宽度（桌面端；≤768px 抽屉模式固定宽度不受影响）----
 const PANEL_MIN = 180;
 const PANEL_MAX = 520;
-const PANEL_DEFAULT = 240;
+const PANEL_DEFAULT = 264;
 type PanelSide = "left" | "right" | "editor";
 const panelWidthKey = (side: PanelSide) => `pi-web-ui:${side}-panel-width`;
 function readPanelWidth(side: PanelSide): number {
 	const v = Number(localStorage.getItem(panelWidthKey(side)));
-	return Number.isFinite(v) && v >= PANEL_MIN && v <= PANEL_MAX ? v : side === "editor" ? 480 : PANEL_DEFAULT;
+	return Number.isFinite(v) && v >= PANEL_MIN && v <= PANEL_MAX ? v : side === "editor" ? 480 : side === "right" ? 272 : PANEL_DEFAULT;
 }
 
 /** 面板与主区之间的拖拽分隔条：拖动改宽度，双击复位。 */
@@ -144,22 +144,25 @@ function ResizeHandle({
 	side,
 	width,
 	onResize,
+	onReset,
 }: {
 	side: PanelSide;
 	width: number;
 	onResize: (w: number) => void;
+	onReset?: () => void;
 }) {
 	const t = useT();
 	const onPointerDown = useCallback(
 		(e: ReactPointerEvent<HTMLDivElement>) => {
 			e.preventDefault();
 			const startX = e.clientX;
-			const startW = width;
+			const startW = side === "editor" ? e.currentTarget.nextElementSibling?.getBoundingClientRect().width ?? width : width;
+			const maxWidth = side === "editor" ? Math.max(PANEL_MIN, startW + (e.currentTarget.previousElementSibling?.getBoundingClientRect().width ?? 0) - 180) : PANEL_MAX;
 			let last = startW;
 			const move = (ev: PointerEvent) => {
 				// 左侧手柄向右拖变宽，右侧相反
 				const delta = side === "left" ? ev.clientX - startX : startX - ev.clientX;
-				last = Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.round(startW + delta)));
+				last = Math.min(maxWidth, Math.max(PANEL_MIN, Math.round(startW + delta)));
 				onResize(last);
 			};
 			const up = () => {
@@ -180,7 +183,8 @@ function ResizeHandle({
 			title={t("dragToResize")}
 			onPointerDown={onPointerDown}
 			onDoubleClick={() => {
-				const value = side === "editor" ? 480 : PANEL_DEFAULT;
+				if (onReset) { onReset(); return; }
+				const value = side === "editor" ? 480 : side === "right" ? 272 : PANEL_DEFAULT;
 				onResize(value);
 				localStorage.setItem(panelWidthKey(side), String(value));
 			}}
@@ -207,8 +211,6 @@ export function App() {
 		}
 	}, [chat.activeConversationId, attachments]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
-	const contextReader = useRef<ReadCurrentFile | null>(null);
-	const [currentFile, setCurrentFile] = useState<CurrentFileContext | null>(null);
 	useEffect(() => {
 		if (!switching && chat.state?.cwd && previewFile && previewFile.cwd !== chat.state.cwd) setPreviewFile(null);
 	}, [switching, chat.state?.cwd, previewFile]);
@@ -254,10 +256,25 @@ export function App() {
 	const [leftWidth, setLeftWidth] = useState(() => readPanelWidth("left"));
 	const [rightWidth, setRightWidth] = useState(() => readPanelWidth("right"));
 	const resizeLeft = useCallback((w: number) => setLeftWidth(w), []);
-	const [editorWidth, setEditorWidth] = useState(() => readPanelWidth("editor"));
+	const [editorShare, setEditorShare] = useState(() => {
+		const stored = Number(localStorage.getItem("pi-web-ui:editor-share"));
+		return Number.isFinite(stored) && stored >= 0.15 && stored <= 0.85 ? stored : 0.45;
+	});
 	const resizeRight = useCallback((w: number) => setRightWidth(w), []);
-	const resizeEditor = useCallback((w: number) => setEditorWidth(w), []);
+	const resizeEditor = useCallback((w: number) => {
+		const pane = document.querySelector(".view-pane.preview-open:not(.hidden)");
+		const main = pane?.querySelector(".main");
+		const editor = pane?.querySelector(".drawer-right");
+		const available = (main?.getBoundingClientRect().width ?? 0) + (editor?.getBoundingClientRect().width ?? 0);
+		if (available > 0) {
+			const share = Math.min(0.85, Math.max(0.15, w / available));
+			setEditorShare(share);
+			localStorage.setItem("pi-web-ui:editor-share", String(share));
+		}
+	}, []);
 	// Mobile: which side panel is open as a drawer (null = both closed).
+	const [filesCollapsed, setFilesCollapsed] = useState(false);
+	const [goalOpenRequest, setGoalOpenRequest] = useState(0);
 	const [drawer, setDrawer] = useState<"left" | "right" | null>(null);
 	// Viewport class: ≤768px turns the side panels into sliding drawers
 	// (matches the CSS breakpoint) — used to lazy-load panel data only when
@@ -265,14 +282,13 @@ export function App() {
 	const [isMobile, setIsMobile] = useState(
 		() => window.matchMedia("(max-width: 768px)").matches,
 	);
-	const [isDesktopNarrow, setIsDesktopNarrow] = useState(
-		() => !!desktopAPI && window.matchMedia("(max-width: 1100px)").matches,
+	const [isNarrow, setIsNarrow] = useState(
+		() => window.matchMedia("(max-width: 1100px)").matches,
 	);
 	useEffect(() => {
-		if (!desktopAPI) return;
 		const mq = window.matchMedia("(max-width: 1100px)");
 		const onChange = (e: MediaQueryListEvent) => {
-			setIsDesktopNarrow(e.matches);
+			setIsNarrow(e.matches);
 			setDrawer(null);
 		};
 		mq.addEventListener("change", onChange);
@@ -284,6 +300,26 @@ export function App() {
 		mq.addEventListener("change", onChange);
 		return () => mq.removeEventListener("change", onChange);
 	}, []);
+	const attach = useCallback((
+		path: string,
+		name: string,
+		mode: "inline" | "reference" | "lines",
+		isDir = false,
+		lines?: { start: number; end: number },
+	) => {
+		// Dedupe on path + mode + line range so the same file can be attached
+		// multiple ways (e.g. full content AND a line range) without doubling.
+		const key = `${path}|${mode}|${lines ? `${lines.start}-${lines.end}` : ""}`;
+		setAttachments((prev) =>
+			prev.some(
+				(a) =>
+					`${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}` ===
+					key,
+			)
+				? prev
+				: [...prev, { path, name, mode, isDir, ...(lines ? { lines } : {}) }],
+		);
+	}, []);
 	const openPreview = useCallback((path: string, name: string) => {
 		if (switching || !chat.state?.cwd) return;
 		const cwd = chat.state.cwd;
@@ -292,10 +328,48 @@ export function App() {
 		setView("chat");
 		setDrawer("right");
 		if (previewFile?.cwd === cwd && previewFile.path === path) return;
-		const open = () => setPreviewFile({ path, name, cwd });
+		const open = () => {
+			setPreviewFile({ path, name, cwd });
+			attach(path, name, "reference");
+		};
 		if (fileGuard.current) fileGuard.current(open);
 		else open();
-	}, [switching, chat.state?.cwd, previewFile]);
+	}, [switching, chat.state?.cwd, previewFile, attach]);
+	useEffect(() => {
+		const onToolFile = (event: Event) => {
+			const detail = (event as CustomEvent<{ path?: string; line?: number }>).detail;
+			const cwd = chat.state?.cwd?.replaceAll("\\", "/").replace(/\/$/, "");
+			if (!cwd || typeof detail?.path !== "string") return;
+			const path = detail.path.replaceAll("\\", "/");
+			const relative = path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path;
+			if (relative.startsWith("/") || /^[A-Za-z]:\//.test(relative) || relative.split("/").includes("..")) return;
+			openPreview(relative, relative.split("/").at(-1) ?? relative);
+			const line = detail.line;
+			if (!Number.isInteger(line) || !line || line < 1) return;
+			let attempts = 0;
+			const reveal = () => {
+				const openedPath = document.querySelector<HTMLElement>(".fp-file-path")?.title.replaceAll("\\", "/");
+				if (openedPath !== `${cwd}/${relative}`) {
+					if (++attempts < 40) window.setTimeout(reveal, 100);
+					return;
+				}
+				const row = document.querySelector<HTMLElement>(`.fp-line[data-line="${line}"], .fp-edit-line[data-line="${line}"]`);
+				if (row) {
+					const editor = row.closest(".fp-code-editor")?.querySelector<HTMLTextAreaElement>(".fp-editor");
+					if (editor) {
+						const lineHeight = Number.parseFloat(getComputedStyle(editor).lineHeight) || 22;
+						editor.scrollTop = Math.max(0, (line - 1) * lineHeight - editor.clientHeight / 2);
+						editor.dispatchEvent(new Event("scroll", { bubbles: true }));
+					} else row.scrollIntoView({ block: "center" });
+					row.classList.add("from-tool");
+					window.setTimeout(() => row.classList.remove("from-tool"), 2000);
+				} else if (++attempts < 40) window.setTimeout(reveal, 100);
+			};
+			window.setTimeout(reveal, 100);
+		};
+		window.addEventListener("pi-web-ui:open-tool-file", onToolFile);
+		return () => window.removeEventListener("pi-web-ui:open-tool-file", onToolFile);
+	}, [openPreview, chat.state?.cwd]);
 	// Setup modal: one-time prompt when the pi agent config is missing.
 	const [setupDismissed, setSetupDismissed] = useState(false);
 	// Custom model config panel (model dropdown → 管理模型).
@@ -421,26 +495,6 @@ export function App() {
 		}
 	}, [chat.notices, sound]);
 
-	const attach = useCallback((
-		path: string,
-		name: string,
-		mode: "inline" | "reference" | "lines",
-		isDir = false,
-		lines?: { start: number; end: number },
-	) => {
-		// Dedupe on path + mode + line range so the same file can be attached
-		// multiple ways (e.g. full content AND a line range) without doubling.
-		const key = `${path}|${mode}|${lines ? `${lines.start}-${lines.end}` : ""}`;
-		setAttachments((prev) =>
-			prev.some(
-				(a) =>
-					`${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}` ===
-					key,
-			)
-				? prev
-				: [...prev, { path, name, mode, isDir, ...(lines ? { lines } : {}) }],
-		);
-	}, []);
 	const closePreview = useCallback(() => setPreviewFile(null), []);
 	const attachPreviewLines = useCallback((path: string, name: string, start: number, end: number) => {
 		attach(path, name, "lines", false, { start, end });
@@ -469,6 +523,18 @@ export function App() {
 		},
 		[send],
 	);
+
+	useEffect(() => {
+		const onNewChat = (event: KeyboardEvent) => {
+			if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "n") {
+				event.preventDefault();
+				setView("chat");
+				panelSend({ type: "new_chat" });
+			}
+		};
+		window.addEventListener("keydown", onNewChat);
+		return () => window.removeEventListener("keydown", onNewChat);
+	}, [panelSend]);
 
 	// -- pasted / dropped / uploaded images (no workspace path) ---------------
 	const pasteImageId = useRef(0);
@@ -633,7 +699,8 @@ export function App() {
 		// navigating away; children with their own handlers (input bar / edit
 		// composer) call stopPropagation and keep priority.
 		<div
-			className="app"
+			className={`app design-workspace ${previewFile && view === "chat" ? "document-open" : ""}`}
+			style={{ "--left-w": `${leftWidth}px`, "--right-w": `${rightWidth}px` } as CSSProperties}
 			onDragOver={(e) => {
 				if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
 				e.preventDefault();
@@ -665,186 +732,203 @@ export function App() {
 					<span>📎 {t("dropHereToAttach")}</span>
 				</div>
 			)}
-			<TopBar
-				chat={chat}
-				send={send}
-				terminal={terminal}
-				view={view}
-				plugins={enabledPlugins}
-				onViewChange={(v: ViewName) => {
-					// The terminal panel stays mounted while hidden. Create the first
-					// shell on the user's terminal-view click, not on initial mount.
-					terminalOpenRequested.current =
-						v === "terminal" && chat.terminals.length === 0;
-					if (terminalOpenRequested.current && createShell()) {
-						terminalOpenRequested.current = false;
-					}
-					setView(v);
-					setDrawer(null);
-				}}
-				onOpenPanel={setDrawer}
-				onManageModels={() => setManageModelsOpen(true)}
-				onOpenSettings={() => setSettingsOpen(true)}
-				onOpenBgTasks={() => setBgTasksOpen(true)}
-				onOpenGlobalSearch={() => setGlobalSearchOpen(true)}
-				sound={sound}
-				onSoundChange={setSound}
-				onSoundPreview={(kind: SoundKind) => playSound(kind, sound)}
-			/>
-			{switchError && <div className="protocol-banner" role="alert"><button onClick={() => send({ type: "set_cwd", path: switchError })}>{t("retryProjectSwitch")}</button> {switchError}</div>}
-			{switching && <div className="protocol-banner" role="status">{t("switchingProject")} {switching}</div>}
-			{chat.protocolMismatch && (
-				<div className="protocol-banner">
-					⚠ {t("protocolMismatch")}
-				</div>
-			)}
-			<div className="notices">
-				{chat.notices.map((n) => (
-					<NoticeToast key={n.id} notice={n} onDismiss={dismissNotice} />
-				))}
-			</div>
 			<div
-				className="layout"
-				style={{ "--left-w": `${leftWidth}px`, "--right-w": `${previewFile ? editorWidth : rightWidth}px` } as CSSProperties}
+				className={`panel-drawer drawer-left ${drawer === "left" ? "open" : ""}`}
 			>
-				{drawer && (isMobile || isDesktopNarrow) && (
-					<div className="drawer-backdrop" onClick={() => setDrawer(null)} />
+				<LeftPanel
+					onOpenSettings={() => setSettingsOpen(true)}
+					onNewChat={() => { setView("chat"); panelSend({ type: "new_chat" }); }}
+					send={panelSend}
+					active={!isMobile || drawer === "left"}
+					ready={chat.ready}
+					status={chat.status}
+					cwd={chat.state?.cwd ?? ""}
+					sessionFile={chat.state?.sessionFile ?? null}
+					conversations={chat.conversations}
+					sessions={chat.sessions}
+					projects={chat.projects}
+					dirBrowse={chat.dirBrowse}
+					activeConversationId={chat.activeConversationId}
+				/>
+			</div>
+			{!isMobile && (
+				<ResizeHandle side="left" width={leftWidth} onResize={resizeLeft} />
+			)}
+
+			<div className="workspace-column">
+				<TopBar
+					chat={chat}
+					send={send}
+					terminal={terminal}
+					view={view}
+					plugins={enabledPlugins}
+					onViewChange={(v: ViewName) => {
+						// The terminal panel stays mounted while hidden. Create the first
+						// shell on the user's terminal-view click, not on initial mount.
+						terminalOpenRequested.current =
+							v === "terminal" && chat.terminals.length === 0;
+						if (terminalOpenRequested.current && createShell()) {
+							terminalOpenRequested.current = false;
+						}
+						setView(v);
+						setDrawer(null);
+					}}
+					onOpenPanel={(side) => {
+						if (side === "right" && !isMobile && !isNarrow && !previewFile) setFilesCollapsed((value) => !value);
+						else {
+							if (side === "right") setFilesCollapsed(false);
+							setDrawer((value) => value === side ? null : side);
+						}
+					}}
+					onManageModels={() => setManageModelsOpen(true)}
+					onOpenSettings={() => setSettingsOpen(true)}
+					onOpenBgTasks={() => setBgTasksOpen(true)}
+					onOpenGoal={() => { setView("chat"); setGoalOpenRequest((value) => value + 1); }}
+					onOpenGlobalSearch={() => setGlobalSearchOpen(true)}
+					sound={sound}
+					onSoundChange={setSound}
+					onSoundPreview={(kind: SoundKind) => playSound(kind, sound)}
+				/>
+				{switchError && <div className="protocol-banner" role="alert"><button onClick={() => send({ type: "set_cwd", path: switchError })}>{t("retryProjectSwitch")}</button> {switchError}</div>}
+				{switching && <div className="protocol-banner" role="status">{t("switchingProject")} {switching}</div>}
+				{chat.protocolMismatch && (
+					<div className="protocol-banner">
+						⚠ {t("protocolMismatch")}
+					</div>
 				)}
-				<div className={`view-pane ${view === "chat" ? "" : "hidden"}`}>
-					<div
-						className={`panel-drawer drawer-left ${drawer === "left" ? "open" : ""}`}
-					>
-						<LeftPanel
-							send={panelSend}
-							active={view === "chat" && (!isMobile || drawer === "left")}
-							ready={chat.ready}
-							status={chat.status}
-							cwd={chat.state?.cwd ?? ""}
-							sessionFile={chat.state?.sessionFile ?? null}
-							conversations={chat.conversations}
-							sessions={chat.sessions}
-							projects={chat.projects}
-						dirBrowse={chat.dirBrowse}
-							activeConversationId={chat.activeConversationId}
-						/>
-					</div>
-					{!isMobile && (
-						<ResizeHandle side="left" width={leftWidth} onResize={resizeLeft} />
+				<div className="notices">
+					{chat.notices.map((n) => (
+						<NoticeToast key={n.id} notice={n} onDismiss={dismissNotice} />
+					))}
+				</div>
+				<div
+					className="layout"
+					style={{ "--left-w": `${leftWidth}px`, "--right-w": `${rightWidth}px`, "--editor-share": editorShare } as CSSProperties}
+				>
+					{drawer && (isMobile || (isNarrow && !previewFile) || (drawer === "left" && !!previewFile)) && (
+						<div className="drawer-backdrop" onClick={() => setDrawer(null)} />
 					)}
-					<main className="main">
-						{chat.state ? (
-							<MessageList
-								active={view === "chat"}
-								key={chat.state.conversationId ?? "boot"}
-								state={chat.state}
-								liveOutputs={chat.liveOutputs}
-								toolStatuses={chat.toolStatuses}
-								onEdit={onEditMessage}
-								onKillBash={() => send({ type: "abort_bash" })}
-								thinkingWrap={chat.settings?.thinkingWrap ?? true}
-							toolsWrap={chat.settings?.toolsWrap ?? true}
-							pendingEcho={chat.pendingEcho}
-							/>
-						) : (
-							<div className="boot-wait">
-								{chat.ready ? t("loadingSession") : t("connectingServer")}
-							</div>
-						)}
-						<GoalBar
-							send={send}
-							goal={chat.goal}
-							models={chat.models}
-							modelsLoading={chat.modelsLoading}
-							activeConversationId={chat.activeConversationId}
-						/>
-						{/* 扩展问卷：非模态内联面板，插在输入框上方，对话内容保持可见 */}
-						{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
-						<ChatInput
-							currentFile={!switching && currentFile?.cwd === chat.state?.cwd ? currentFile : null}
-							contextReader={contextReader}
-							promptResult={chat.promptResult}
-							send={send}
-							ready={chat.ready}
-							streaming={chat.state?.isStreaming ?? false}
-									messages={chat.state?.messages ?? EMPTY_MESSAGES}
-							slashCommands={chat.slashCommands}
-							modelState={modelState}
-							models={chat.models}
-							modelsLoading={chat.modelsLoading}
-							activeConversationId={chat.activeConversationId}
-							setPendingEcho={setPendingEcho}
-							attachments={attachments}
-							onRemoveAttachment={removeAttachmentCb}
-							onAddImageFiles={addImageFilesCb}
-							onAddLocalFiles={addLocalFilesCb}
-							onNotice={pushNotice}
-							onManageModels={openManageModels}
-							onSent={clearAttachments}
-						/>
-					</main>
-					{!isMobile && !isDesktopNarrow && (
-						<ResizeHandle side={previewFile ? "editor" : "right"} width={previewFile ? editorWidth : rightWidth} onResize={previewFile ? resizeEditor : resizeRight} />
-					)}
-					<div
-						className={`panel-drawer drawer-right ${drawer === "right" ? "open" : ""}`}
-					>
-						<div className="file-list-host" hidden={!!previewFile}>
-							<RightPanel
-								active={!previewFile && !switching && view === "chat" && ((!isMobile && !isDesktopNarrow) || drawer === "right")}
-								send={panelSend}
-								files={chat.files}
-								fileChanged={chat.fileChanged}
-								widgets={chat.widgets}
-								cwd={chat.state?.cwd ?? ""}
-								onAttach={(path, name, mode, isDir) => {
-									setDrawer(null);
-									attach(path, name, mode, isDir);
-								}}
-								onPreview={openPreview}
-								onNotice={(level, text) => pushNotice(level, text)}
-							/>
-						</div>
-						{previewFile && (
-							<FilePreviewContent
-								key={`${previewFile.cwd}:${previewFile.path}`}
-								file={previewFile}
-								contextReader={contextReader}
-								onContextChange={setCurrentFile}
-								guard={fileGuard}
-								result={chat.fileResult}
-								disabled={!!switching || previewFile.cwd !== chat.state?.cwd}
-								connected={chat.status === "open"}
-								content={chat.fileContent}
+					<div className={`view-pane ${previewFile ? "preview-open" : ""} ${view === "chat" ? "" : "hidden"}`}>
+						<main className="main">
+							{chat.state ? (
+								<WorkspacePathContext.Provider value={chat.state.cwd}><MessageList
+									active={view === "chat"}
+									key={chat.state.conversationId ?? "boot"}
+									state={chat.state}
+									liveOutputs={chat.liveOutputs}
+									toolStatuses={chat.toolStatuses}
+									onEdit={onEditMessage}
+									onKillBash={() => send({ type: "abort_bash" })}
+									thinkingWrap={chat.settings?.thinkingWrap ?? true}
+								toolsWrap={chat.settings?.toolsWrap ?? true}
+								pendingEcho={chat.pendingEcho}
+								/></WorkspacePathContext.Provider>
+							) : (
+								<div className="boot-wait">
+									{chat.ready ? t("loadingSession") : t("connectingServer")}
+								</div>
+							)}
+							<GoalBar
+								openRequest={goalOpenRequest}
 								send={send}
-								onAddLines={attachPreviewLines}
-								onAttach={attach}
-								onClose={closePreview}
+								goal={chat.goal}
+								models={chat.models}
+								modelsLoading={chat.modelsLoading}
+								activeConversationId={chat.activeConversationId}
 							/>
+							{/* 扩展问卷：非模态内联面板，插在输入框上方，对话内容保持可见 */}
+							{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
+							<ChatInput
+								contextUsage={chat.state?.stats.contextUsage}
+								promptResult={chat.promptResult}
+								send={send}
+								ready={chat.ready}
+								streaming={chat.state?.isStreaming ?? false}
+										messages={chat.state?.messages ?? EMPTY_MESSAGES}
+								slashCommands={chat.slashCommands}
+								modelState={modelState}
+								models={chat.models}
+								modelsLoading={chat.modelsLoading}
+								activeConversationId={chat.activeConversationId}
+								setPendingEcho={setPendingEcho}
+								attachments={attachments}
+								onRemoveAttachment={removeAttachmentCb}
+								onAddImageFiles={addImageFilesCb}
+								onAddLocalFiles={addLocalFilesCb}
+								onNotice={pushNotice}
+								onManageModels={openManageModels}
+								onSent={clearAttachments}
+							/>
+						</main>
+						{!isMobile && (!isNarrow || !!previewFile) && (!filesCollapsed || !!previewFile) && (
+							<ResizeHandle side={previewFile ? "editor" : "right"} width={previewFile ? 480 : rightWidth} onResize={previewFile ? resizeEditor : resizeRight} onReset={previewFile ? () => { setEditorShare(0.45); localStorage.setItem("pi-web-ui:editor-share", "0.45"); } : undefined} />
 						)}
-					</div>
-				</div>
-				<div className={`view-pane ${view === "terminal" ? "" : "hidden"}`}>
-					<Suspense fallback={null}>
-						{visited.current.has("terminal") && <TerminalPanel active={view === "terminal" && !switching} chat={chat} send={send} terminal={terminal} />}
-					</Suspense>
-				</div>
-				<div className={`view-pane ${view === "git" ? "" : "hidden"}`}>
-					{visited.current.has("git") && <ScmPanel
-						chat={chat}
-						send={send}
-						terminal={terminal}
-						active={view === "git"}
-						onSwitchToTerminal={() => setView("terminal")}
-					/>}
-				</div>
-				{pluginViews.map((entry) => {
-					const name = `plugin:${entry.info.id}` as ViewName;
-					return (
-						<div key={entry.info.id} className={`view-pane ${view === name ? "" : "hidden"}`}>
-							{visited.current.has(name) && <PluginView entry={entry} send={send} />}
+						<div
+							className={`panel-drawer drawer-right ${filesCollapsed && !previewFile ? "files-collapsed" : ""} ${drawer === "right" ? "open" : ""}`}
+						>
+							<div className="file-list-host" hidden={!!previewFile}>
+								<RightPanel
+									active={!filesCollapsed && !previewFile && !switching && view === "chat" && ((!isMobile && !isNarrow) || drawer === "right")}
+									send={send}
+									files={chat.files}
+									scmData={chat.scmData}
+									scmDirty={chat.scmDirty}
+									fileChanged={chat.fileChanged}
+									widgets={chat.widgets}
+									messages={chat.state?.messages ?? []}
+									streamingMessage={chat.state?.streamingMessage ?? null}
+									cwd={chat.state?.cwd ?? ""}
+									onAttach={(path, name, mode, isDir) => {
+										setDrawer(null);
+										attach(path, name, mode, isDir);
+									}}
+									onPreview={openPreview}
+									onNotice={(level, text) => pushNotice(level, text)}
+								/>
+							</div>
+							{previewFile && (
+								<FilePreviewContent
+									key={`${previewFile.cwd}:${previewFile.path}`}
+									file={previewFile}
+									guard={fileGuard}
+									result={chat.fileResult}
+									disabled={!!switching || previewFile.cwd !== chat.state?.cwd}
+									connected={chat.status === "open"}
+									content={chat.fileContent}
+									fileChanged={chat.fileChanged}
+									scmData={chat.scmData?.type === "scm_data" ? chat.scmData : null}
+									scmDirty={chat.scmDirty}
+									send={send}
+									onAddLines={attachPreviewLines}
+									onAttach={attach}
+									onClose={closePreview}
+								/>
+							)}
 						</div>
-					);
-				})}
+					</div>
+					<div className={`view-pane ${view === "terminal" ? "" : "hidden"}`}>
+						<Suspense fallback={null}>
+							{visited.current.has("terminal") && <TerminalPanel active={view === "terminal" && !switching} chat={chat} send={send} terminal={terminal} />}
+						</Suspense>
+					</div>
+					<div className={`view-pane ${view === "git" ? "" : "hidden"}`}>
+						{visited.current.has("git") && <ScmPanel
+							chat={chat}
+							send={send}
+							terminal={terminal}
+							active={view === "git"}
+							onSwitchToTerminal={() => setView("terminal")}
+						/>}
+					</div>
+					{pluginViews.map((entry) => {
+						const name = `plugin:${entry.info.id}` as ViewName;
+						return (
+							<div key={entry.info.id} className={`view-pane ${view === name ? "" : "hidden"}`}>
+								{visited.current.has(name) && <PluginView entry={entry} send={send} />}
+							</div>
+						);
+					})}
+				</div>
 			</div>
 			<FooterBar chat={chat} send={send} />
 

@@ -21,6 +21,7 @@ export type GoalBarMsg =
  *  stable while tokens stream in, so the shallow-compared memo() below skips
  *  the goal bar entirely during streaming. */
 interface Props {
+	openRequest?: number;
 	goal: GoalStatus;
 	models: ModelInfo[];
 	modelsLoading: boolean;
@@ -30,7 +31,7 @@ interface Props {
 
 
 
-export const GoalBar = memo(function GoalBar({ goal, models, modelsLoading, activeConversationId, send }: Props) {
+export const GoalBar = memo(function GoalBar({ openRequest = 0, goal, models, modelsLoading, activeConversationId, send }: Props) {
 	const t = useT();
 	// Goals belong to the conversation that created them. The server keeps the
 	// status around while switching chats so returning to the owner restores the
@@ -49,6 +50,7 @@ export const GoalBar = memo(function GoalBar({ goal, models, modelsLoading, acti
 	// Collapsed by default: idle shows only a compact pill so the bar never
 	// occupies vertical space until the user actually wants to set a goal.
 	const [collapsed, setCollapsed] = useState(true);
+	useEffect(() => { if (openRequest > 0) setCollapsed(false); }, [openRequest]);
 
 	// Keep the editor's preference pickers in sync with the server's remembered
 	// prefs (maxRounds 0 = unlimited). When the goal is inactive, adopt whatever

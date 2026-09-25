@@ -17,6 +17,8 @@ export interface UiTextBlock {
 export interface UiThinkingBlock {
 	type: "thinking";
 	thinking: string;
+	/** Observed server duration; absent for older sessions without timing data. */
+	durationMs?: number;
 }
 
 export interface UiToolCallBlock {
@@ -499,6 +501,10 @@ export interface ProjectSummary {
 	path: string;
 	/** Last time this workspace was used (ms epoch) — drives the sort order. */
 	lastUsed: number;
+	/** Most recently modified conversation in this project, when available. */
+	lastConversationAt?: number;
+	/** Number of persisted conversations in this workspace. */
+	conversationCount?: number;
 }
 
 /** One directory listing for the workspace picker (see `browse_dirs`).
@@ -779,6 +785,7 @@ export interface ProviderStatus {
  *  keeps them listed, opening-and-leaving-without-continuing removes them. */
 export interface ConversationSummary {
 	id: string;
+	createdAt?: number;
 	/** Display title: first user prompt (truncated) or the default. */
 	title: string;
 	cwd: string;
@@ -998,7 +1005,7 @@ export type ServerMessage =
 			truncated?: boolean;
 	  }
 	| { type: "projects"; projects: ProjectSummary[] }
-	| { type: "git_branch"; cwd: string; branch: string | null; detached: boolean }
+	| { type: "git_branch"; cwd: string; branch: string | null; detached: boolean; notRepo?: boolean }
 	/** Directory listing for the workspace picker (see `browse_dirs`). */
 	| ({ type: "dir_browse" } & DirBrowse)
 	| {

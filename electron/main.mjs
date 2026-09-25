@@ -181,6 +181,7 @@ function createWindow() {
 		minWidth: 800,
 		minHeight: 600,
 		title: "pi",
+		backgroundColor: "#ffffff",
 		show: false,
 		...(process.platform === "darwin"
 			? { titleBarStyle: "hidden", trafficLightPosition: { x: 18, y: 17 } }

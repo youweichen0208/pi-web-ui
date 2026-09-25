@@ -30,7 +30,7 @@ curl -s https://registry.npmjs.org/@youweichen/pi-web-ui/latest | jq .version
 
 ## 注意事项
 
-- 版本号**必须**高于 npm registry 上已有的（当前 `0.45.x`）。
+- 版本号**必须**高于 npm registry 上已有的；发布前用 `npm view @youweichen/pi-web-ui version` 核对。
 - 提交信息不要带 `Co-authored-by`（P1 规则，仓库 hook 会拦）。
 - `.pi/commands.json` 是**每个项目各自**的个人命令（当前 cwd 的 `.pi/ 下），已被 gitignore，永远不会进公开仓库；切换 cwd 时命令列表自动刷新为该项目的命令。
 - 大改动发布前先问用户是否要 `npm publish`（会真实消耗账号权限、触发构建）。

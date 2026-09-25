@@ -11,10 +11,10 @@ pi-web-ui 是 pi 编码智能体（`@earendil-works/pi-coding-agent` SDK）的 W
 声音提醒、中英文切换。一条命令可跑（`pi-web-ui`），可 Docker / systemd / launchd /
 Windows 计划任务部署。
 
-- 仓库（公开）：`git@github.com:xing-shuyin/pi-web-ui.git`
-- npm 包：`@youweichen/pi-web-ui`（发布者 npm 账号 `youweichen`；fork 自原作者 `xingshuyin` 的 `pi-web-ui`）
-- Node 要求：**>= 22.19.0**（pi SDK 的 dist 使用了 `import … with { type: "json" }` 语法）
-- 版本：`package.json` 与 `package-lock.json` 两处同步维护。
+-   仓库（公开）：`git@github.com:xing-shuyin/pi-web-ui.git`
+-   npm 包：`@youweichen/pi-web-ui`（发布者 npm 账号 `youweichen`；fork 自原作者 `xingshuyin` 的 `pi-web-ui`）
+-   Node 要求：**\>= 22.19.0**（pi SDK 的 dist 使用了 `import … with { type: "json" }` 语法）
+-   版本：`package.json` 与 `package-lock.json` 两处同步维护。
 
 ## 2. 技术栈
 
@@ -108,15 +108,15 @@ pi-web-ui/
 
 | 组件 | 职责 |
 | --- | --- |
-| `FilePreview.tsx` | 右栏代码高亮编辑、Markdown 渲染文档编辑（`/` 插入元素、截图粘贴）与媒体/SQLite 只读预览、只读行选区附件；版本校验保存与离开保护（详见 docs/architecture-attachments.md） |
-| `LeftPanel.tsx` | 左栏：最近项目、运行的对话、历史对话（含删除） |
-| `RightPanel.tsx` | 文件树浏览（list_files），文件名点击→预览，📎/🔗/👁 附件按钮；服务端原生递归 watcher |
+| `FilePreview.tsx` | 右栏代码高亮编辑、Markdown 默认在预览画布中编辑（`/` 插入元素、截图粘贴）与媒体/SQLite 只读预览；打开文件自动附加路径引用，草稿须保存后模型才能读取改动；版本校验保存与离开保护（详见 docs/architecture-attachments.md） |
+| `LeftPanel.tsx` | 全高项目栏：品牌、新对话、可折叠项目及会话、悬停更多菜单（重命名／删除）、连接／语言／设置；布局见 `docs/ui-design.md` |
+| `RightPanel.tsx` | 可展开目录树（串行 list_files + 节点缓存）、Git 改动标记（独立请求 ID）、文件预览与附件；布局见 `docs/ui-design.md` |
 | `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色）；全窗口拖放目标；followUp 排队/steer 插队；斜杠命令选择器 |
 | `Message.tsx` / `MessageList.tsx` | 消息渲染（附件卡片、流式光标、tool 结果关联）；编辑重问保留原附件；技能卡片折叠；惰性窗口化；问题导航双通道；流式 StreamMarkdown |
 | `ToolCallBlock.tsx` / `ThinkingBlock.tsx` / `BashBlock` | 工具调用卡片、思考块、bash 输出 |
 | `TerminalPanel.tsx` / `TermXterm.tsx` | 终端视图 + xterm 实例桥接 |
 | `SCMPanel.tsx` | 源代码管理（Git）视图：status/branch/diff；提交/推送/拉取/切换分支 |
-| `TopBar.tsx` / `FooterBar.tsx` | 顶栏（模型/思考强度/后台任务/声音/新对话/视图切换）、底栏（上下文/成本/工作目录） |
+| `TopBar.tsx` / `FooterBar.tsx` | 顶栏（项目／会话标题、后台任务、视图切换、文件栏开关）、状态栏（分支／消息／工作目录）；模型与思考强度在 `ChatInput.tsx` 底部 |
 | `Dialog.tsx` | 扩展 `ui.select/confirm/input` → 浏览器弹窗 |
 | `ModelConfigModal.tsx` / `PiSetupModal.tsx` | models.json 管理 / 首次配置引导 |
 | `SettingsModal.tsx` | 设置面板（侧边栏分页：提示词/终端/消息显示/技能/插件/界面插件/目标审查/视觉桥/预设） |

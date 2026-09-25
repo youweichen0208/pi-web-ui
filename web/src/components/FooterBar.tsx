@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FiFile, FiFolder, FiGitBranch } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import { useT } from "../i18n";
+import { WorkingDots } from "./WorkingStatus";
 
 interface FooterBarProps {
 	chat: ChatState;
@@ -59,7 +60,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 	if (!state) return null;
 	const s = state.stats;
 	const git = chat.gitBranch?.cwd === state.cwd ? chat.gitBranch : null;
-	const branchLabel = git?.branch ? (git.detached ? `${t("scmDetached")} · ${git.branch}` : git.branch) : "—";
+	const branchLabel = git?.notRepo ? t("notGitRepoShort") : git?.branch ? (git.detached ? `${t("scmDetached")} · ${git.branch}` : git.branch) : "—";
 
 	const connClass = chat.ready ? "ok" : "busy";
 	const connLabel = chat.ready ? t("connected") : t("connecting");
@@ -144,7 +145,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 	return (
 		<footer className="statusbar">
 			<span className={`status-dot ${connClass}`} title={connLabel} />
-			<span className="status-item">{connLabel}</span>
+			<span className="status-item status-connection">{connLabel}</span>
 			<span className="status-sep">·</span>
 
 			<span className="status-item status-ctx" title={t("contextUsage")}>
@@ -161,14 +162,14 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 			</span>
 			<span className="status-sep">·</span>
 
-			<span className="status-item status-branch" title={`${t("scmCurrentBranch")}: ${branchLabel}`}>
-				<FiGitBranch aria-hidden="true" />
+			<span className="status-item status-branch" title={git?.notRepo ? branchLabel : `${t("scmCurrentBranch")}: ${branchLabel}`}>
+				{!git?.notRepo && <><span className="workspace-stat-label">{t("workspaceBranch")}</span><FiGitBranch aria-hidden="true" /></>}
 				<span className="status-branch-name">{branchLabel}</span>
 			</span>
 			<span className="status-sep">·</span>
 
-			<span className="status-item" title={t("sessionMessages")}>
-				{t("messages")} {s.totalMessages}
+			<span className="status-item status-messages" title={t("sessionMessages")}>
+				<span className="workspace-stat-label">{t("messages")}</span><span>{s.totalMessages}</span>
 			</span>
 
 			{chat.statuses.length > 0 && (
@@ -184,7 +185,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 				<>
 					<span className="status-sep">·</span>
 					<span className="status-item working">
-						<span className="working-spin" />
+						<WorkingDots />
 						{t("working")}
 						{queueTotal > 0 && (
 							<span className="status-queue">
@@ -241,7 +242,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 					title={t("cwdTip", { path: state.cwd })}
 					onClick={startEdit}
 				>
-					📁 {state.cwd}
+					<span className="workspace-stat-label">{t("workspacePath")}</span><span className="workspace-stat-path">{state.cwd}</span>
 				</button>
 			)}
 		</footer>

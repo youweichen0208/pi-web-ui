@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
+import { remarkHighlightBlock } from "./remark-highlight-block";
 import rehypeHighlight from "rehype-highlight";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
@@ -31,6 +32,7 @@ function codeFenceMarkdown(node: HTMLElement): string {
 const converter = new TurndownService({
 	headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-",
 	blankReplacement: (_content, node) => {
+		if (node.nodeName === "BLOCKQUOTE" && node.hasAttribute("data-rich-highlight")) return "\n\n> [!NOTE]\n> \n\n";
 		if (node.nodeName === "PRE") return codeFenceMarkdown(node);
 		const fences = Array.from(node.querySelectorAll("pre"));
 		if (fences.length) return fences.map(codeFenceMarkdown).join("\n\n");
@@ -38,6 +40,10 @@ const converter = new TurndownService({
 	},
 });
 converter.use(gfm);
+converter.addRule("highlightBlock", {
+	filter: (node) => node.nodeName === "BLOCKQUOTE" && node.hasAttribute("data-rich-highlight"),
+	replacement: (content) => "\n\n> [!NOTE]\n" + content.trim().split("\n").map((line) => "> " + line).join("\n") + "\n\n",
+});
 converter.addRule("taskCheckbox", {
 	filter: (node) => node.nodeName === "INPUT" && node.getAttribute("type") === "checkbox",
 	replacement: (_content, node) => (node as HTMLInputElement).checked ? "[x] " : "[ ] ",
@@ -118,7 +124,7 @@ export function prepareRichDocument(source: string): RichDocument {
 		const protectedBlock = needsSource(node);
 		blocks.push({
 			raw, prefix: source.slice(end, start), protected: protectedBlock,
-			html: protectedBlock ? "" : renderToStaticMarkup(<ReactMarkdown remarkPlugins={[remarkGfm, preserveInlineHtml]} rehypePlugins={[rehypeHighlight]}>{raw + "\n\n" + definitions}</ReactMarkdown>),
+			html: protectedBlock ? "" : renderToStaticMarkup(<ReactMarkdown remarkPlugins={[remarkGfm, preserveInlineHtml, remarkHighlightBlock]} rehypePlugins={[rehypeHighlight]}>{raw + "\n\n" + definitions}</ReactMarkdown>),
 		});
 		end = stop;
 	}
@@ -128,9 +134,14 @@ export function prepareRichDocument(source: string): RichDocument {
 /** Initialize only on open or an external source replacement, never on a keystroke. */
 export function mountRichDocument(root: HTMLElement, document: RichDocument, sourceLabel: string): void {
 	root.replaceChildren();
+	let sourceOffset = 0;
 	document.blocks.forEach((block, index) => {
+		sourceOffset += block.prefix.length;
+		const startLine = document.source.slice(0, sourceOffset).split("\n").length;
 		const wrapper = root.ownerDocument.createElement("div");
 		wrapper.dataset.richBlock = String(index);
+		wrapper.dataset.sourceStart = String(startLine);
+		wrapper.dataset.sourceEnd = String(startLine + block.raw.split("\n").length - 1);
 		wrapper.className = "rich-block";
 		if (block.protected) {
 			wrapper.contentEditable = "false";
@@ -147,6 +158,7 @@ export function mountRichDocument(root: HTMLElement, document: RichDocument, sou
 		}
 		wrapper.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((input) => { input.disabled = false; });
 		root.append(wrapper);
+		sourceOffset += block.raw.length;
 		block.html = wrapper.innerHTML;
 	});
 	if (!document.blocks.length) root.innerHTML = "<p><br></p>";

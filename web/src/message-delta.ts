@@ -19,6 +19,7 @@ interface DeltaTextBlock {
 interface DeltaThinkingBlock {
 	type: "thinking";
 	thinking?: string;
+	durationMs?: number;
 }
 type DeltaContentBlock = DeltaTextBlock | DeltaThinkingBlock | { type: string };
 
@@ -72,6 +73,7 @@ export function applyMessageDelta<S extends MessageDeltaUiState>(
 		content[idx] =
 			blockType === "thinking"
 				? {
+						...content[idx],
 						type: "thinking",
 						thinking:
 							((content[idx] as DeltaThinkingBlock).thinking ?? "") + deltaText,

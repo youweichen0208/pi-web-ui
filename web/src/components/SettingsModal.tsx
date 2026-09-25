@@ -27,6 +27,7 @@ import type {
 } from "../types";
 import { randomUuid } from "../uuid";
 import { useT } from "../i18n";
+import { getCodeTheme, setCodeTheme, type CodeTheme } from "../code-appearance";
 
 /** Minimal terminal-tab bridge (same shape SCMPanel uses). */
 interface SettingsTerminalBridge {
@@ -144,6 +145,7 @@ type SettingsTab =
 	| "prompt"
 	| "terminal"
 	| "display"
+	| "appearance"
 	| "skills"
 	| "extensions"
 	| "plugins"
@@ -162,6 +164,7 @@ export function SettingsModal({
 	const settings = chat.settings;
 	// 当前左侧导航选中的分组。
 	const [tab, setTab] = useState<SettingsTab>("prompt");
+	const [codeTheme, updateCodeTheme] = useState<CodeTheme>(getCodeTheme);
 	// 内容滚动容器：切换分组后回到顶部（各组高度不同，停留旧滚动位置会像没切换）。
 	const bodyRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
@@ -229,6 +232,7 @@ export function SettingsModal({
 		{ id: "prompt", icon: <FiFileText />, label: t("settingsSystemPrompt") },
 		{ id: "terminal", icon: <FiTerminal />, label: t("settingsTerminalTools") },
 		{ id: "display", icon: <FiMessageSquare />, label: t("settingsMessageDisplay") },
+		{ id: "appearance", icon: <FiEye />, label: t("settingsAppearance") },
 		{ id: "skills", icon: <FiCpu />, label: t("settingsSkills"), count: settings.skills.length },
 		{ id: "extensions", icon: <FiPackage />, label: t("settingsExtensions"), count: settings.extensions.length },
 		{ id: "plugins", icon: <FiBox />, label: t("settingsUiPlugins"), count: chat.plugins.length },
@@ -553,6 +557,23 @@ export function SettingsModal({
 							setPartial({ toolsWrap: !(settings.toolsWrap ?? true) })
 						}
 					/>
+				</div>
+				)}
+
+				{/* ---- skills --------------------------------------------------- */}
+				{tab === "appearance" && (
+				<div className="set-section">
+					<div className="set-section-title"><FiEye className="set-section-icon" />{t("settingsAppearance")}</div>
+					<label className="set-field-label" htmlFor="settings-code-theme">{t("settingsCodeTheme")}</label>
+					<select id="settings-code-theme" className="set-select" value={codeTheme} onChange={(event) => {
+						const value = event.target.value as CodeTheme;
+						updateCodeTheme(value);
+						setCodeTheme(value);
+					}}>
+						<option value="light">{t("codeThemeLight")}</option>
+						<option value="dark">{t("codeThemeDark")}</option>
+						<option value="system">{t("codeThemeSystem")}</option>
+					</select>
 				</div>
 				)}
 

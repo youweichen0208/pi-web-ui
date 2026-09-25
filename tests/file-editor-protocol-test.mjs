@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import WebSocket from "ws";
 import { portUp } from "./lib/port-utils.mjs";
-const port = 8998;
+const port = 8991;
 const root = mkdtempSync(join(tmpdir(), "file-editor-ws-"));
 writeFileSync(join(root, "note.txt"), "before");
 let server, ws;

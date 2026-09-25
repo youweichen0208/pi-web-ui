@@ -220,6 +220,15 @@ async function main() {
 	// 问题导航跳转：目标消息被 pin 成真实渲染并 flash
 	const qnCount = await page.locator(".qn-bar").count();
 	check("question nav rail rendered", qnCount > 0);
+	const rail = page.locator(".qn-rail");
+	check("question ticks remain visible", await rail.evaluate((node) => getComputedStyle(node).opacity === "1"));
+	if (!(await rail.getAttribute("class")).includes("many")) {
+		const railBox = await rail.boundingBox();
+		await page.mouse.move(railBox.x + railBox.width / 2, railBox.y + 2);
+		check("question tooltip stays hidden away from its tick", !(await page.locator(".qn-bar-text").first().isVisible()));
+		await page.locator(".qn-bar").first().hover();
+		check("question tooltip appears on tick hover", await page.locator(".qn-bar-text").first().isVisible());
+	}
 	const qnText = ((await page.locator(".qn-bar").first().textContent()) ?? "")
 		.replace(/^\d+\.\s*/, "");
 	await page.locator(".qn-bar").first().click();

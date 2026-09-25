@@ -1,14 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConversationTitleJob, completedTitleTurn, isTitleSmallTalk } from "../../server/conversation-title.js";
+import { ConversationTitleJob, completedTitleTurn } from "../../server/conversation-title.js";
 
 afterEach(() => vi.useRealTimers());
 
 describe("conversation titles", () => {
-	it("skips greetings but preserves tasks introduced with a greeting", () => {
-		expect(isTitleSmallTalk("你好！")).toBe(true);
-		expect(isTitleSmallTalk("Hello!")).toBe(true);
-		expect(isTitleSmallTalk("你好，帮我优化切换速度")).toBe(false);
-	});
 	it("uses the completed user/assistant pair, excluding thinking and tools", () => {
 		expect(completedTitleTurn([
 			{ role: "user", content: "你好" },
@@ -21,15 +16,28 @@ describe("conversation titles", () => {
 			expect(completedTitleTurn([{ role: "user", content: "task" }, { role: "assistant", content: "partial", stopReason }])).toBeNull();
 		}
 	});
-	it("defers greetings, then generates once using both sides of the conversation", async () => {
+	it("keeps a casual greeting as its original title", async () => {
 		const job = new ConversationTitleJob(true);
-		const generate = vi.fn(async () => "优化项目切换");
+		const generate = vi.fn(async () => "简短问候");
 		const save = vi.fn();
-		await job.complete("你好", "你好", generate, save);
-		expect(generate).not.toHaveBeenCalled();
-		await job.complete("切换太慢", "添加缓存", generate, save);
-		expect(generate.mock.calls[0]).toEqual([expect.stringContaining("切换太慢\n\nAssistant response:\n添加缓存"), expect.any(AbortSignal)]);
+		await job.complete("hello", "Hello!", generate, save);
 		await job.complete("another task", "answer", generate, save);
+		expect(generate).not.toHaveBeenCalled();
+		expect(save).not.toHaveBeenCalled();
+	});
+	it("rejects a long English title for a Chinese first message", async () => {
+		const save = vi.fn();
+		await new ConversationTitleJob(true).complete("优化项目切换速度", "已优化", async () => "Improving Project Switching Performance", save);
+		expect(save).toHaveBeenCalledOnce();
+		const title = save.mock.calls[0][0];
+		expect(title).toMatch(/[\p{Script=Han}]/u);
+		expect(Array.from(title).length).toBeLessThanOrEqual(12);
+	});
+	it("keeps the first request's language across a deferred title attempt", async () => {
+		const job = new ConversationTitleJob(true);
+		const save = vi.fn();
+		await job.complete("优化项目切换", "稍后", async () => "__DEFER__", save);
+		await job.complete("Please continue", "已完成", async () => "Improving Switching", save);
 		expect(save).toHaveBeenCalledExactlyOnceWith("优化项目切换");
 	});
 	it("protects manual names even when unchanged, and cancels pending work", async () => {

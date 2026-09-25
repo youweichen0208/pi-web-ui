@@ -390,14 +390,14 @@ export async function scmCommitDetail(cwd: string, hash: string): Promise<string
 }
 
 /** Footer metadata only. symbolic-ref also works before the first commit. */
-export async function scmCurrentBranch(cwd: string): Promise<{ branch: string | null; detached: boolean }> {
+export async function scmCurrentBranch(cwd: string): Promise<{ branch: string | null; detached: boolean; notRepo?: boolean }> {
 	try {
 		return { branch: (await git(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"])).trim(), detached: false };
 	} catch {
 		try {
 			return { branch: (await git(cwd, ["rev-parse", "--short", "HEAD"])).trim(), detached: true };
 		} catch {
-			return { branch: null, detached: false };
+			return { branch: null, detached: false, notRepo: (await gitDirOf(cwd)) === null };
 		}
 	}
 }

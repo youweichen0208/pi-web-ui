@@ -1,15 +1,9 @@
-import type { CurrentFileContext, ReadCurrentFile } from "../current-file";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MutableRefObject } from "react";
 import {
 	FiCheck,
-	FiCode,
-	FiCornerDownLeft,
-	FiEdit3,
-	FiEye,
-	FiLink,
-	FiPlus,
 	FiSave,
+	FiMoreHorizontal,
 	FiZoomIn,
 	FiZoomOut,
 } from "react-icons/fi";
@@ -25,9 +19,12 @@ import { randomUuid } from "../uuid";
 import { markdownImageUrl } from "../markdown-image";
 import { downloadFile } from "../download";
 import { withToken } from "../auth-token";
+import { CODE_THEME_EVENT, getCodeTheme } from "../code-appearance";
+import { fileDiffMarkers } from "../file-diff-markers";
 
 /** Cap rendered lines so a pathological file can't freeze the panel. */
 const MAX_PREVIEW_LINES = 5000;
+let filePreviewScmRequestId = -5000;
 
 export interface PreviewFile {
 	path: string;
@@ -38,8 +35,6 @@ export interface PreviewFile {
 export type FileNavigationGuard = (action: () => void) => void;
 
 interface FilePreviewProps {
-	contextReader?: MutableRefObject<ReadCurrentFile | null>;
-	onContextChange?: (context: CurrentFileContext | null) => void;
 	result: Extract<ServerMessage, { type: "file_result" }> | null;
 	guard: MutableRefObject<FileNavigationGuard | null>;
 	disabled: boolean;
@@ -53,6 +48,9 @@ interface FilePreviewProps {
 	/** Attach the whole file (inline content / path reference) like the row buttons. */
 	onAttach: (path: string, name: string, mode: "inline" | "reference") => void;
 	onClose: () => void;
+	fileChanged?: { path: string } | null;
+	scmData?: Extract<ServerMessage, { type: "scm_data" }> | null;
+	scmDirty?: number;
 }
 
 /** 1-based inclusive line range. */
@@ -62,13 +60,16 @@ interface Range {
 }
 
 export const FilePreviewContent = memo(function FilePreviewContent({
-	result, guard, disabled, connected, contextReader, onContextChange,
+	result, guard, disabled, connected,
 	file,
 	content,
 	send,
 	onAddLines,
 	onAttach,
 	onClose,
+	fileChanged,
+	scmData,
+	scmDirty,
 }: FilePreviewProps) {
 	const t = useT();
 	const [loaded, setLoaded] = useState<FileContent | null>(null);
@@ -79,13 +80,26 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 	// Editable files retain their visual formatting while accepting input.
 	const [editing, setEditing] = useState(true);
 	const [draft, updateDraft] = useState("");
-	const draftRef = useRef("");
-	const setDraft = (value: string) => { draftRef.current = value; updateDraft(value); };
-	const openId = useRef(randomUuid());
+	const setDraft = updateDraft;
 	// Markdown preview renders the current draft.
 	const [markdownPreview, setMarkdownPreview] = useState(true);
-	// Word wrap for the text preview (default on).
-	const [wrap, setWrap] = useState(true);
+	const [diffMode, setDiffMode] = useState<"git" | "external" | null>(null);
+	const [gitChanged, setGitChanged] = useState(false);
+	const [gitDiff, setGitDiff] = useState("");
+	const [gitUntracked, setGitUntracked] = useState(false);
+	const [diffLoading, setDiffLoading] = useState(false);
+	const [externalChanged, setExternalChanged] = useState(false);
+	const [remoteText, setRemoteText] = useState<string | null>(null);
+	const [savedAt, setSavedAt] = useState(() => new Date());
+	const [selectionAnchor, setSelectionAnchor] = useState<{ x: number; y: number } | null>(null);
+	// Code lines scroll horizontally unless the user enables wrapping.
+	const [wrap, setWrap] = useState(false);
+	const [codeTheme, setCodeThemeState] = useState(getCodeTheme);
+	useEffect(() => {
+		const sync = () => setCodeThemeState(getCodeTheme());
+		window.addEventListener(CODE_THEME_EVENT, sync);
+		return () => window.removeEventListener(CODE_THEME_EVENT, sync);
+	}, []);
 	// Zoom scales code/editor/hex and the rendered Markdown.
 	const [zoom, setZoom] = useState(100);
 	const anchorRef = useRef(0);
@@ -93,6 +107,9 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 	const addedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const readId = useRef("");
+	const compareReadId = useRef("");
+	const statusReqId = useRef(0);
+	const diffReqId = useRef(0);
 	const pending = useRef<{ id: string; text: string; next?: () => void } | null>(null);
 	const [status, setStatus] = useState<"saved" | "saving" | "failed">("saved");
 	const [error, setError] = useState("");
@@ -123,7 +140,50 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 		setLoading(false);
 		setConflict(false);
 		setStatus("saved");
+		setSavedAt(new Date());
+		setExternalChanged(false);
+		setRemoteText(null);
+		setDiffMode(null);
 	}, [content, file.path, file.cwd]);
+
+	useEffect(() => {
+		if (!content || content.requestId !== compareReadId.current || content.path !== file.path || content.cwd !== file.cwd) return;
+		compareReadId.current = "";
+		if (loaded && content.version !== loaded.version) {
+			setRemoteText(content.text);
+			setExternalChanged(true);
+		}
+	}, [content, loaded, file.path, file.cwd]);
+	useEffect(() => {
+		if (!fileChanged || !loaded || !dirty || pending.current || disabled) return;
+		compareReadId.current = randomUuid();
+		send({ type: "read_file", path: file.path, cwd: file.cwd, requestId: compareReadId.current });
+	}, [fileChanged, file.path, file.cwd, loaded, dirty, disabled, send]);
+	useEffect(() => {
+		if (disabled || !connected) return;
+		statusReqId.current = --filePreviewScmRequestId;
+		send({ type: "scm_status", reqId: statusReqId.current });
+	}, [file.path, file.cwd, scmDirty, fileChanged, disabled, connected, send]);
+	useEffect(() => {
+		if (scmData?.cwd !== file.cwd) return;
+		if (scmData.kind === "status" && scmData.reqId === statusReqId.current) {
+			const changed = !!scmData.ok && !!scmData.files?.some((entry) => entry.path.replaceAll("\\", "/") === file.path);
+			setGitChanged(changed);
+			if (!changed) { setGitDiff(""); setGitUntracked(false); }
+		} else if (scmData.kind === "filediff" && scmData.reqId === diffReqId.current) {
+			setDiffLoading(false);
+			setGitUntracked(!!scmData.ok && !!scmData.untracked && scmData.untrackedKind === "text");
+			setGitDiff(scmData.ok ? [scmData.stagedText, scmData.worktreeText, scmData.untrackedText].filter(Boolean).join("\n") : scmData.error ?? "");
+		}
+	}, [scmData, file.cwd, file.path]);
+	useEffect(() => {
+		if (!gitChanged || disabled || !connected || !loaded || loaded.kind !== "text") return;
+		diffReqId.current = --filePreviewScmRequestId;
+		send({ type: "scm_filediff", reqId: diffReqId.current, path: file.path });
+	}, [gitChanged, scmDirty, fileChanged, loaded?.version, disabled, connected, file.path, send]);
+	const diffMarkers = useMemo(() => gitUntracked
+		? new Map((loaded?.text.split("\n") ?? []).map((_, index) => [index + 1, "added" as const]))
+		: fileDiffMarkers(gitDiff), [gitDiff, gitUntracked, loaded?.text]);
 
 	useEffect(() => {
 		if (!result || result.cwd !== file.cwd || result.path !== file.path) return;
@@ -145,6 +205,7 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 				lines: saved.text ? saved.text.split("\n").length - (saved.text.endsWith("\n") ? 1 : 0) : 0,
 			}));
 			setStatus("saved");
+			setSavedAt(new Date());
 			setSel(null);
 			setConflict(false);
 			setError("");
@@ -190,20 +251,6 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 		window.addEventListener("beforeunload", prevent);
 		return () => window.removeEventListener("beforeunload", prevent);
 	}, [dirty]);
-
-	const eligible = !!loaded && loaded.kind === "text" && !loaded.binary && !loaded.truncated && !loading && !disabled;
-	useLayoutEffect(() => {
-		if (!contextReader) return;
-		contextReader.current = (id) => eligible && loaded && id === openId.current ? {
-			path: file.path, mode: "inline",
-			editorSnapshot: { cwd: file.cwd, text: draftRef.current, dirty: draftRef.current !== loaded.text, version: loaded.version },
-		} : null;
-		return () => { contextReader.current = null; };
-	}, [contextReader, eligible, loaded, file.path, file.cwd]);
-	useLayoutEffect(() => {
-		onContextChange?.(eligible ? { ...file, id: openId.current, dirty } : null);
-	}, [eligible, dirty, file, onContextChange]);
-	useLayoutEffect(() => () => onContextChange?.(null), [onContextChange]);
 
 	// End drag selection on mouseup anywhere.
 	useEffect(() => {
@@ -267,6 +314,33 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 		if (addedTimer.current) clearTimeout(addedTimer.current);
 		addedTimer.current = setTimeout(() => setAdded(false), 1400);
 	};
+	const requestGitDiff = () => {
+		if (!gitChanged || disabled) return;
+		setDiffMode("git");
+		setDiffLoading(true);
+		diffReqId.current = --filePreviewScmRequestId;
+		if (!send({ type: "scm_filediff", reqId: diffReqId.current, path: file.path })) setDiffLoading(false);
+	};
+	const captureMarkdownSelection = (target: EventTarget, root: HTMLElement) => {
+		if (!(target instanceof Element) || !target.closest(".fp-markdown")) return;
+		const selection = window.getSelection();
+		if (!selection || selection.isCollapsed || !selection.anchorNode || !root.contains(selection.anchorNode)) return;
+		const sourceRange = (node: Node | null) => {
+			const element = node instanceof Element ? node : node?.parentElement;
+			const block = element?.closest<HTMLElement>("[data-source-start]");
+			const start = Number(block?.dataset.sourceStart);
+			const end = Number(block?.dataset.sourceEnd);
+			return start > 0 && end >= start ? { start, end } : null;
+		};
+		const first = sourceRange(selection.anchorNode);
+		const last = sourceRange(selection.focusNode);
+		const range = first && last ? { start: Math.min(first.start, last.start), end: Math.max(first.end, last.end) } : findSelectedLineRange(draft, selection.toString());
+		if (!range) return;
+		setSel(range);
+		const rect = selection.getRangeAt(0).getBoundingClientRect();
+		const panel = root.getBoundingClientRect();
+		setSelectionAnchor({ x: Math.max(12, Math.min(panel.width - 260, rect.left - panel.left)), y: Math.max(54, Math.min(panel.height - 42, rect.bottom - panel.top + 8)) });
+	};
 
 	const canEdit =
 		loaded !== null && loaded.kind === "text" && !loaded.binary && !loaded.truncated;
@@ -315,6 +389,7 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 	return (
 		<div
 			className="fp-embedded"
+			data-code-theme={codeTheme}
 			onKeyDown={(event) => {
 				if (!event.nativeEvent.isComposing && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
 					event.preventDefault();
@@ -324,11 +399,33 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 			}}
 		>
 			<div
-				className="fp"
+				className={`fp ${diffMode ? "show-diff" : ""}`}
 				style={{ "--fp-zoom": zoom / 100 } as CSSProperties}
+				onMouseUp={(event) => captureMarkdownSelection(event.target, event.currentTarget)}
 			>
 
-
+				<div className="fp-title-row">
+					<button className="fp-back" aria-label={t("backToFiles")} title={t("backToFiles")} onClick={handleClose} disabled={status === "saving"}>←</button>
+					<span className="fp-file-path" title={`${file.cwd}/${file.path}`}><span className="fp-project-name">{file.cwd.split(/[\\/]/).filter(Boolean).at(-1)}</span><span className="fp-path-separator"> / </span>{file.path.split(/[\\/]/).join(" / ")}</span>
+					<span className="fp-header-status" role="status">{status === "saving" ? t("fileSaving") : status === "failed" ? t("fileSaveFailed") : dirty ? t("fileUnsaved") : loaded ? t("fileSaved") : ""}{loaded && !dirty && status === "saved" && <time> · {savedAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</time>}</span>
+					<div className="fp-header-actions">
+						{isMarkdown && kind === "text" && <div className="fp-view-switch" role="group" aria-label={t("fileViewMode")}><button type="button" aria-pressed={!diffMode && markdownPreview} onClick={() => { setDiffMode(null); setMarkdownPreview(true); setEditing(true); setSel(null); }}>{t("fileViewPreview")}</button><button type="button" aria-pressed={!diffMode && !markdownPreview} disabled={!canEdit} onClick={() => { setDiffMode(null); setMarkdownPreview(false); setEditing(true); setSel(null); }}>{t("fileViewSource")}</button></div>}
+						{!isMarkdown && canEdit && <div className="fp-view-switch" role="group" aria-label={t("fileEditMode")}><button type="button" aria-pressed={!editing} onClick={() => { setDiffMode(null); setEditing(false); }}>{t("fileReadOnly")}</button><button type="button" aria-pressed={editing} onClick={() => { setDiffMode(null); setEditing(true); }}>{t("fileEditShort")}</button></div>}
+						{gitChanged && <button type="button" className="fp-header-action" aria-pressed={diffMode === "git"} onClick={() => diffMode === "git" ? setDiffMode(null) : requestGitDiff()}>{t("fileChangesCount", { n: 1 })}</button>}
+						<button type="button" className="fp-header-action fp-reference" disabled={disabled} onClick={() => onAttach(file.path, file.name, "reference")}>@{t("fileReference")}</button>
+						<details className="fp-more"><summary aria-label={t("fileMoreActions")}><FiMoreHorizontal /></summary><div className="fp-more-actions" onClick={(event) => { if (event.target instanceof Element && event.target.closest("button")) event.currentTarget.closest("details")?.removeAttribute("open"); }}>
+							<button className="btn" disabled={disabled} onClick={() => { void downloadFile(file.path, file.name).then((r) => { if (!r.ok && !r.cancelled) setError(r.error); }); }}>{t("downloadFile")}</button>
+							{isMarkdown && canEdit && <button className="btn" onClick={() => { setDiffMode(null); setMarkdownPreview(true); setEditing(true); }}>{t("editFile")}</button>}
+							{!isMarkdown && canEdit && <button className="btn" onClick={toggleEditing}>{editing ? t("exitEditFile") : t("editFile")}</button>}
+							{kind === "text" && <button className="btn" onClick={() => setWrap((value) => !value)}>{wrap ? t("disableWrap") : t("enableWrap")}</button>}
+							{kind === "text" && <button className="btn" onClick={() => setZoomLevel(zoom - 10)} disabled={zoom <= 50}><FiZoomOut /> {t("zoomOut")}</button>}
+							{kind === "text" && <button className="btn" onClick={() => setZoomLevel(zoom + 10)} disabled={zoom >= 200}><FiZoomIn /> {t("zoomIn")}</button>}
+							{kind !== "video" && kind !== "none" && kind !== "sqlite" && <button className="btn" onClick={() => onAttach(file.path, file.name, "inline")}>{t("attachInlineTip")}</button>}
+						</div></details>
+						{canEdit && dirty && status !== "saving" && <button className="btn primary fp-header-save" disabled={disabled} onClick={() => saveEditing()}><FiSave /> {t("saveFile")}</button>}
+					</div>
+				</div>
+				{externalChanged && dirty && <div className="fp-external-banner" role="alert">{t("fileExternalChanged")}<button type="button" onClick={() => guard.current?.(requestContent)}>{t("fileReload")}</button><button type="button" disabled={remoteText === null} onClick={() => setDiffMode("external")}>{t("fileCompare")}</button></div>}
 				{truncated && kind === "text" && !isBinary && (
 					<div className="fp-notice">{t("previewTruncated")}</div>
 				)}
@@ -376,7 +473,7 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 					<RichMarkdownEditor file={file} value={draft} readOnly={disabled || status === "saving"} onChange={setDraft} /> : (
 					<div className="fp-markdown msg-text">
 						<div className="fp-markdown-zoom">
-							<Markdown text={canEdit ? draft : loaded.text} imageSrc={(source) => markdownImageUrl(source, file)} />
+						<Markdown text={canEdit ? draft : loaded.text} imageSrc={(source) => markdownImageUrl(source, file)} sourceLines />
 						</div>
 					</div>
 				))}
@@ -402,7 +499,9 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 						value={draft}
 						readOnly={disabled || status === "saving"}
 						onChange={setDraft}
+						onSelectLines={(start, end) => { setSel({ start, end }); setSelectionAnchor(null); }}
 						wrap={wrap}
+						markers={dirty ? undefined : diffMarkers}
 					/>
 				)}
 
@@ -437,6 +536,7 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 							return (
 								<div
 									key={n}
+									data-line={n}
 									className={`fp-line ${active ? "sel" : ""}`}
 									onMouseDown={(e) => {
 										if (e.button !== 0) return;
@@ -448,7 +548,7 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 										if (draggingRef.current) selectLine(n, true);
 									}}
 								>
-									<span className="fp-num">{n}</span>
+									<span className={`fp-num ${dirty ? "" : diffMarkers.get(n) ?? ""}`}>{n}</span>
 									{codeHtml ? (
 										<span
 											className="fp-code-text hljs"
@@ -471,117 +571,10 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 						)}
 					</div>
 				)}
+				{sel && !diffMode && <button type="button" className={`fp-quote-selection${selectionAnchor ? " at-selection" : ""}`} style={selectionAnchor ? { left: selectionAnchor.x, top: selectionAnchor.y } : undefined} disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={addToChat}>{added ? <FiCheck /> : null}{added ? t("addedToChat") : t("quoteSelection", { name: file.name, start: sel.start, end: sel.end })}</button>}
+				{diffMode === "git" && <div className="fp-diff-view" role="region" aria-label={t("fileViewChanges")}>{diffLoading ? <span className="fp-empty">{t("loading")}</span> : gitDiff ? <pre>{gitDiff.split("\n").map((line, index) => <span key={index} className={line.startsWith("+") && !line.startsWith("+++") ? "add" : line.startsWith("-") && !line.startsWith("---") ? "del" : line.startsWith("@@") ? "hunk" : ""}>{line}{"\n"}</span>)}</pre> : <div className="fp-empty">{t("fileNoChanges")}</div>}</div>}
+				{diffMode === "external" && <div className="fp-diff-view fp-external-comparison" role="region" aria-label={t("fileCompare")}><section><h3>{t("fileLocalDraft")}</h3><pre>{draft}</pre></section><section><h3>{t("fileDiskVersion")}</h3><pre>{remoteText}</pre></section></div>}
 
-				<div className="fp-foot fp-foot-compact">
-					<button className="btn" onClick={handleClose} disabled={status === "saving"}>{t("backToFiles")}</button>
-					<span className="fp-save-status" role="status">{kind === "sqlite" ? t("dbReadOnly") : status === "saving" ? t("fileSaving") : status === "failed" ? t("fileSaveFailed") : dirty ? t("fileUnsaved") : loaded ? t("fileSaved") : ""}</span>
-					<details className="fp-more">
-						<summary aria-label={t("fileMoreActions")}>···</summary>
-						<div className="fp-more-actions">
-						<button className="btn" disabled={disabled} onClick={() => { void downloadFile(file.path, file.name).then((r) => { if (!r.ok && !r.cancelled) setError(r.error); }); }}>{t("downloadFile")}</button>
-						{isMarkdown && kind === "text" && !isBinary && loaded && (
-							<button
-								type="button"
-								className={`fp-attach markdown ${markdownPreview ? "on" : ""}`}
-								data-tip={
-									markdownPreview
-										? t("showMarkdownSource")
-										: t("showMarkdownPreview")
-								}
-								disabled={disabled}
-								onClick={() => setMarkdownPreview((value) => !value)}
-							>
-								{markdownPreview ? <FiEye /> : <FiCode />}
-							</button>
-						)}
-						{kind === "text" && !isBinary && loaded && (
-							<button
-								type="button"
-								className={`fp-attach edit ${editing ? "on" : ""}`}
-								data-tip={
-									truncated
-										? t("fileEditTruncated")
-										: editing
-											? t("exitEditFile")
-											: t("editFile")
-								}
-								disabled={!canEdit && !editing}
-								onClick={toggleEditing}
-							>
-								<FiEdit3 />
-							</button>
-						)}
-						{kind === "text" && !isBinary && !showMarkdown && (
-							<button
-								type="button"
-								className={`fp-attach wrap ${wrap ? "on" : ""}`}
-								data-tip={wrap ? t("disableWrap") : t("enableWrap")}
-								onClick={() => setWrap((w) => !w)}
-							>
-								<FiCornerDownLeft />
-							</button>
-						)}
-						{kind === "text" && loaded && (
-							<span className="fp-zoom">
-								<button
-									type="button"
-									className="fp-attach zoom-out"
-									data-tip={t("zoomOut")}
-									disabled={zoom <= 50}
-									onClick={() => setZoomLevel(zoom - 10)}
-								>
-									<FiZoomOut />
-								</button>
-								<button
-									type="button"
-									className="fp-zoom-val"
-									title={t("resetZoom")}
-									onClick={() => setZoom(100)}
-								>
-									{zoom}%
-								</button>
-								<button
-									type="button"
-									className="fp-attach zoom-in"
-									data-tip={t("zoomIn")}
-									disabled={zoom >= 200}
-									onClick={() => setZoomLevel(zoom + 10)}
-								>
-									<FiZoomIn />
-								</button>
-							</span>
-						)}
-						{kind !== "video" && kind !== "none" && kind !== "sqlite" && (
-							<button
-								type="button"
-								className="fp-attach inline"
-								data-tip={t("attachInlineTip")}
-								disabled={disabled}
-								onClick={() => onAttach(file.path, file.name, "inline")}
-							>
-								<FiPlus />
-							</button>
-						)}
-						<button
-							type="button"
-							className="fp-attach ref"
-							data-tip={t("referenceTip")}
-							disabled={disabled}
-							onClick={() => onAttach(file.path, file.name, "reference")}
-						>
-							<FiLink />
-						</button>
-
-						</div>
-					</details>
-					{canEdit && <button className="btn primary" disabled={!dirty || disabled || status === "saving"} onClick={() => saveEditing()}><FiSave /> {t("saveFile")}</button>}
-					{!editing && !showMarkdown && kind === "text" && !isBinary && <div className="fp-selection-actions">
-						<span>{sel ? t("selectedRange", { n: selCount, start: sel.start, end: sel.end }) : t("selectLinesHint")}</span>
-						<button className="btn" disabled={!lines.length} onClick={selectAll}>{t("selectAll")}</button>
-						<button className="btn" disabled={!sel} onClick={() => setSel(null)}>{t("clearSelection")}</button>
-						<button className="btn" disabled={!sel || disabled} onClick={addToChat}>{added ? <FiCheck /> : null}{added ? t("addedToChat") : t("addToChat")}</button>
-					</div>}
-				</div>
 			</div>
 		</div>
 	);
@@ -595,4 +588,31 @@ export function FilePreview(props: FilePreviewProps) {
 function isMarkdownFile(name: string): boolean {
 	const lower = name.toLowerCase();
 	return lower.endsWith(".md") || lower.endsWith(".markdown");
+}
+
+/** Match a browser text selection to its source lines without guessing if the
+ * rendered text differs from the Markdown source (e.g. bold markup). */
+export function findSelectedLineRange(source: string, selected: string): Range | null {
+	const text = selected.trim();
+	if (!text) return null;
+	let start = source.indexOf(text);
+	let end = start + text.length;
+	if (start < 0) {
+		let normalized = "";
+		const offsets: number[] = [];
+		for (let i = 0; i < source.length; i++) {
+			const char = source[i];
+			if (/\s/.test(char)) {
+				if (normalized.endsWith(" ")) continue;
+				normalized += " ";
+			} else normalized += char;
+			offsets.push(i);
+		}
+		const needle = text.replace(/\s+/g, " ");
+		const at = normalized.indexOf(needle);
+		if (at < 0) return null;
+		start = offsets[at];
+		end = offsets[at + needle.length - 1] + 1;
+	}
+	return { start: source.slice(0, start).split("\n").length, end: source.slice(0, end).split("\n").length };
 }

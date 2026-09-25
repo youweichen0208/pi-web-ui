@@ -1,0 +1,135 @@
+/** Standalone design acceptance: real backend/tree, deterministic model-free transcript. */
+import assert from 'node:assert/strict';
+import {spawn, execFileSync} from 'node:child_process';
+import {mkdtempSync,mkdirSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {setTimeout as sleep} from 'node:timers/promises';
+import {chromium} from 'playwright-core';
+import {CHROME_PATH} from './lib/chrome.mjs';
+import {portUp} from './lib/port-utils.mjs';
+const PORT=8993;
+const root=mkdtempSync(join(tmpdir(),'workspace-design-'));
+const cwd=join(root,'youwei-trading-agent');mkdirSync(cwd);
+for(const path of ['.assets','.scratch/trading-agent-cockpit','.scratch/us-stock-research','docs'])mkdirSync(join(cwd,path),{recursive:true});
+writeFileSync(join(cwd,'AGENTS.md'),'# Workspace\n\n| Module | File | Details |\n| --- | --- | --- |\n| Model | `docs/architecture-core.md` | preserved cell content |\n| Globals | `some/very/long/path/to/a/module.ts` | more contents |\n');writeFileSync(join(cwd,'CONTEXT.md'),'# Context\n');
+writeFileSync(join(cwd,'docs/note.md'),'# Nested note\n');
+writeFileSync(join(cwd,'.scratch/us-stock-research/spec.md'),'# Spec\n');
+execFileSync('git',['init','-q'],{cwd});execFileSync('git',['add','.'],{cwd});
+execFileSync('git',['-c','user.name=UI test','-c','user.email=ui@example.test','commit','-qm','fixture'],{cwd});
+for(const path of ['CONTEXT.md','docs/note.md','.scratch/us-stock-research/spec.md'])writeFileSync(join(cwd,path),'# Modified\n');
+const lines=['CONTEXT.md','docs/adr/0001-embed-pi-sdk.md','docs/adr/0002-preserve-research-versions.md','docs/agents/domain.md','docs/agents/triage-labels.md','docs/agents/issue-tracker.md','.scratch/trading-agent-cockpit/data-source-research.md','.scratch/us-stock-research/spec.md',...Array.from({length:9},(_,i)=>`.scratch/us-stock-research/issues/${i}.md`)];
+const command='ls ~/projects/youwei-knowledge-base/ 2>/dev/null | head; echo "---"; find ~/projects/youwei-trading-agent -type f -not -name ".DS_Store" | head -30; echo "---NEWEST---"; find … -exec stat -f "%Sm %N" -t "%m-%d %H:%M" {} \\; | sort -r | head -8';
+const timestamp=new Date('2026-09-24T07:58:00+08:00').getTime();
+const messages=[
+...Array.from({length:3},(_,i)=>({id:`goal-${i}`,role:'user',content:[{type:'text',text:'【目标已设定】\n\n把首页标题改为 Goal Buddy\n\n请现在开始实现这个目标。'}]})),
+{id:'user',role:'user',timestamp,content:[{type:'text',text:'审查一下最近的代码改动请求，先看看项目里都有哪些文件，最近改了什么。'}]},
+{id:'assistant-tool',role:'assistant',model:'glm-5.3',timestamp,content:[{type:'thinking',thinking:'先检查目录与最近修改，再核对项目约束。',durationMs:3000},{type:'toolCall',id:'bash-design',name:'bash',argumentsText:JSON.stringify({command})}]},
+{id:'result',role:'toolResult',toolCallId:'bash-design',toolName:'bash',isError:false,content:[{type:'text',text:lines.join('\n')+'\n'}]},
+{id:'assistant',role:'assistant',model:'glm-5.3',timestamp,content:[{type:'thinking',thinking:'Confirmed: the workspace contains only docs — no code at all.'},{type:'text',text:'这个仓库目前**只有文档，没有代码**。最近的改动集中在 `.scratch/us-stock-research/issues/`，共 8 个 issue 草稿，另外有两份 ADR。要我逐个审查这些 issue 吗？'}]},
+];
+let server,browser;
+try{
+assert.equal(await portUp(PORT),false);
+server=spawn(process.execPath,['dist/server/index.js'],{env:{...process.env,PORT:String(PORT),PI_WEB_CWD:cwd,PI_WEB_DATA_DIR:join(root,'data'),PI_CODING_AGENT_DIR:join(root,'agent')},stdio:['ignore','pipe','pipe']});
+let log='';server.stderr.on('data',data=>log+=data);
+for(let n=0;n<80&&!await portUp(PORT);n++)await sleep(250);
+assert(await portUp(PORT),log);
+browser=await chromium.launch({executablePath:CHROME_PATH});
+const context=await browser.newContext({viewport:{width:1600,height:1000},permissions:['clipboard-read','clipboard-write']});
+const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const sent=[];
+await page.routeWebSocket('**/ws',route=>{
+const upstream=route.connectToServer();
+route.onMessage(wire=>{const message=JSON.parse(wire.toString());sent.push(message);if(message.type==='prompt')throw Error('No model requests allowed');upstream.send(wire)});
+upstream.onMessage(wire=>{
+const message=JSON.parse(wire.toString());
+if(message.type==='snapshot'){
+Object.assign(message.state,{messages,piConfigured:true,model:{id:'glm-5.3',name:'GLM 5.3',provider:'volc-glm'},thinkingLevel:'minimal',availableThinkingLevels:['off','minimal','low','medium','high']});
+message.state.stats.contextUsage={tokens:17300,contextWindow:1000000,percent:1.73};
+}
+if(message.type==='settings_state')Object.assign(message.settings??message,{toolsWrap:true,thinkingWrap:false});
+route.send(JSON.stringify(message));
+});
+});
+await page.goto(`http://localhost:${PORT}`);
+await page.locator('.tree-filter',{hasText:'3'}).waitFor();
+await page.locator('.toolcall-bash').waitFor();
+for(const button of await page.locator('.thinking.open .thinking-toggle').all())await button.click();
+await page.locator('.file-dir-main',{hasText:'.scratch'}).click();
+await page.locator('.file-dir-main',{hasText:'us-stock-research'}).waitFor();
+assert.equal(await page.locator('.file-name-text',{hasText:'AGENTS.md'}).isVisible(),true,'root siblings remain visible');
+await page.locator('.file-dir-main',{hasText:'docs'}).click();
+await page.locator('.file-name-text',{hasText:'note.md'}).waitFor();
+await page.locator('.file-dir-main',{hasText:'docs'}).focus();
+await page.keyboard.press("ArrowLeft");
+assert.equal(await page.locator('.file-name-text',{hasText:'note.md'}).count(),0);
+assert.equal(await page.locator('.bash-output-line').count(),8);
+await page.locator('.bash-output-more').click();assert.equal(await page.locator('.bash-output-line').count(),17);
+await page.locator('.bash-output-more').click();
+await page.locator('.toolcall-bash').hover();await page.locator('.toolcall-wrap').click();assert.equal(await page.locator('.bash-output-lines.wrap').count(),1);
+await page.locator('.toolcall-bash').hover();await page.locator('.toolcall-wrap').click();
+await page.locator('.toolcall-copy').click();assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),command);
+await page.locator('#sidebar-settings-slot .chip').click();await page.locator('#sidebar-settings-slot .dd-menu').waitFor();await page.keyboard.press('Escape');
+const geometry=await page.evaluate(()=>{
+const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}};
+return {left:box('.drawer-left'),right:box('.drawer-right'),header:box('.topbar'),composer:box('.inputbox'),font:getComputedStyle(document.body).fontFamily};
+});
+assert.equal(geometry.left.w,264);assert.equal(geometry.right.w,272);assert.equal(geometry.header.h,52);assert.equal(geometry.composer.w,780);assert(geometry.font.includes('IBM Plex Sans'));
+await page.locator('.messages').evaluate(e=>e.scrollTop=0);
+await page.locator('.inputbox textarea').focus();
+await page.waitForTimeout(1300);
+await page.mouse.move(100,100);
+await page.screenshot({path:'/private/tmp/pi-strict-workspace.png'});
+console.log('PASS tree expansion/change markers, numbered output/wrap/copy, settings and reference dimensions',geometry);
+assert.equal(await page.locator('.goal-event').count(),1);
+assert.equal(await page.locator('.goal-event-count').textContent(),'×3');
+assert((await page.locator('.thinking-duration').first().textContent()).includes('3 秒'));
+assert.equal(await page.locator('.sidebar-connection').isVisible(),false);
+assert.equal((await page.locator('.design-workspace > .statusbar').boundingBox()).width,1600);
+assert.equal(await page.locator('.project-item.active').evaluate(e=>getComputedStyle(e).backgroundColor),'rgba(0, 0, 0, 0)');
+assert((await page.locator('.composer-meter i').boundingBox()).width >= 2);
+await page.evaluate(()=>document.fonts.ready);
+const cdp=await context.newCDPSession(page);
+await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
+const {root:dom}=await cdp.send('DOM.getDocument');
+const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:dom.nodeId,selector:'.msg-model'});
+const {fonts}=await cdp.send('CSS.getPlatformFontsForNode',{nodeId});
+assert(fonts.some(f=>f.isCustomFont&&f.familyName.includes('JetBrains Mono')),JSON.stringify(fonts));
+await page.locator('.file-name-text',{hasText:'AGENTS.md'}).click();
+await page.locator('.fp-markdown table').waitFor();
+assert((await page.locator('.fp-file-path').textContent()).includes('AGENTS.md'));
+assert.equal(await page.locator('.fp-title-row .fp-back').isVisible(),true);
+assert.equal(await page.locator('.fp-foot').count(),0);
+assert.equal(await page.locator('.inputbox .attach-chip.current-file').count(),0);
+const editorGeometry=await page.evaluate(()=>{
+const editor=document.querySelector('.drawer-right').getBoundingClientRect();
+const chat=document.querySelector('.view-pane:not(.hidden) .main').getBoundingClientRect();
+const table=document.querySelector('.fp-markdown table');
+const code=table.querySelector('code');
+return {share:editor.width/(editor.width+chat.width),scrollable:table.scrollWidth>table.clientWidth,whiteSpace:getComputedStyle(code).whiteSpace};
+});
+assert(Math.abs(editorGeometry.share-.45)<.002);
+assert.equal(editorGeometry.whiteSpace,'nowrap');
+const resize=await page.locator('.view-pane:not(.hidden) .resize-right').boundingBox();
+await page.mouse.move(resize.x+resize.width/2,resize.y+100);await page.mouse.down();await page.mouse.move(resize.x-100,resize.y+100);await page.mouse.up();
+assert((await page.locator('.drawer-right').boundingBox()).width>geometry.right.w+200);
+await page.locator('.fp-more').evaluate(e=>e.open=true);
+await page.locator('.fp-more-actions').getByRole('button',{name:'编辑文件'}).click();
+await page.locator('.fp-rich-document h1').click();await page.keyboard.press('End');await page.keyboard.type(' edited');
+await page.locator('.fp-header-status',{hasText:'未保存'}).waitFor();
+const save=page.locator('.fp-header-save');
+assert.equal(await save.isVisible(),true);
+assert.equal(await save.evaluate(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))}),true);
+await page.screenshot({path:'/private/tmp/pi-review-editor.png'});
+await save.click();await page.locator('.fp-header-status',{hasText:'已保存'}).waitFor();
+assert.equal(await save.count(),0);
+await page.locator('.fp-back').click();
+console.log('PASS review: goal events, timing, font actually rendered, single footer, editor title/save/table/resize/attachment');
+
+for(const width of [1100,900,390]){
+await page.setViewportSize({width,height:900});await page.waitForTimeout(250);
+assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`overflow at ${width}`);
+}
+assert.deepEqual(errors,[]);
+}finally{await browser?.close();server?.kill('SIGTERM');await sleep(200);}

@@ -46,6 +46,13 @@ describe("buildCollapsedGroups", () => {
 		});
 	});
 
+	it("时间间隔会切断同角色折叠组，保留分隔线", () => {
+		const messages = [msg("a1", "assistant"), msg("a2", "assistant")];
+		const { groupAt, absorbed } = buildCollapsedGroups(messages, 2, new Set(), new Set([1]));
+		expect([...groupAt.keys()]).toEqual([0, 1]);
+		expect(absorbed.has(1)).toBe(false);
+	});
+
 	it("toolResult 不渲染，也不切断它所在的那一轮", () => {
 		const messages = [
 			msg("a1", "assistant"),

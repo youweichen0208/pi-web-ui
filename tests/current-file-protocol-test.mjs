@@ -56,6 +56,8 @@ const mock = createServer(async (req, res) => {
 			choices: [{ index: 0, delta: { content }, finish_reason: null }],
 		})}\n\n`,
 	);
+	res.write(`data: ${JSON.stringify({ id: "thinking-test", object: "chat.completion.chunk", created: Date.now(), model: payload.model, choices: [{ index: 0, delta: { reasoning_content: "Check the draft" }, finish_reason: null }] })}\n\n`);
+	await sleep(150);
 	writeChunk(first);
 	if (slow) await sleep(2500);
 	writeChunk(lastChunk);
@@ -201,10 +203,14 @@ try {
 	sendDraft("normal", "DRAFT_NORMAL");
 	assert.equal((await client.waitForType("prompt_result", (m) => m.requestId === "normal")).ok, true);
 	await client.waitForMessage((m) => m.role === "assistant");
+	const thought = client.messages.find((m) => m.role === "assistant")?.content.find((b) => b.type === "thinking");
+	assert(thought && thought.durationMs >= 100, `real SDK thinking duration: ${JSON.stringify(thought)}`);
 	assert(JSON.stringify(requests[0]).includes("DRAFT_NORMAL"));
 	assert(JSON.stringify(requests[0]).includes("Prioritize"));
 	assert(!JSON.stringify(requests[0]).includes("disk original"));
 	await client.waitForState((s) => !s.isStreaming);
+	const savedThinking = JSON.parse(readFileSync(join(dataDir, "thinking-durations.json"), "utf8"));
+	assert(Object.values(savedThinking).some((blocks) => Object.values(blocks).some((ms) => ms >= 100)), "completed thinking duration is persisted");
 	client.send({ type: "prompt", text: "SLOW" });
 	await client.waitForState((s) => s.isStreaming);
 	sendDraft("steering", "DRAFT_STEER");

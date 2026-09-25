@@ -42,6 +42,12 @@ try {
 		page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 		await page.goto("http://127.0.0.1:8994");
 	}
+	const editRich = async () => {
+		await page.waitForFunction(() => !!document.querySelector(".fp-markdown, .fp-editor"));
+		await page.locator(".fp-more").evaluate((node) => { node.open = true; });
+		await page.locator(".fp-more-actions").getByRole("button", { name: "编辑文件" }).click();
+		await page.locator(".fp-rich-document").waitFor();
+	};
 	const errors = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.locator(".setup-modal .modal-close").click();
@@ -61,19 +67,20 @@ try {
 	await code.press(process.platform === "darwin" ? "Meta+z" : "Control+z");
 	assert(!(await code.inputValue()).endsWith("\t"));
 	const save = async () => {
-		await page.locator(".fp-foot").getByRole("button", { name: "保存文件", exact: true }).click();
-		await page.waitForFunction(() => document.querySelector(".fp-save-status")?.textContent === "已保存");
+		await page.locator(".fp-header-save").click();
+		await page.waitForFunction(() => document.querySelector(".fp-header-status")?.textContent?.includes("已保存"));
 	};
 	await save();
 	assert.equal(readFileSync(join(workspace, "code.yaml"), "utf8"), "# changed\nname: highlighted\ncount: 42\n");
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.locator(".file-name", { hasText: "note.md" }).click();
+	await editRich();
 	const rich = page.locator(".fp-rich-document");
 	await rich.waitFor();
 	assert.equal(await rich.getAttribute("contenteditable"), "true");
 	assert.equal(readFileSync(join(workspace, "note.md"), "utf8"), original);
 	await rich.dispatchEvent("input");
-	assert.equal(await page.locator(".fp-save-status").textContent(), "已保存");
+	assert((await page.locator(".fp-header-status").textContent()).includes("已保存"));
 	await page.screenshot({ path: "/tmp/pi-rendered-markdown.png" });
 	const replaceText = async (locator, value) => {
 		await locator.evaluate((node) => {
@@ -99,19 +106,17 @@ try {
 	assert(saved.includes('<!-- keep this comment -->\n\n[ref]: https://example.com "Title"\n'), saved);
 	// The same draft moves between source and rich views, with no save required.
 	await replaceText(rich.locator("h1"), "Unsaved visual edit");
-	await page.locator(".fp-more").evaluate((node) => { node.open = true; });
-	await page.locator(".fp-attach.markdown").click();
+	await page.getByRole("button", { name: "源码", exact: true }).click();
 	assert((await code.inputValue()).includes("# Unsaved visual edit"));
 	await code.fill((await code.inputValue()).replace("# Unsaved visual edit", "# Source edit"));
-	await page.locator(".fp-more").evaluate((node) => { node.open = true; });
-	await page.locator(".fp-attach.markdown").click();
+	await editRich();
 	await rich.locator("h1", { hasText: "Source edit" }).waitFor();
 	// Native undo edits content without remounting the document.
 	await replaceText(rich.locator("h1"), "Undo this");
 	await page.keyboard.press(process.platform === "darwin" ? "Meta+z" : "Control+z");
 	await rich.locator("h1", { hasText: "Source edit" }).waitFor();
 	// No document header/formatting toolbar; slash commands use the current selection.
-	assert.equal(await page.locator(".fp-head, .fp-rich-toolbar").count(), 0);
+	assert.equal(await page.locator(".fp-rich-toolbar").isVisible(), true);
 	await page.locator(".fp-more").evaluate((node) => { node.open = false; });
 	const endParagraph = async () => {
 		await rich.evaluate((node) => {
@@ -122,7 +127,6 @@ try {
 		});
 	};
 	await endParagraph();
-	await page.keyboard.insertText("部署。");
 	await page.keyboard.type("/");
 	await page.getByRole("listbox", { name: "插入元素" }).waitFor({ timeout: 2000 });
 	await page.locator(".fp-rich-editor .fp-markdown").dispatchEvent("scroll");
@@ -165,18 +169,20 @@ try {
 	assert(!inserted.includes("/code") && !inserted.includes("/table"), inserted);
 	await replaceText(rich.locator("h1"), "Source edit after save");
 	writeFileSync(join(workspace, "note.md"), "external edit");
-	await page.locator(".fp-foot").getByRole("button", { name: "保存文件", exact: true }).click();
-	await page.locator(".fp-save-status", { hasText: "保存失败" }).waitFor();
+	await page.locator(".fp-header-save").click();
+	await page.locator(".fp-header-status", { hasText: "保存失败" }).waitFor();
 	assert.equal(await rich.locator("h1").textContent(), "Source edit after save");
 	assert.equal(readFileSync(join(workspace, "note.md"), "utf8"), "external edit");
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.getByRole("button", { name: "放弃修改", exact: true }).click();
 	await page.locator(".file-name", { hasText: "empty.md" }).click();
+	await editRich();
 	await rich.getByRole("combobox", { name: "代码语言" }).selectOption("sql");
 	await save();
 	assert(readFileSync(join(workspace, "empty.md"), "utf8").includes("```sql\n\n```"));
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.locator(".file-name", { hasText: "empty.md" }).click();
+	await editRich();
 	assert.equal(await rich.getByRole("combobox", { name: "代码语言" }).inputValue(), "sql");
 	await rich.locator("pre code").click();
 	await page.keyboard.insertText("SELECT 1;");
@@ -184,6 +190,7 @@ try {
 	assert(readFileSync(join(workspace, "empty.md"), "utf8").includes("SELECT 1;"));
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.locator(".file-name", { hasText: "tree.md" }).click();
+	await editRich();
 	const treeCode = rich.locator("pre > code");
 	await treeCode.waitFor();
 	const treeLayout = await treeCode.evaluate((node) => ({
@@ -198,16 +205,17 @@ try {
 	assert((await treeCode.evaluate((node) => node.scrollLeft)) > 0);
 	assert.equal(await treeCode.textContent(), tree);
 	await rich.dispatchEvent("input");
-	assert.equal(await page.locator(".fp-save-status").textContent(), "已保存");
+	assert((await page.locator(".fp-header-status").textContent()).includes("已保存"));
 	await page.screenshot({ path: "/tmp/pi-directory-tree.png" });
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.locator(".file-name", { hasText: "placeholders.md" }).click();
+	await editRich();
 	await rich.locator("table").waitFor({ timeout: 2000 });
 	assert.equal(await rich.locator(".rich-source-block").count(), 0);
 	assert((await rich.locator("td").nth(1).textContent()).includes("<dataDir>/plugins/<id>/"));
 	assert.equal(await rich.locator("td").last().locator("br").count(), 1);
 	await rich.dispatchEvent("input");
-	assert.equal(await page.locator(".fp-save-status").textContent(), "已保存");
+	assert((await page.locator(".fp-header-status").textContent()).includes("已保存"));
 	await replaceText(rich.locator("td").first(), "编辑插件");
 	await save();
 	const savedTable = readFileSync(join(workspace, "placeholders.md"), "utf8");
@@ -216,6 +224,7 @@ try {
 	assert(!savedTable.includes("data-rich-inline"), savedTable);
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.locator(".file-name", { hasText: "placeholders.md" }).click();
+	await editRich();
 	await rich.locator("table").waitFor();
 	assert.equal(await rich.locator("td").first().textContent(), "编辑插件");
 	const pasteScreenshot = async () => {
@@ -242,9 +251,10 @@ try {
 	assert(!imageMarkdown.includes("clientId=") && !imageMarkdown.includes("/api/file"), imageMarkdown);
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.locator(".file-name", { hasText: "placeholders.md" }).click();
+	await editRich();
 	await page.waitForFunction(() => document.querySelector(".fp-rich-document img")?.naturalWidth > 0);
 	await rich.dispatchEvent("input");
-	assert.equal(await page.locator(".fp-save-status").textContent(), "已保存");
+	assert((await page.locator(".fp-header-status").textContent()).includes("已保存"));
 	await page.route("**/api/markdown-image*", (route) => route.fulfill({ status: 500, body: "{}" }));
 	await pasteScreenshot();
 	await page.getByRole("alert", { name: "" }).filter({ hasText: "图片插入失败" }).waitFor();
@@ -256,6 +266,7 @@ try {
 	assert.equal(badOrigin.status(), 403);
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.locator(".file-name", { hasText: "expand.md" }).click();
+	await editRich();
 	await rich.locator("td").first().click();
 	const tableTools = page.getByRole("toolbar", { name: "表格操作" });
 	await tableTools.getByRole("button", { name: "下方加行" }).click();
@@ -265,6 +276,7 @@ try {
 	await save();
 	await page.getByRole("button", { name: "返回文件列表", exact: true }).click();
 	await page.locator(".file-name", { hasText: "expand.md" }).click();
+	await editRich();
 	await rich.locator("table").waitFor();
 	assert.equal(await rich.locator("tr").count(), 3);
 	assert.equal(await rich.locator("th").count(), 3);

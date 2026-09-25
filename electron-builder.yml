@@ -110,8 +110,8 @@ win:
       arch:
         - x64
   icon: build/icon.ico
-  # 不签名
-  signAndEditExecutable: false
+  # Only disable signing: resource editing must stay enabled for the EXE icon.
+  signExecutable: false
   artifactName: "${productName}-${version}-win-x64.${ext}"
 
 # electron-builder 26.15.3: true omits UNPACK_DIR_NAME, so NSIS uses its
@@ -122,6 +122,8 @@ portable:
   unpackDirName: true
 
 nsis:
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
