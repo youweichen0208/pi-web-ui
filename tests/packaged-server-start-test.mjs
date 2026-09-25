@@ -2,7 +2,7 @@
 // the checkout's node_modules. No model calls or user configuration are needed.
 import assert from "node:assert/strict";
 import { fork, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "node:net";
@@ -12,6 +12,11 @@ import { DatabaseSync } from "node:sqlite";
 
 const [executable, appRoot] = process.argv.slice(2).map((p) => resolve(p));
 assert(executable && appRoot, "Usage: node tests/packaged-server-start-test.mjs <executable> <resources/app>");
+if (process.platform === "win32") {
+	const helper = readFileSync(join(appRoot, "node_modules/node-pty/lib/conpty_console_list_agent.js"), "utf8");
+	assert.match(helper, /pi-web-ui: the console may already be gone during ConPTY teardown/);
+	console.log("PASS packaged node-pty includes the ConPTY cleanup patch");
+}
 // Loading the lazy provider is essential: startup alone does not import it.
 const provider = pathToFileURL(join(appRoot, "node_modules/@earendil-works/pi-ai/dist/api/anthropic-messages.js")).href;
 execFileSync(executable, ["--input-type=module", "--eval", `await import(${JSON.stringify(provider)})`], {
