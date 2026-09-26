@@ -35,7 +35,32 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create GitHub release for tag
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "$RELEASE_TAG" = "v$version"
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [[ "$version" == *-* ]]; then
+              if [ -f ".github/release-notes/$RELEASE_TAG.md" ]; then
+                gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-file ".github/release-notes/$RELEASE_TAG.md" --prerelease
+              else
+                gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Desktop prerelease $version" --prerelease
+              fi
+            else
+              gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Desktop release $version"
+            fi
+          fi
+
   build-mac:
+    needs: prepare-release
     if: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'mac' }}
     runs-on: macos-latest
     timeout-minutes: 60
@@ -60,9 +85,11 @@ jobs:
         run: npx electron-builder build --mac --arm64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_PRE_RELEASE: ${{ contains(github.ref_name, '-') }}
           # macOS 签名（可选）——上面几个 secrets 没配的话就是未签名构建
 
   build-win:
+    needs: prepare-release
     if: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'win' }}
     runs-on: windows-2022
     timeout-minutes: 60
@@ -111,7 +138,11 @@ jobs:
           $tag = "v$version"
           gh release view $tag
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --verify-tag --title $tag --notes "Desktop release $version"
+            if ($version.Contains('-')) {
+              gh release create $tag --verify-tag --title $tag --notes "Desktop prerelease $version" --prerelease
+            } else {
+              gh release create $tag --verify-tag --title $tag --notes "Desktop release $version"
+            }
             if ($LASTEXITCODE -ne 0) {
               # Another platform may have created the release concurrently.
               gh release view $tag
@@ -124,6 +155,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Release upload failed" }
 
   build-linux:
+    needs: prepare-release
     if: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'linux' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -150,3 +182,4 @@ jobs:
         run: npx electron-builder build --linux --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_PRE_RELEASE: ${{ contains(github.ref_name, '-') }}

@@ -16,6 +16,8 @@ npm view @youweichen/pi-web-ui dist-tags --json
 
 测试用户通过 `npm install -g @youweichen/pi-web-ui@beta` 安装；稳定版仍通过 `@latest` 安装。`--tag beta` 避免本次测试版覆盖 npm 的 `latest` 标签，详见 [npm dist-tag 文档](https://docs.npmjs.com/adding-dist-tags-to-packages/)。推送 `v<version>` tag 会另外触发三平台 Electron 发布流水线；beta tag 对应 GitHub Release 应标为 prerelease。
 
+桌面 beta 版先提交并推送 `.github/workflows/release-desktop.yml` 的预发布配置，再在包含该配置的提交上创建 `v0.6.0-beta.0` tag 并推送。工作流先创建 GitHub prerelease，再让 macOS、Windows、Linux 三个 job 上传安装包；完成后检查预发布标记与安装包。不要在工作流配置提交前推 tag，否则 tag 对应的旧工作流会创建正式 Release。
+
 ## 步骤
 
 ```bash
