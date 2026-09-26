@@ -4,25 +4,45 @@ node_modules/
 # Build artifacts
 dist/
 web/dist/
+release/
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+*.tsbuildinfo
+*.tgz
+*.log
+npm-debug.log*
 
 # OS files
 .DS_Store
+Thumbs.db
+Desktop.ini
 
 # pi agent data
 .pi/
 .pi-web/
+.pi-web-desktop/
 .pi-subagents/
 
-# Editor data
+# Local configuration and editor data
 .vscode/
-
-# Plugin dependencies (installed per-plugin)
-dev/plugins/*/node_modules/
+.idea/
+.fleet/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.swp
+*~
 
 # Scratch/test temp files
 tests/scratch/
+dev/*.png
+dev/*-preview.html
+.cache/
 
-# pi-web-ui Electron 桌面版构建产物
-release/
 # Cowork 在仓库根建的输出目录
 Claude outputs/

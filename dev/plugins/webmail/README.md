@@ -60,7 +60,3 @@ pi-web-ui uninstall webmail                  # 移除插件目录（config.json 
 ## 回归测试
 
 - `tests/unit/plugin-tools.test.ts`：同步 diff + 注册生命周期（vitest）
-- `tests/scratch/webmail-e2e-test.mjs`：协议冒烟（清单/state 回显/save_config
-  写盘/密码不回传）
-- `tests/scratch/webmail-crash-test.mjs`：缺依赖时插件错误不炸主进程 +
-  激活即自动补装

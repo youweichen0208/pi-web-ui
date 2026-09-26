@@ -51,12 +51,10 @@ files:
   - "!.github/**"
   - "!deploy/**"
   - "!dev/**"
-  - "!assets/**"
   - "!Dockerfile"
   - "!docker-compose.yml"
   - "!.dockerignore"
   - "!AGENTS.md"
-  - "!file-upload-browser-test.mjs"
   # Cowork 在仓库根建的目录，可能装着随手生成的文件，别跟着 app 发出去
   - "!Claude outputs/**"
 
