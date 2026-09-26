@@ -58,7 +58,8 @@ try {
 	await chip.waitFor();
 	assert((await chip.textContent()).includes("@code.ts"));
 
-	// [2] Unsaved edits mark the chip; the snapshot rides along; disk untouched.
+	// [2] Unsaved edits mark the chip; send-on-send flushes the draft first,
+	// so the snapshot matches the disk (dirty=false) and carries the draft.
 	await page.locator(".fp-editor").fill("const draft = '最后一次输入';\n");
 	assert((await chip.textContent()).includes("未保存"), "chip should show the unsaved marker");
 	await submit("first question");
@@ -66,8 +67,8 @@ try {
 	assert.equal(prompts[0].attachments.length, 1);
 	assert.equal(prompts[0].attachments[0].mode, "inline");
 	assert.equal(prompts[0].attachments[0].editorSnapshot.text, "const draft = '最后一次输入';\n");
-	assert.equal(prompts[0].attachments[0].editorSnapshot.dirty, true);
-	assert.equal(readFileSync(join(cwd, "code.ts"), "utf8"), "const disk = 1;\n");
+	assert.equal(prompts[0].attachments[0].editorSnapshot.dirty, false, "save-on-send: draft is flushed before the prompt");
+	assert.equal(readFileSync(join(cwd, "code.ts"), "utf8"), "const draft = '最后一次输入';\n");
 
 	// [3] Each message takes a fresh snapshot; earlier messages stay frozen.
 	await page.locator(".fp-editor").fill("second draft");
@@ -120,11 +121,11 @@ try {
 	assert.equal(withLines.find((a) => a.mode === "lines")?.lines.start, 3);
 	assert.equal(withLines.find((a) => a.editorSnapshot)?.path, "note.md");
 	assert(withLines.find((a) => a.editorSnapshot)?.editorSnapshot.text.includes("Markdown last input"));
-	assert.equal(readFileSync(join(cwd, "note.md"), "utf8"), "# Note\n\nSelected paragraph.\n");
+	assert(readFileSync(join(cwd, "note.md"), "utf8").includes("Markdown last input"), "save-on-send flushed the markdown draft");
 
 	// [8] An oversized draft (>512 KiB) blocks the send; the text stays put.
+	// ([7]'s submit already flushed note.md, so closing needs no leave dialog.)
 	await page.locator(".fp-back").click();
-	await page.locator(".fp-leave").getByRole("button", { name: "放弃修改" }).click();
 	await page.locator(".file-name", { hasText: "code.ts" }).click();
 	await page.locator(".fp-editor").waitFor();
 	await chip.waitFor(); // reopening restores the chip (dismissal was per open)

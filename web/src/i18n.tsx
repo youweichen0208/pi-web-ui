@@ -22,6 +22,7 @@ const zh = {
 	currentFileDraft: "当前文件 · 未保存草稿",
 	currentFileUnavailable: "当前文件尚未就绪，请重新打开或移除标签",
 	currentFileTooLarge: "当前文件快照超过 512 KiB，请缩减内容或移除标签",
+	currentFileSaving: "当前文件正在保存，请稍候再发送",
 	switchingProject: "正在同步项目…",
 	retryProjectSwitch: "重试切换项目",
 	/* common */
@@ -761,6 +762,7 @@ const en: Record<keyof typeof zh, string> = {
 	currentFileDraft: "Current file · Unsaved draft",
 	currentFileUnavailable: "Current file is unavailable. Reopen it or remove the tag.",
 	currentFileTooLarge: "Current file exceeds 512 KiB. Reduce its content or remove the tag.",
+	currentFileSaving: "Current file is still saving — send again in a moment.",
 	switchingProject: "Syncing project…",
 	retryProjectSwitch: "Retry project switch",
 	/* common */

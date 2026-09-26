@@ -8,6 +8,12 @@ export interface CurrentFileContext {
 	dirty: boolean;
 }
 export type ReadCurrentFile = (openId: string) => PromptAttachment | null;
+/** Save-on-send: flush the open file's dirty draft to disk before the prompt
+ *  goes out. Returns false when the flush cannot start (not eligible, a save
+ *  already in flight, offline) — the caller must block the send. `next` runs
+ *  only after a successful save; a conflict/failure surfaces in the existing
+ *  conflict UI and never calls it. */
+export type SaveCurrentFile = (openId: string, next: () => void) => boolean;
 
 export function mergeCurrentFile(attachments: PromptAttachment[], current: PromptAttachment): PromptAttachment[] {
 	const normalize = (path: string) => {

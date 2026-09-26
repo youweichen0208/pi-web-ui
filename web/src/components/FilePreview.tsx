@@ -1,4 +1,4 @@
-import type { CurrentFileContext, ReadCurrentFile } from "../current-file";
+import type { CurrentFileContext, ReadCurrentFile, SaveCurrentFile } from "../current-file";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MutableRefObject } from "react";
 import {
@@ -37,6 +37,8 @@ export type FileNavigationGuard = (action: () => void) => void;
 
 interface FilePreviewProps {
 	contextReader?: MutableRefObject<ReadCurrentFile | null>;
+	/** 发送即保存：提交携带当前文件的消息前，把未保存草稿落盘。 */
+	contextSaver?: MutableRefObject<SaveCurrentFile | null>;
 	onContextChange?: (context: CurrentFileContext | null) => void;
 	result: Extract<ServerMessage, { type: "file_result" }> | null;
 	guard: MutableRefObject<FileNavigationGuard | null>;
@@ -63,7 +65,7 @@ interface Range {
 }
 
 export const FilePreviewContent = memo(function FilePreviewContent({
-	result, guard, disabled, connected, contextReader, onContextChange,
+	result, guard, disabled, connected, contextReader, contextSaver, onContextChange,
 	file,
 	content,
 	send,
@@ -76,6 +78,11 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 }: FilePreviewProps) {
 	const t = useT();
 	const [loaded, setLoaded] = useState<FileContent | null>(null);
+	// Live mirror of `loaded` (kept in sync at every setLoaded site): read at
+	// submit time from callbacks that run BEFORE React commits the new state —
+	// e.g. save-on-send's `next()` fires inside the write-result effect, while
+	// the reader closure still holds the previous render's `loaded`.
+	const loadedRef = useRef<FileContent | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [sel, setSel] = useState<Range | null>(null);
 	const [dragging, setDragging] = useState(false);
@@ -139,6 +146,7 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 	useEffect(() => {
 		if (content?.requestId !== readId.current || content?.cwd !== file.cwd || content?.path !== file.path) return;
 		readId.current = "";
+		loadedRef.current = content;
 		setLoaded(content);
 		setSel(null);
 		setDraft(content.text);
@@ -204,13 +212,18 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 		if (!saved) return;
 		pending.current = null;
 		if (result.ok) {
-			setLoaded((previous) => previous && ({
-				...previous,
-				text: saved.text,
-				version: result.version,
-				size: new TextEncoder().encode(saved.text).length,
-				lines: saved.text ? saved.text.split("\n").length - (saved.text.endsWith("\n") ? 1 : 0) : 0,
-			}));
+			const previous = loadedRef.current;
+			if (previous) {
+				const updated = {
+					...previous,
+					text: saved.text,
+					version: result.version,
+					size: new TextEncoder().encode(saved.text).length,
+					lines: saved.text ? saved.text.split("\n").length - (saved.text.endsWith("\n") ? 1 : 0) : 0,
+				};
+				loadedRef.current = updated;
+				setLoaded(updated);
+			}
 			setStatus("saved");
 			setSavedAt(new Date());
 			setSel(null);
@@ -266,7 +279,12 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 		if (!contextReader) return;
 		contextReader.current = (id) => eligible && loaded && id === openId.current ? {
 			path: file.path, mode: "inline",
-			editorSnapshot: { cwd: file.cwd, text: draftRef.current, dirty: draftRef.current !== loaded.text, version: loaded.version },
+			editorSnapshot: {
+				cwd: file.cwd,
+				text: draftRef.current,
+				dirty: draftRef.current !== loadedRef.current?.text,
+				version: loadedRef.current?.version,
+			},
 		} : null;
 		return () => { contextReader.current = null; };
 	}, [contextReader, eligible, loaded, file.path, file.cwd]);
@@ -274,6 +292,23 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 		onContextChange?.(eligible ? { ...file, id: openId.current, dirty } : null);
 	}, [eligible, dirty, file, onContextChange]);
 	useLayoutEffect(() => () => onContextChange?.(null), [onContextChange]);
+	// 发送即保存：草稿干净就直接续走；脏则先落盘（乐观并发，冲突走现有
+	// 冲突 UI 且不回调 next —— 发送被挡住）；保存中/离线等无法启动时返回 false。
+	useLayoutEffect(() => {
+		if (!contextSaver) return;
+		contextSaver.current = (id, next) => {
+			const current = loadedRef.current;
+			if (!eligible || !current || id !== openId.current) return false;
+			if (draftRef.current === current.text) {
+				next();
+				return true;
+			}
+			if (loading || disabled || pending.current) return false;
+			saveEditing(false, next);
+			return true;
+		};
+		return () => { contextSaver.current = null; };
+	}, [contextSaver, eligible, loading, disabled, draft, file.path, file.cwd]);
 
 	// End drag selection on mouseup anywhere.
 	useEffect(() => {

@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react";
-import type { CurrentFileContext, ReadCurrentFile } from "../current-file";
+import type { CurrentFileContext, ReadCurrentFile, SaveCurrentFile } from "../current-file";
 import { mergeCurrentFile } from "../current-file";
 import { randomUuid } from "../uuid";
 import { memo, useLayoutEffect, useEffect, useRef, useState } from "react";
@@ -20,6 +20,8 @@ interface ChatInputProps {
 	currentFile: CurrentFileContext | null;
 	/** Reads the editor snapshot for the open file at submit time. */
 	contextReader: MutableRefObject<ReadCurrentFile | null>;
+	/** 发送即保存：当前文件有未保存修改时先落盘再发送。 */
+	contextSaver: MutableRefObject<SaveCurrentFile | null>;
 	contextUsage?: UiState["stats"]["contextUsage"];
 	promptResult: Extract<ServerMessage, { type: "prompt_result" }> | null;
 	ready: boolean;
@@ -73,7 +75,7 @@ interface ChatInputProps {
 }
 
 export const ChatInput = memo(function ChatInput({
-	currentFile, contextReader,
+	currentFile, contextReader, contextSaver,
 	contextUsage,
 	ready, promptResult,
 	streaming,
@@ -325,25 +327,47 @@ export const ChatInput = memo(function ChatInput({
 		// in agent-service.ts. The 补充 (supplement) button passes queue=true,
 		// which the server delivers as followUp instead — the prompt is sent
 		// only after the WHOLE run finishes ("AI 生成结束才发送").
-		let outgoing: PromptAttachment[] = attachments.map(({ key, isDir, ...attachment }) => attachment);
-		// 当前文件 chip：发送时才取编辑器快照（含未保存修改），并取代同路径的
-		// 整文件附件 — chip 始终只指向当前打开的文件，不随历史累积。
-		if (autoFile) {
-			const snapshot = contextReader.current?.(autoFile.id);
-			if (!snapshot?.editorSnapshot || snapshot.path !== autoFile.path || snapshot.editorSnapshot.cwd !== autoFile.cwd) {
-				onNotice("error", t("currentFileUnavailable"));
-				return;
+		const dispatchPrompt = () => {
+			let outgoing: PromptAttachment[] = attachments.map(({ key, isDir, ...attachment }) => attachment);
+			// 当前文件 chip：发送时才取编辑器快照（含未保存修改），并取代同路径的
+			// 整文件附件 — chip 始终只指向当前打开的文件，不随历史累积。
+			if (autoFile) {
+				const snapshot = contextReader.current?.(autoFile.id);
+				if (!snapshot?.editorSnapshot || snapshot.path !== autoFile.path || snapshot.editorSnapshot.cwd !== autoFile.cwd) {
+					onNotice("error", t("currentFileUnavailable"));
+					return;
+				}
+				if (new TextEncoder().encode(snapshot.editorSnapshot.text).length > 512 * 1024) {
+					onNotice("error", t("currentFileTooLarge"));
+					return;
+				}
+				outgoing = mergeCurrentFile(outgoing, snapshot);
 			}
-			if (new TextEncoder().encode(snapshot.editorSnapshot.text).length > 512 * 1024) {
+			const requestId = randomUuid();
+			if (send({ type: "prompt", text: trimmed, queue, requestId, attachments: outgoing })) {
+				pendingSubmit.current = { id: requestId, conversation: activeConversationId, text, attachments };
+			}
+		};
+		// 发送即保存：携带当前文件且草稿未保存时，先落盘再发送（磁盘 == 快照 ==
+		// 模型的工作基准）。落盘冲突/失败由编辑器的冲突 UI 呈现且不回调 —
+		// 本次发送被挡住，输入内容保留；保存中无法启动同样阻止。
+		if (autoFile) {
+			const preview = contextReader.current?.(autoFile.id);
+			// 尺寸预检放在落盘之前：发不出去的快照不值得写盘。
+			if (preview?.editorSnapshot && new TextEncoder().encode(preview.editorSnapshot.text).length > 512 * 1024) {
 				onNotice("error", t("currentFileTooLarge"));
 				return;
 			}
-			outgoing = mergeCurrentFile(outgoing, snapshot);
+			if (preview?.editorSnapshot?.dirty) {
+				const started = contextSaver.current?.(autoFile.id, dispatchPrompt);
+				if (!started) {
+					onNotice("error", t("currentFileSaving"));
+					return;
+				}
+				return;
+			}
 		}
-		const requestId = randomUuid();
-		if (send({ type: "prompt", text: trimmed, queue, requestId, attachments: outgoing })) {
-			pendingSubmit.current = { id: requestId, conversation: activeConversationId, text, attachments };
-		}
+		dispatchPrompt();
 
 	};
 

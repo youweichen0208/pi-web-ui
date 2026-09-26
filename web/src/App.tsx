@@ -17,7 +17,7 @@ import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { MessageList } from "./components/MessageList";
 import { ChatInput } from "./components/ChatInput";
-import type { CurrentFileContext, ReadCurrentFile } from "./current-file";
+import type { CurrentFileContext, ReadCurrentFile, SaveCurrentFile } from "./current-file";
 import { GoalBar } from "./components/GoalBar";
 import { FooterBar } from "./components/FooterBar";
 import { Dialog } from "./components/Dialog";
@@ -215,6 +215,8 @@ export function App() {
 	// 当前文件（0.50.0 语义）：预览面板的严格镜像 — chip 跟随打开的文件，
 	// 发送时经 contextReader 取编辑器快照（含未保存修改）。
 	const contextReader = useRef<ReadCurrentFile | null>(null);
+	// 发送即保存：脏草稿先经编辑器落盘，再发送携带快照的消息。
+	const contextSaver = useRef<SaveCurrentFile | null>(null);
 	const [currentFile, setCurrentFile] = useState<CurrentFileContext | null>(null);
 	useEffect(() => {
 		if (!switching && chat.state?.cwd && previewFile && previewFile.cwd !== chat.state.cwd) setPreviewFile(null);
@@ -843,6 +845,7 @@ export function App() {
 							<ChatInput
 								currentFile={!switching && currentFile?.cwd === chat.state?.cwd ? currentFile : null}
 								contextReader={contextReader}
+								contextSaver={contextSaver}
 								contextUsage={chat.state?.stats.contextUsage}
 								promptResult={chat.promptResult}
 								send={send}
@@ -895,6 +898,7 @@ export function App() {
 									key={`${previewFile.cwd}:${previewFile.path}`}
 									file={previewFile}
 									contextReader={contextReader}
+									contextSaver={contextSaver}
 									onContextChange={setCurrentFile}
 									guard={fileGuard}
 									result={chat.fileResult}
