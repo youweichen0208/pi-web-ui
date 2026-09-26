@@ -232,6 +232,7 @@ export interface PromptAttachment {
 }
 
 export type ClientMessage =
+	| { type: "node_request"; requestId: string; action: string; nodeId?: string; terminalId?: string; conversationId?: string; payload?: Record<string, unknown> }
 	| { type: "hello"; clientId: string; protocolVersion?: number }
 	/** Re-request the slash-command catalog (also pushed on attach / cwd change). */
 	| { type: "get_commands" }
@@ -906,6 +907,7 @@ export interface UiSettingsState {
 	presets: UiSettingsPreset[];
 }
 export type ServerMessage =
+	| { type: "node_event"; requestId?: string; event: string; nodeId?: string; terminalId?: string; conversationId?: string; data?: Record<string, unknown>; error?: string }
 	| {
 			type: "ready";
 			clientId: string;

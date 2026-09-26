@@ -245,12 +245,18 @@ export async function startMockSsh(pluginDir, port) {
 							const stream = accept2();
 							stream.write("welcome-to-mock\r\n");
 							let buf = "";
+							let trapped = false;
 							stream.on("data", (d) => {
 								buf += d.toString();
-								while (buf.includes("\r")) {
-									const line = buf.slice(0, buf.indexOf("\r")).trim();
-									buf = buf.slice(buf.indexOf("\r") + 1);
-									if (line) stream.write(`echo:${line}\r\n`);
+								while (/[\r\n]/.test(buf)) {
+									const i = buf.search(/[\r\n]/);
+									const line = buf.slice(0, i).trim();
+									buf = buf.slice(i + 1);
+									const marker = line.match(/^printf '%s(?:\\n|:%s\\n)' '(__PI_(?:READY|DONE)_[a-f0-9]+__)'/);
+									if (line === "trap_foreground") { trapped = true; stream.write("foreground-trap\r\n"); }
+									else if (trapped) { /* foreground app consumes input, including Ctrl+C */ }
+									else if (marker) stream.write(`${marker[1]}${line.includes('"$?"') ? ":0" : ""}\r\n`);
+									else if (line) stream.write(`echo:${line}\r\n`);
 								}
 							});
 						});

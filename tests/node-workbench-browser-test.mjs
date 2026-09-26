@@ -1,0 +1,72 @@
+import { CHROME_PATH } from "./lib/chrome.mjs";
+import { startMockSsh } from "./lib/mock-ssh.mjs";
+import { chromium } from "playwright-core";
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const dataDir = mkdtempSync(join(tmpdir(), "pi-node-browser-"));
+const port = 8946, sshPort = 22946;
+const mock = await startMockSsh(root, sshPort);
+const server = spawn(process.execPath, [join(root, "dist/server/index.js")], { cwd: root, env: { ...process.env, PORT: String(port), PI_WEB_DATA_DIR: dataDir, PI_WEB_CWD: root }, stdio: "ignore" });
+let browser;
+try {
+	for (let i = 0; i < 100; i++) { try { if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) break; } catch {} await new Promise((r) => setTimeout(r, 100)); }
+	browser = await chromium.launch({ executablePath: CHROME_PATH });
+	const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+	const errors = []; page.on("pageerror", (e) => errors.push(e.message));
+	page.on("dialog", (dialog) => dialog.accept());
+	await page.goto(`http://127.0.0.1:${port}/`);
+	await page.getByRole("tab", { name: "节点" }).click();
+	await page.locator(".node-sidebar header button").click();
+	const form = page.locator(".node-modal");
+	await form.getByLabel("分组").fill("开发");
+	await form.getByLabel("名称").fill("alpha");
+	await form.getByLabel("地址").fill("127.0.0.1");
+	await form.getByLabel("端口").fill(String(sshPort));
+	await form.getByLabel("用户名").fill("tester");
+	await form.getByLabel("默认目录").fill("/home/test");
+	await form.locator('input[type="password"]').fill("secret123");
+	await form.getByRole("button", { name: "保存" }).click();
+	await page.locator(".node-sidebar section", { hasText: "开发" }).waitFor();
+	await page.locator(".node-item", { hasText: "alpha" }).locator("button").first().click();
+	await page.locator(".node-main-head button", { hasText: "连接" }).click();
+	await page.locator(".node-main-head em", { hasText: "已连接" }).waitFor({ timeout: 10000 });
+	await page.locator(".node-tabs button").last().click();
+	await page.locator(".node-tabs button.active").waitFor();
+	await page.locator(".node-xterm").first().click();
+	await page.keyboard.type("hello"); await page.keyboard.press("Enter");
+	await page.waitForFunction(() => document.querySelector(".node-xterm")?.textContent?.includes("echo:hello"), { timeout: 5000 });
+	await page.locator(".node-filebar button").click();
+	await page.locator(".node-files", { hasText: "a.txt" }).waitFor();
+	await page.locator(".node-files button", { hasText: "a.txt" }).click();
+	await page.locator(".node-file-editor").waitFor();
+	await page.locator(".node-sidebar header button").click();
+	const second = page.locator(".node-modal");
+	await second.getByLabel("分组").fill("测试");
+	await second.getByLabel("名称").fill("beta");
+	await second.getByLabel("地址").fill("127.0.0.1");
+	await second.getByLabel("端口").fill(String(sshPort));
+	await second.getByLabel("用户名").fill("tester");
+	await second.locator('input[type="password"]').fill("secret123");
+	await second.getByRole("button", { name: "保存" }).click();
+	await page.locator(".node-item", { hasText: "beta" }).locator("button").first().click();
+	assert(await page.locator(".node-file-editor:visible").count() === 0, "file draft leaked to another node");
+	await page.locator(".node-main-head button", { hasText: "连接" }).click();
+	await page.locator(".node-main-head em", { hasText: "已连接" }).waitFor({ timeout: 10000 });
+	await page.locator(".node-tabs button").last().click();
+	await page.locator(".node-xterm:visible").click();
+	await page.keyboard.type("beta-command"); await page.keyboard.press("Enter");
+	await page.waitForFunction(() => document.querySelector(".node-xterm")?.textContent?.includes("echo:beta-command"));
+	await page.locator(".node-item", { hasText: "alpha" }).locator("button").first().click();
+	await page.waitForFunction(() => document.querySelector(".node-xterm")?.textContent?.includes("echo:hello"));
+	assert(!(await page.locator(".node-xterm:visible").innerText()).includes("beta-command"), "terminal output leaked across nodes");
+	assert(!errors.length, errors.join("\n"));
+	console.log("✓ browser node groups, trust, terminals, SFTP and node switching isolation");
+} finally {
+	await browser?.close(); server.kill(); mock.close(); rmSync(dataDir, { recursive: true, force: true });
+}
+function assert(ok, message) { if (!ok) throw new Error(message); }

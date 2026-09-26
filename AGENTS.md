@@ -11,8 +11,8 @@ pi-web-ui 是 pi 编码智能体（`@earendil-works/pi-coding-agent` SDK）的 W
 声音提醒、中英文切换。一条命令可跑（`pi-web-ui`），可 Docker / systemd / launchd /
 Windows 计划任务部署。
 
--   仓库（公开）：`git@github.com:xing-shuyin/pi-web-ui.git`
--   npm 包：`@youweichen/pi-web-ui`（发布者 npm 账号 `youweichen`；fork 自原作者 `xingshuyin` 的 `pi-web-ui`）
+-   仓库（公开）：`git@github.com:youweichen0208/pi-web-ui.git`
+-   npm 包：`@youweichen/pi-web-ui`（发布者 npm 账号 `youweichen`；当前项目独立维护）
 -   Node 要求：**\>= 22.19.0**（pi SDK 的 dist 使用了 `import … with { type: "json" }` 语法）
 -   版本：`package.json` 与 `package-lock.json` 两处同步维护。
 
@@ -54,7 +54,8 @@ pi-web-ui/
 │   ├── patch-node-pty.ts       # node-pty × Node --watch 兼容自愈补丁
 │   ├── ensure-bash.ts          # Windows 轻量 bash 兜底（busybox-w32）
 │   ├── control-socket.ts       # 本地控制 socket（status / quiesce / unquiesce）
-│   └── terminals.ts            # TerminalManager（PTY 管理 + 增量输出/按键工具）
+│   ├── terminals.ts            # TerminalManager（PTY 管理 + 增量输出/按键工具）
+│   └── node-workbench.ts       # 内置 SSH 节点：资料/主机信任/PTY/SFTP/独立 Agent
 ├── web/                        # 前端（React + Vite，编译到 web/dist/）
 │   ├── vite.config.ts          # dev 端口 5173，/ws 代理到后端
 │   ├── src/
@@ -125,6 +126,7 @@ pi-web-ui/
 | `ModelThinking.tsx` | 模型 + 思考强度下拉（模型下拉顶部有搜索过滤框） |
 | `GlobalSearchModal.tsx` | 全局搜索弹窗（Ctrl+K）：搜历史对话/最近项目/工作区文件名 |
 | `PluginView.tsx` | 插件视图宿主：薄 React 壳 + 动态 import client bundle |
+| `NodeWorkbench.tsx` | 内置 SSH 节点工作台：分组、终端标签、SFTP 文件和节点 Agent |
 | `CollapsedMessage.tsx` / `LazyMount.tsx` | 消息折叠摘要行 / 消息级惰性挂载包装 |
 | `SearchBar.tsx` | 会话内搜索栏（Ctrl+F，CSS Custom Highlight API 高亮） |
 | `Markdown.tsx` / `Dropdown.tsx` / `copy-button.tsx` / `SoundSettings.tsx` | 通用件 |
@@ -146,6 +148,7 @@ pi-web-ui/
 | **SCM** | `docs/architecture-terminal.md` | 只读 git 查询走 execFile；未跟踪文件显示限量内容；git-dir watcher；写操作走可见终端 tab |
 | **终端接管 bash** | `docs/architecture-terminal.md` | 设置开关（默认关）；哨兵行技术；静默解阻；shell 状态跨调用保留 |
 | **插件** | `docs/architecture-plugins.md` | <dataDir>/plugins/<id>/ 目录（manifest.json + index.mjs + client/entry.mjs）；attach 时热重扫；MCP 工具桥 |
+| **SSH 节点** | `docs/architecture-nodes.md` | 本机 ssh2 连接、主机密钥信任、加密凭据、PTY/SFTP 与远端专用 Agent |
 | **工具结束实时状态** | `docs/architecture-core.md` | tool_status 先于快照落盘，浏览器卡片立即从「执行中」→「已结束」 |
 | **工具挂死看门狗** | `docs/architecture-core.md` | 20 分钟超时自动 abort 会话；只停止运行不碰后台服务 |
 | **后台任务列表** | `docs/architecture-core.md` | bash 前后端口快照 diff；按客户端持久；单停/全部关闭 |

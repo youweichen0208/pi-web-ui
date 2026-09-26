@@ -41,6 +41,7 @@ const ALL = [
 	"plugin-cwd-test",
 	"plugin-http-test",
 	"mcp-bridge-test",
+	"node-workbench-test",
 	"plugin-settings-test",
 	"plugin-test",
 	"plugin-update-test",

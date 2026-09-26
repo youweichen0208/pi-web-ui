@@ -25,6 +25,7 @@ import { Dialog } from "./components/Dialog";
 const TerminalPanel = lazy(() =>
 	import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })),
 );
+const NodeWorkbench = lazy(() => import("./components/NodeWorkbench").then((m) => ({ default: m.NodeWorkbench })));
 import { ScmPanel } from "./components/SCMPanel";
 import { PluginView } from "./components/PluginView";
 import {
@@ -195,7 +196,7 @@ function ResizeHandle({
 }
 
 /** 顶栏视图：内置三个 + 每个已装插件一个 `plugin:<id>`。 */
-type ViewName = "chat" | "terminal" | "git" | `plugin:${string}`;
+type ViewName = "chat" | "terminal" | "git" | "nodes" | `plugin:${string}`;
 
 export function App() {
 	const t = useT();
@@ -748,7 +749,7 @@ export function App() {
 					<span>📎 {t("dropHereToAttach")}</span>
 				</div>
 			)}
-			<div
+			{view !== "nodes" && <div
 				className={`panel-drawer drawer-left ${drawer === "left" ? "open" : ""}`}
 			>
 				<LeftPanel
@@ -766,8 +767,8 @@ export function App() {
 					dirBrowse={chat.dirBrowse}
 					activeConversationId={chat.activeConversationId}
 				/>
-			</div>
-			{!isMobile && (
+			</div>}
+			{view !== "nodes" && !isMobile && (
 				<ResizeHandle side="left" width={leftWidth} onResize={resizeLeft} />
 			)}
 
@@ -932,6 +933,9 @@ export function App() {
 						<Suspense fallback={null}>
 							{visited.current.has("terminal") && <TerminalPanel active={view === "terminal" && !switching} chat={chat} send={send} terminal={terminal} />}
 						</Suspense>
+					</div>
+					<div className={`view-pane ${view === "nodes" ? "" : "hidden"}`}>
+						<Suspense fallback={null}>{visited.current.has("nodes") && <NodeWorkbench active={view === "nodes"} send={send} />}</Suspense>
 					</div>
 					<div className={`view-pane ${view === "git" ? "" : "hidden"}`}>
 						{visited.current.has("git") && <ScmPanel

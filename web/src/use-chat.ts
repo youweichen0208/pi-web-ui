@@ -867,6 +867,9 @@ export function useChat() {
 				return;
 			}
 			switch (msg.type) {
+				case "node_event":
+					window.dispatchEvent(new CustomEvent("pi-node-event", { detail: msg }));
+					break;
 				case "ready":
 					dispatch({
 						type: "ready",

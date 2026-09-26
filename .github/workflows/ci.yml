@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   ci:
@@ -38,3 +38,20 @@ jobs:
       # 零 token 协议冒烟（每个测试自起隔离 server：独立端口 + 临时 data-dir）
       - name: Protocol smoke tests
         run: node tests/run-smoke.mjs
+
+  node-workbench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:server
+      - run: node tests/node-workbench-test.mjs

@@ -42,6 +42,7 @@ import { scheduleUploadCleanup } from "./uploads.js";
 import { ensureWindowsBash, windowsBashDir } from "./ensure-bash.js";
 import { PluginManager, resolvePluginClientFile } from "./plugins.js";
 import { McpBridge } from "./mcp-bridge.js";
+import { NodeWorkbench } from "./node-workbench.js";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -412,6 +413,7 @@ const service = new AgentService(
 	// Per-client persisted UI state: last-used workspace + recent projects.
 	join(DATA_DIR, "client-state.json"),
 );
+const nodeWorkbench = new NodeWorkbench(DATA_DIR);
 
 // Optional UI plugins (<dataDir>/plugins/<id>/): scanned on every client
 // attach so freshly dropped plugins appear without a server restart.
@@ -557,6 +559,7 @@ wss.on("connection", (ws) => {
 	// Plugins broadcast to every open socket; unregister on close below. The
 	// cid getter lets plugins target THIS socket via host.sendTo(clientId).
 	const removePluginSender = pluginMgr.addSender(send, () => clientId);
+	let detachNodes: (() => void) | undefined;
 
 	const dispatch = (msg: ClientMessage): void => {
 		if (!clientId) {
@@ -579,6 +582,9 @@ wss.on("connection", (ws) => {
 			return;
 		}
 		switch (msg.type) {
+			case "node_request":
+				void nodeWorkbench.handle(clientId, msg);
+				break;
 			case "prompt":
 				void cs.prompt(msg.text, msg.attachments, msg.queue, msg.requestId);
 				break;
@@ -848,6 +854,8 @@ wss.on("connection", (ws) => {
 				.attach(cid, send)
 				.then((cs) => {
 					if (closed) return;
+					detachNodes?.();
+					detachNodes = nodeWorkbench.attach(cid, send);
 					send({
 						type: "ready",
 						clientId: cid,
@@ -905,6 +913,7 @@ wss.on("connection", (ws) => {
 		closed = true;
 		pending = [];
 		removePluginSender();
+		detachNodes?.();
 		if (snapshotRetryTimer) {
 			clearTimeout(snapshotRetryTimer);
 			snapshotRetryTimer = null;

@@ -1,6 +1,20 @@
 # 发布流程
 
-> npm 发布者账号是 `youweichen`（`npm whoami` 验证），包名 `@youweichen/pi-web-ui`（scope 包，fork 自 `xing-shuyin/pi-web-ui`）。`dist/`、`web/dist/` 被 gitignore 不进 git，但 `package.json` 的 `files` 白名单会把它们打进 npm 包；`prepublishOnly` 会在发布前自动 `npm run build`。
+> npm 发布者账号是 `youweichen`（`npm whoami` 验证），包名 `@youweichen/pi-web-ui`。当前项目独立维护，仓库为 `youweichen0208/pi-web-ui`。`dist/`、`web/dist/` 被 gitignore 不进 git，但 `package.json` 的 `files` 白名单会把它们打进 npm 包；`prepublishOnly` 会在发布前自动 `npm run build`。
+
+## Beta 版本
+
+本次候选版本为 `0.6.0-beta.0`，当前正式版是 `0.51.2`。按 SemVer，前者排在后者之前，因此本次只发布到 `beta` dist-tag，不替换 `latest`；今后若继续沿用 `0.6.x`，需要明确处理与 `0.51.x` 正式版的版本排序。发布前用 `npm view @youweichen/pi-web-ui versions --json` 确认候选版本未占用，并确保 `package.json` 与 `package-lock.json` 一致。
+
+```bash
+npm run check:protocol && npm run typecheck && npm run build && npm test && npm run test:smoke
+npm pack --dry-run
+# 提交并推送已验证的源代码后，再发布到 beta 标签：
+npm publish --access public --tag beta
+npm view @youweichen/pi-web-ui dist-tags --json
+```
+
+测试用户通过 `npm install -g @youweichen/pi-web-ui@beta` 安装；稳定版仍通过 `@latest` 安装。`--tag beta` 避免本次测试版覆盖 npm 的 `latest` 标签，详见 [npm dist-tag 文档](https://docs.npmjs.com/adding-dist-tags-to-packages/)。推送 `v<version>` tag 会另外触发三平台 Electron 发布流水线；beta tag 对应 GitHub Release 应标为 prerelease。
 
 ## 步骤
 

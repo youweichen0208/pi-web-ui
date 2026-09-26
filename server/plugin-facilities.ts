@@ -112,7 +112,11 @@ function unseal(key: Buffer, blob: SealedBlob): string {
 function loadOrCreateKey(dataDir: string): Buffer {
 	const keyFile = join(dataDir, "secrets.key");
 	try {
-		if (existsSync(keyFile)) return Buffer.from(readFileSync(keyFile).toString("hex").trim(), "hex");
+		if (existsSync(keyFile)) {
+			const encoded = readFileSync(keyFile, "utf8").trim();
+			if (/^[a-f\d]{64}$/i.test(encoded)) return Buffer.from(encoded, "hex");
+			throw new Error("invalid secrets key");
+		}
 	} catch {
 		/* fallthrough → regenerate */
 	}

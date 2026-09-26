@@ -46,8 +46,8 @@ interface TopBarProps {
 		}) => void;
 		restart: (id: string) => void;
 	};
-	view: "chat" | "terminal" | "git" | `plugin:${string}`;
-	onViewChange: (view: "chat" | "terminal" | "git" | `plugin:${string}`) => void;
+	view: "chat" | "terminal" | "git" | "nodes" | `plugin:${string}`;
+	onViewChange: (view: "chat" | "terminal" | "git" | "nodes" | `plugin:${string}`) => void;
 	/** Installed optional plugins (<dataDir>/plugins) — one view tab each. */
 	plugins: { id: string; name: string; icon?: string; description?: string; error?: string }[];
 	/** Open a side panel as a mobile drawer ("left" = history, "right" = files). */
@@ -234,6 +234,18 @@ export function TopBar({
 					>
 						<FiTerminal />
 						<span>{t("terminal")}</span>
+					</button>
+					<button
+						type="button"
+						role="tab"
+						aria-label={t("nodes")}
+						title={t("nodes")}
+						aria-selected={view === "nodes"}
+						className={view === "nodes" ? "active" : ""}
+						onClick={() => onViewChange("nodes")}
+					>
+						<FiGlobe />
+						<span>{t("nodes")}</span>
 					</button>
 					<button
 						type="button"
