@@ -65,6 +65,8 @@ import {
 	isExtensionDisabled,
 	type PromptMode,
 	ClientStateStore,
+	type DiskProjectSummary,
+	mergeProjectSummaries,
 } from "./client-state.js";
 import { saveUpload } from "./uploads.js";
 import {
@@ -85,7 +87,6 @@ import type {
 		ConversationSummary,
 		FileEntry,
 		GoalStatus,
-		ProjectSummary,
 		ServerMessage,
 		SessionSummary,
 		UiMessage,
@@ -2692,7 +2693,7 @@ export class ClientSession {
 	 *  client that never opened the panel never pays the disk scan. */
 	private sessionsRequested = false;
 	private sessionQueries = new QueryCache<SessionSummary[]>(5_000);
-	private projectQueries = new QueryCache<ProjectSummary[]>(30_000, 1);
+	private projectQueries = new QueryCache<DiskProjectSummary[]>(30_000, 1);
 	private invalidateLists(): void {
 		this.sessionQueries.clear();
 		this.projectQueries.clear();
@@ -2719,10 +2720,12 @@ export class ClientSession {
 					const path = resolve(info.path);
 					sessions.set(path, {
 						path, name: info.name, firstMessage: info.firstMessage,
-						messageCount: info.messageCount, modified: info.modified.getTime(), source: "web",
+						messageCount: info.messageCount, modified: info.modified.getTime(),
+						created: info.created.getTime(), source: "web",
 					});
 				}
-				return [...sessions.values()].sort((a, b) => b.modified - a.modified).slice(0, 200);
+				// 创建时间新→旧；条目位置此后固定（UI 不再按选中/活动重排）。
+				return [...sessions.values()].sort((a, b) => b.created - a.created).slice(0, 200);
 			}, () => { if (this.cwd === cwd) void this.pushSessions(); });
 			this.emit({ type: "sessions", cwd, sessions: sorted });
 		} catch {
@@ -3090,31 +3093,32 @@ export class ClientSession {
 			const removedProjects = new Set(
 				this.stateStore.getRemovedProjects(this.clientId),
 			);
-			const map = new Map<string, number>();
-			for (const p of saved.projects) map.set(p.path, p.lastUsed);
 			const all = await this.projectQueries.get("all", async () => {
-				const newest = new Map<string, { lastUsed: number; conversationCount: number }>();
+				const newest = new Map<string, Omit<DiskProjectSummary, "path">>();
 				for (const info of await SessionManager.listAll()) {
 					if (!info.cwd) continue;
 					const previous = newest.get(info.cwd);
-					newest.set(info.cwd, { lastUsed: Math.max(previous?.lastUsed ?? 0, info.modified.getTime()), conversationCount: (previous?.conversationCount ?? 0) + 1 });
+					newest.set(info.cwd, {
+						lastUsed: Math.max(previous?.lastUsed ?? 0, info.modified.getTime()),
+						conversationCount: (previous?.conversationCount ?? 0) + 1,
+						// 首次添加锚点：该 cwd 下最早的会话创建时间。
+						firstAdded: Math.min(
+							previous?.firstAdded ?? Number.MAX_SAFE_INTEGER,
+							info.created.getTime(),
+						),
+					});
 				}
 				return [...newest].map(([path, summary]) => ({ path, ...summary }));
 			}, () => { void this.pushProjects(); });
-			const lastConversation = new Map(all.map((project) => [project.path, project.lastUsed]));
-			const conversationCount = new Map(all.map((project) => [project.path, project.conversationCount]));
-			for (const project of all) {
-				const prev = map.get(project.path);
-				if (prev === undefined || project.lastUsed > prev) map.set(project.path, project.lastUsed);
-			}
 			// Only keep directories that still exist — a deleted/unmounted workspace
 			// is useless in the picker. Tombstoned entries (explicitly removed by
 			// the user) stay hidden even though session files still mention them.
-			const projects: ProjectSummary[] = [...map.entries()]
-				.filter(([path]) => !removedProjects.has(path) && existsSync(path))
-				.map(([path, lastUsed]) => ({ path, lastUsed, lastConversationAt: lastConversation.get(path), conversationCount: conversationCount.get(path) ?? 0 }))
-				.sort((a, b) => b.lastUsed - a.lastUsed)
-				.slice(0, 20);
+			// Order is first-added newest-first and never moves (mergeProjectSummaries).
+			const projects = mergeProjectSummaries(
+				saved.projects.filter((p) => existsSync(p.path)),
+				all.filter((p) => existsSync(p.path)),
+				removedProjects,
+			);
 			this.emit({ type: "projects", projects });
 		} catch {
 			this.emit({ type: "projects", projects: [] });

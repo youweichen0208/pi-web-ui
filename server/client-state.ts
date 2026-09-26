@@ -8,6 +8,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import type { ProjectSummary } from "./protocol.js";
 
 /** System-prompt mode: append the custom text to the built prompt, or replace
  *  the whole system prompt with it. */
@@ -120,8 +121,9 @@ export function isExtensionDisabled(
 export interface ClientState {
 	/** Absolute path of the workspace this client last used. */
 	lastCwd?: string;
-	/** Workspaces this client opened before, most recent first (capped at 30). */
-	projects: { path: string; lastUsed: number }[];
+	/** Workspaces this client opened before, first-added newest first (capped
+	 *  at 30). Order is stable: opening/switching never moves an entry. */
+	projects: { path: string; lastUsed: number; firstAdded?: number }[];
 	/** Last-used goal / review preferences (model choice, max rounds, locked) so
 	 *  they survive a reload — "全局记忆". maxRounds: 0 means unlimited. The model
 	 *  choice is shared by both the goal-reviewer and the goal-wizard. */
@@ -143,6 +145,55 @@ export interface ClientState {
 	 *  tombstones so cwds re-discovered from session files stay hidden until
 	 *  the workspace is opened again. */
 	removedProjects?: string[];
+}
+
+/** Disk-side project facts discovered from session files (aggregated per cwd). */
+export interface DiskProjectSummary {
+	path: string;
+	/** Newest session activity in this cwd (ms epoch) — informational. */
+	lastUsed: number;
+	/** Earliest session creation in this cwd (ms epoch) — the first-added
+	 *  anchor for projects that have no persisted entry. */
+	firstAdded: number;
+	conversationCount: number;
+}
+
+/**
+ * Merge persisted projects with disk-discovered ones into the project list:
+ * ordered by first-added time, newest first, positions never move. A persisted
+ * entry always wins over the disk anchor; a legacy persisted entry without
+ * `firstAdded` falls back to (and is thereby frozen at) its `lastUsed`.
+ * Tombstoned entries (explicitly removed by the user) stay hidden; the list is
+ * capped at 20, dropping the earliest-added first.
+ */
+export function mergeProjectSummaries(
+	saved: { path: string; lastUsed: number; firstAdded?: number }[],
+	disk: readonly DiskProjectSummary[],
+	removed: ReadonlySet<string>,
+): ProjectSummary[] {
+	const firstAdded = new Map<string, number>();
+	const lastUsed = new Map<string, number>();
+	for (const p of saved) {
+		firstAdded.set(p.path, p.firstAdded ?? p.lastUsed);
+		lastUsed.set(p.path, p.lastUsed);
+	}
+	for (const p of disk) {
+		if (firstAdded.has(p.path)) continue; // persisted entries drive their own order
+		firstAdded.set(p.path, p.firstAdded);
+		lastUsed.set(p.path, p.lastUsed);
+	}
+	const byPath = new Map(disk.map((p) => [p.path, p]));
+	return [...firstAdded.entries()]
+		.filter(([path]) => !removed.has(path))
+		.map(([path, added]) => ({
+			path,
+			firstAdded: added,
+			lastUsed: lastUsed.get(path) ?? 0,
+			lastConversationAt: byPath.get(path)?.lastUsed,
+			conversationCount: byPath.get(path)?.conversationCount ?? 0,
+		}))
+		.sort((a, b) => b.firstAdded - a.firstAdded)
+		.slice(0, 20);
 }
 
 /**
@@ -188,16 +239,25 @@ export class ClientStateStore {
 		return this.load()[clientId] ?? { projects: [] };
 	}
 
-	/** Remember which workspace a client last used; bumps its project entry. */
+	/** Remember which workspace a client last used. The project-list order is
+	 *  stable: existing entries only get their (informational) lastUsed
+	 *  refreshed in place, new entries are prepended, nothing ever moves. */
 	remember(clientId: string, cwd: string): void {
 		const all = this.load();
 		const state = (all[clientId] ??= { projects: [] });
 		state.lastCwd = cwd;
 		const now = Date.now();
-		state.projects = [
-			{ path: cwd, lastUsed: now },
-			...state.projects.filter((p) => p.path !== cwd),
-		].slice(0, 30);
+		const existing = state.projects.find((p) => p.path === cwd);
+		if (existing) {
+			// 旧数据没有 firstAdded：冻结在其最后一次使用的时间上，此后永不再变。
+			existing.firstAdded ??= existing.lastUsed;
+			existing.lastUsed = now;
+		} else {
+			state.projects = [
+				{ path: cwd, lastUsed: now, firstAdded: now },
+				...state.projects,
+			].slice(0, 30);
+		}
 		// Opening the workspace again clears its removal tombstone.
 		if (state.removedProjects?.length) {
 			state.removedProjects = state.removedProjects.filter((p) => p !== cwd);

@@ -195,7 +195,7 @@ export const LeftPanel = memo(function LeftPanel({
 							</button>
 						);
 					})}
-					{[...sessions].sort((a, b) => Number(convByFile.get(b.path)?.id === activeConversationId) - Number(convByFile.get(a.path)?.id === activeConversationId)).map((s) => {
+					{sessions.map((s) => {
 						const conv = convByFile.get(s.path);
 						const active = conv
 							? activeConversationId === conv.id
@@ -317,7 +317,7 @@ export const LeftPanel = memo(function LeftPanel({
 					</button>
 				</div>
 				<div className="projects-scroll">
-					{[...projects].sort((a, b) => Number(b.path === currentCwd) - Number(a.path === currentCwd)).map((p) => {
+					{projects.map((p) => {
 						const active = currentCwd === p.path;
 						const pending = !active && pendingCwd === p.path;
 						const expanded = active && !collapsedActive;

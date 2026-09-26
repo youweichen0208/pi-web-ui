@@ -488,6 +488,9 @@ export interface SessionSummary {
 	firstMessage: string;
 	messageCount: number;
 	modified: number;
+	/** When the session was created (ms epoch) — drives the fixed list order,
+	 *  newest first; the position never changes afterwards. */
+	created: number;
 	/** Where the session lives: this UI's per-client dir, or the pi CLI/TUI dir. */
 	source?: "web" | "tui";
 }
@@ -499,7 +502,10 @@ export interface SessionSummary {
 export interface ProjectSummary {
 	/** Absolute path of the workspace directory. */
 	path: string;
-	/** Last time this workspace was used (ms epoch) — drives the sort order. */
+	/** When the project first entered the list (ms epoch) — drives the fixed
+	 *  order, newest first; the position never changes afterwards. */
+	firstAdded: number;
+	/** Last time this workspace was used (ms epoch) — informational only. */
 	lastUsed: number;
 	/** Most recently modified conversation in this project, when available. */
 	lastConversationAt?: number;

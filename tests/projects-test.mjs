@@ -68,29 +68,37 @@ async function phase1() {
 	const first = await c.wait((m) => m.type === "snapshot");
 	console.log("[1] initial cwd =", first.state.cwd);
 
+	// Capture the pre-switch list — switching must not reorder existing entries.
+	c.send({ type: "list_projects" });
+	const before = await c.wait((m) => m.type === "projects");
+	console.log("[2] projects before switch =", before.projects.map((p) => p.path));
+
 	c.send({ type: "set_cwd", path: PROJ_B });
 	const afterSwitch = await c.wait(
 		(m) => m.type === "snapshot" && m.state.cwd === PROJ_B,
 	);
-	console.log("[2] after set_cwd →", afterSwitch.state.cwd);
+	console.log("[3] after set_cwd →", afterSwitch.state.cwd);
 
-	const projs = await c.wait((m) => m.type === "projects");
-	console.log(
-		"[3] projects =",
-		projs.projects.map((p) => p.path),
-	);
-	if (!projs.projects.some((p) => p.path === PROJ_B)) {
+	c.send({ type: "list_projects" });
+	const after = await c.wait((m) => m.type === "projects");
+	console.log("[4] projects after switch =", after.projects.map((p) => p.path));
+
+	const wasAt = before.projects.findIndex((p) => p.path === PROJ_B);
+	const nowAt = after.projects.findIndex((p) => p.path === PROJ_B);
+	if (nowAt === -1) {
 		throw new Error("FAIL: new cwd missing from project list");
 	}
-	// Explicit list_projects must also work.
-	c.send({ type: "list_projects" });
-	const projs2 = await c.wait((m) => m.type === "projects");
-	console.log(
-		"[4] list_projects →",
-		projs2.projects.map((p) => p.path),
-	);
-	if (projs2.projects[0].path !== PROJ_B) {
-		throw new Error("FAIL: most recent project not first");
+	if (wasAt === -1) {
+		// Brand-new project: prepends at the top; the rest keep their order.
+		if (nowAt !== 0) throw new Error("FAIL: brand-new project not prepended");
+		const beforePaths = before.projects.map((p) => p.path);
+		const afterRest = after.projects.slice(1).map((p) => p.path);
+		if (afterRest.join() !== beforePaths.slice(0, afterRest.length).join()) {
+			throw new Error("FAIL: existing projects reordered by a new entry");
+		}
+	} else if (nowAt !== wasAt) {
+		// Already-known project: its position must not move (no jump-to-front).
+		throw new Error(`FAIL: project jumped from index ${wasAt} to ${nowAt}`);
 	}
 	c.close();
 	console.log("\n✅ PHASE 1 PASSED");
