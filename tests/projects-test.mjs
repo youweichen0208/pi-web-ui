@@ -100,6 +100,24 @@ async function phase1() {
 		// Already-known project: its position must not move (no jump-to-front).
 		throw new Error(`FAIL: project jumped from index ${wasAt} to ${nowAt}`);
 	}
+
+	// Switch back to the initial (older, non-first) project — the reported bug:
+	// selecting it must NOT move it to the front.
+	const initial = first.state.cwd;
+	if (initial && initial !== PROJ_B) {
+		const beforeSwitch = after.projects.findIndex((p) => p.path === initial);
+		c.send({ type: "set_cwd", path: initial });
+		await c.wait((m) => m.type === "snapshot" && m.state.cwd === initial);
+		c.send({ type: "list_projects" });
+		const back = await c.wait((m) => m.type === "projects");
+		const backAt = back.projects.findIndex((p) => p.path === initial);
+		if (backAt !== beforeSwitch) {
+			throw new Error(`FAIL: switching to an older project moved it (index ${beforeSwitch} → ${backAt})`);
+		}
+		// End where phase2 expects the restart to restore: PROJ_B.
+		c.send({ type: "set_cwd", path: PROJ_B });
+		await c.wait((m) => m.type === "snapshot" && m.state.cwd === PROJ_B);
+	}
 	c.close();
 	console.log("\n✅ PHASE 1 PASSED");
 }
