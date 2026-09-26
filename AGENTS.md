@@ -108,10 +108,10 @@ pi-web-ui/
 
 | 组件 | 职责 |
 | --- | --- |
-| `FilePreview.tsx` | 右栏代码高亮编辑、Markdown 默认在预览画布中编辑（`/` 插入元素、截图粘贴）与媒体/SQLite 只读预览；打开文件自动附加路径引用，草稿须保存后模型才能读取改动；版本校验保存与离开保护（详见 docs/architecture-attachments.md） |
+| `FilePreview.tsx` | 右栏代码高亮编辑、Markdown 默认在预览画布中编辑（`/` 插入元素、截图粘贴）与媒体/SQLite 只读预览；当前文件 chip 严格镜像预览面板，发送时携带编辑器快照（含未保存改动）；版本校验保存与离开保护（详见 docs/architecture-attachments.md） |
 | `LeftPanel.tsx` | 全高项目栏：品牌、新对话、可折叠项目及会话、悬停更多菜单（重命名／删除）、连接／语言／设置；布局见 `docs/ui-design.md` |
 | `RightPanel.tsx` | 可展开目录树（串行 list_files + 节点缓存）、Git 改动标记（独立请求 ID）、文件预览与附件；布局见 `docs/ui-design.md` |
-| `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色）；全窗口拖放目标；followUp 排队/steer 插队；斜杠命令选择器 |
+| `ChatInput.tsx` | 输入框 + 附件 chips（inline/reference/lines 三色）+ 当前文件 chip（镜像预览面板，发送取编辑器快照）；全窗口拖放目标；followUp 排队/steer 插队；斜杠命令选择器 |
 | `Message.tsx` / `MessageList.tsx` | 消息渲染（附件卡片、流式光标、tool 结果关联）；编辑重问保留原附件；技能卡片折叠；惰性窗口化；问题导航双通道；流式 StreamMarkdown |
 | `ToolCallBlock.tsx` / `ThinkingBlock.tsx` / `BashBlock` | 工具调用卡片、思考块、bash 输出 |
 | `TerminalPanel.tsx` / `TermXterm.tsx` | 终端视图 + xterm 实例桥接 |

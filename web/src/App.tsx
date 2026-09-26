@@ -17,6 +17,7 @@ import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { MessageList } from "./components/MessageList";
 import { ChatInput } from "./components/ChatInput";
+import type { CurrentFileContext, ReadCurrentFile } from "./current-file";
 import { GoalBar } from "./components/GoalBar";
 import { FooterBar } from "./components/FooterBar";
 import { Dialog } from "./components/Dialog";
@@ -211,6 +212,10 @@ export function App() {
 		}
 	}, [chat.activeConversationId, attachments]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
+	// 当前文件（0.50.0 语义）：预览面板的严格镜像 — chip 跟随打开的文件，
+	// 发送时经 contextReader 取编辑器快照（含未保存修改）。
+	const contextReader = useRef<ReadCurrentFile | null>(null);
+	const [currentFile, setCurrentFile] = useState<CurrentFileContext | null>(null);
 	useEffect(() => {
 		if (!switching && chat.state?.cwd && previewFile && previewFile.cwd !== chat.state.cwd) setPreviewFile(null);
 	}, [switching, chat.state?.cwd, previewFile]);
@@ -328,13 +333,10 @@ export function App() {
 		setView("chat");
 		setDrawer("right");
 		if (previewFile?.cwd === cwd && previewFile.path === path) return;
-		const open = () => {
-			setPreviewFile({ path, name, cwd });
-			attach(path, name, "reference");
-		};
+		const open = () => setPreviewFile({ path, name, cwd });
 		if (fileGuard.current) fileGuard.current(open);
 		else open();
-	}, [switching, chat.state?.cwd, previewFile, attach]);
+	}, [switching, chat.state?.cwd, previewFile]);
 	useEffect(() => {
 		const onToolFile = (event: Event) => {
 			const detail = (event as CustomEvent<{ path?: string; line?: number }>).detail;
@@ -839,6 +841,8 @@ export function App() {
 							{/* 扩展问卷：非模态内联面板，插在输入框上方，对话内容保持可见 */}
 							{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
 							<ChatInput
+								currentFile={!switching && currentFile?.cwd === chat.state?.cwd ? currentFile : null}
+								contextReader={contextReader}
 								contextUsage={chat.state?.stats.contextUsage}
 								promptResult={chat.promptResult}
 								send={send}
@@ -890,6 +894,8 @@ export function App() {
 								<FilePreviewContent
 									key={`${previewFile.cwd}:${previewFile.path}`}
 									file={previewFile}
+									contextReader={contextReader}
+									onContextChange={setCurrentFile}
 									guard={fileGuard}
 									result={chat.fileResult}
 									disabled={!!switching || previewFile.cwd !== chat.state?.cwd}

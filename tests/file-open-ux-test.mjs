@@ -34,14 +34,15 @@ try {
 	await page.locator(".file-name", { hasText: "note.md" }).click();
 	await page.locator(".fp-markdown h1").waitFor();
 	assert.equal(await page.locator(".fp-rich-document").getAttribute("contenteditable"), "true");
-	assert.equal(await page.locator(".attach-chip.reference").count(), 1, "opening a file should attach a path reference");
+	assert.equal(await page.locator(".attach-chip.reference").count(), 0, "opening a file must not attach a path reference");
+	await page.locator(".inputbox .attach-chip.current-file").waitFor();
 	const header = await page.locator(".fp-title-row").boundingBox();
 	assert(header.height < 58, `header should occupy one row: ${header.height}`);
 	assert.equal(await page.locator(".fp-foot").count(), 0);
 	assert.equal(await page.locator(".fp-markdown h1").evaluate((node) => Math.round(parseFloat(getComputedStyle(node).fontSize))), 27);
 	await page.screenshot({ path: "/private/tmp/pi-file-open-ux.png" });
 	await page.locator(".fp-reference").click();
-	assert.equal(await page.locator(".attach-chip.reference").count(), 1, "explicit reference should not duplicate the automatic one");
+	assert.equal(await page.locator(".attach-chip.reference").count(), 1, "manual reference appears as an explicit attachment");
 	await page.locator(".attach-chip.reference button").click();
 	await page.locator(".fp-markdown p", { hasText: "Alpha beta." }).evaluate((node) => {
 		const range = document.createRange();

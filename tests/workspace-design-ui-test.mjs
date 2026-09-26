@@ -101,7 +101,7 @@ await page.locator('.fp-markdown table').waitFor();
 assert((await page.locator('.fp-file-path').textContent()).includes('AGENTS.md'));
 assert.equal(await page.locator('.fp-title-row .fp-back').isVisible(),true);
 assert.equal(await page.locator('.fp-foot').count(),0);
-assert.equal(await page.locator('.inputbox .attach-chip.current-file').count(),0);
+assert.equal(await page.locator('.inputbox .attach-chip.current-file').count(),1);
 const editorGeometry=await page.evaluate(()=>{
 const editor=document.querySelector('.drawer-right').getBoundingClientRect();
 const chat=document.querySelector('.view-pane:not(.hidden) .main').getBoundingClientRect();

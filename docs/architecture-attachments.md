@@ -85,15 +85,15 @@ Markdown 使用原生 contenteditable，`rich-markdown.tsx` 按语法树的源�
 `web/src/download.ts`：不用 `<a download href>`（Chrome Safe Browsing 会拦截非 HTTPS 源的无信誉文件类型如 .zip/.exe），而是 fetch → blob 保存；>200MB 回退原生导航流式下载；失败 toast 显示服务端错误正文（`downloadFailed` i18n key）。
 
 **Windows 特例**：blob 锚点下载在 Windows 上仍可能被 Safe Browsing 静默拦截（无 JS 错误，表现为「点了没反应」）——Chromium 安全上下文（localhost/HTTPS）下优先用 `showSaveFilePicker` 直接写入用户选中的文件（绕过下载管线）；Windows 上保存名经 `sanitizeFileName` 清洗（`<>:"\|?*`、尾随点/空格、CON/COM1 等保留设备名）；取消保存对话框不算错误（`cancelled`，不弹 toast）。`download-test.mjs` 覆盖回归（已禁用 picker 以测 blob 路径）。
-### 当前打开文件引用（协议 v15）
+### 当前文件与编辑器快照
 
-打开文件时自动在当前对话输入框附加该文件的路径引用；同一路径手动点击「@引用」不会重复添加。选中预览文字／源码行后点击「引用选中内容」可另外附加行号范围；输入框展示附件标签，可手动移除。打开文件本身不会发送提问，需由用户输入并发送。
+预览面板打开可编辑文件时，输入框上方自动出现「当前文件」chip——它是预览面板的**严格镜像**：始终只指向当前打开的文件，随其打开与关闭出现和消失，打开另一个文件即替换（不随历史累积）。chip 可按对话关闭，重新打开文件后恢复；截断、二进制等不可编辑文件不产生 chip。打开文件本身不会发送提问，需由用户输入并发送。标题栏「@引用」与「引用选中内容」是独立的手动附件，不与 chip 混用。
 
-协议仍支持 `PromptAttachment.editorSnapshot`（含 cwd、完整 text、dirty 和 version），供显式发送编辑草稿的客户端使用；自动引用、标题栏「@引用」和行号引用都读取已保存的磁盘内容。预览画布里的修改需先点击保存，模型才能通过路径引用读取最新内容。
+发送携带 chip 的消息时，前端才取编辑器快照（`PromptAttachment.editorSnapshot`：cwd、完整 text、dirty、version）——内容来自编辑器草稿而非磁盘，未保存修改直接对模型可见；快照超过 512 KiB 阻止发送。同路径的整文件附件（inline/reference）被快照取代，行号引用保留。每条消息取发送时刻的最新草稿，历史消息的快照各自冻结。
 
 服务端在构建任何附件前验证全部快照的工作区、真实路径边界、类型和大小；历史重问在 fork 前也验证。快照作为 file aside 传给 agent，明确来源、保存状态及优先分析要求，details 保存原快照供卡片和历史重问恢复。旧记录无此字段时保持原行为。prompt 的 requestId 与 prompt_result 在 SDK 预检通过后确认接收，校验失败或断线保留编辑中的问题及附件；仅自动标签不能触发发送。
 
-SDK 的 nextTurn 缓冲不会随 steer/followUp 消费，因此附件在预检通过后进入对应队列；普通发送在 agent_start 时入队。带附件的运行临时使用 all 队列模式，让问题与文件卡一起消费，agent_end 恢复原模式。预检失败与仅执行扩展命令不留下下一轮文件快照。协议回归：`tests/current-file-protocol-test.mjs`（本地模拟模型，验证实际 SDK 请求）、`tests/unit/current-file.test.ts`；界面回归：`tests/file-open-ux-test.mjs`。
+SDK 的 nextTurn 缓冲不会随 steer/followUp 消费，因此附件在预检通过后进入对应队列；普通发送在 agent_start 时入队。带附件的运行临时使用 all 队列模式，让问题与文件卡一起消费，agent_end 恢复原模式。预检失败与仅执行扩展命令不留下下一轮文件快照。协议回归：`tests/current-file-protocol-test.mjs`（本地模拟模型，验证实际 SDK 请求）、`tests/unit/current-file.test.ts`；界面回归：`tests/current-file-ui-test.mjs`（chip 镜像、快照、取代与守卫）、`tests/file-open-ux-test.mjs`。
 
 高亮块使用 `> [!NOTE]` 加引用正文保存为 Markdown，编辑器和只读 Markdown 渲染器共用标记转换；浅蓝底色仅属于显示样式。保存时不会写入 HTML 或编辑器属性，普通引用保持原样。回归：`tests/highlight-block-ui-test.mjs` 验证插入、编辑、保存重开与源码切换，`tests/unit/highlight-block.test.ts` 验证标记识别边界。
 

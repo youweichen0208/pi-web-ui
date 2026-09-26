@@ -1,3 +1,4 @@
+import type { CurrentFileContext, ReadCurrentFile } from "../current-file";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MutableRefObject } from "react";
 import {
@@ -35,6 +36,8 @@ export interface PreviewFile {
 export type FileNavigationGuard = (action: () => void) => void;
 
 interface FilePreviewProps {
+	contextReader?: MutableRefObject<ReadCurrentFile | null>;
+	onContextChange?: (context: CurrentFileContext | null) => void;
 	result: Extract<ServerMessage, { type: "file_result" }> | null;
 	guard: MutableRefObject<FileNavigationGuard | null>;
 	disabled: boolean;
@@ -60,7 +63,7 @@ interface Range {
 }
 
 export const FilePreviewContent = memo(function FilePreviewContent({
-	result, guard, disabled, connected,
+	result, guard, disabled, connected, contextReader, onContextChange,
 	file,
 	content,
 	send,
@@ -80,7 +83,11 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 	// Editable files retain their visual formatting while accepting input.
 	const [editing, setEditing] = useState(true);
 	const [draft, updateDraft] = useState("");
-	const setDraft = updateDraft;
+	const draftRef = useRef("");
+	const setDraft = (value: string) => { draftRef.current = value; updateDraft(value); };
+	// Identity of this open instance — the current-file chip + snapshot read
+	// key off it, so a reopen gets a fresh id and the chip follows along.
+	const openId = useRef(randomUuid());
 	// Markdown preview renders the current draft.
 	const [markdownPreview, setMarkdownPreview] = useState(true);
 	const [diffMode, setDiffMode] = useState<"git" | "external" | null>(null);
@@ -251,6 +258,22 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 		window.addEventListener("beforeunload", prevent);
 		return () => window.removeEventListener("beforeunload", prevent);
 	}, [dirty]);
+
+	// 当前文件上下文（0.50.0 语义）：预览打开且可编辑时向 App 上报自己，
+	// 并注册快照读取器 — 发送时取的是编辑器草稿（含未保存修改），不是磁盘。
+	const eligible = !!loaded && loaded.kind === "text" && !loaded.binary && !loaded.truncated && !loading && !disabled;
+	useLayoutEffect(() => {
+		if (!contextReader) return;
+		contextReader.current = (id) => eligible && loaded && id === openId.current ? {
+			path: file.path, mode: "inline",
+			editorSnapshot: { cwd: file.cwd, text: draftRef.current, dirty: draftRef.current !== loaded.text, version: loaded.version },
+		} : null;
+		return () => { contextReader.current = null; };
+	}, [contextReader, eligible, loaded, file.path, file.cwd]);
+	useLayoutEffect(() => {
+		onContextChange?.(eligible ? { ...file, id: openId.current, dirty } : null);
+	}, [eligible, dirty, file, onContextChange]);
+	useLayoutEffect(() => () => onContextChange?.(null), [onContextChange]);
 
 	// End drag selection on mouseup anywhere.
 	useEffect(() => {

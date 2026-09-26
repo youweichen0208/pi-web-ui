@@ -1,3 +1,6 @@
+import type { MutableRefObject } from "react";
+import type { CurrentFileContext, ReadCurrentFile } from "../current-file";
+import { mergeCurrentFile } from "../current-file";
 import { randomUuid } from "../uuid";
 import { memo, useLayoutEffect, useEffect, useRef, useState } from "react";
 import { FiPlus, FiSquare, FiPaperclip, FiArrowUp } from "react-icons/fi";
@@ -12,6 +15,11 @@ import { ModelThinking } from "./ModelThinking";
  *  by the server when the persisted set is unchanged), so the shallow-compared
  *  memo() below skips this input bar on every text delta. */
 interface ChatInputProps {
+	/** Mirrors the preview panel: the file currently open there, or null.
+	 *  Drives the current-file chip above the composer. */
+	currentFile: CurrentFileContext | null;
+	/** Reads the editor snapshot for the open file at submit time. */
+	contextReader: MutableRefObject<ReadCurrentFile | null>;
 	contextUsage?: UiState["stats"]["contextUsage"];
 	promptResult: Extract<ServerMessage, { type: "prompt_result" }> | null;
 	ready: boolean;
@@ -65,6 +73,7 @@ interface ChatInputProps {
 }
 
 export const ChatInput = memo(function ChatInput({
+	currentFile, contextReader,
 	contextUsage,
 	ready, promptResult,
 	streaming,
@@ -85,6 +94,10 @@ export const ChatInput = memo(function ChatInput({
 	onManageModels,
 }: ChatInputProps) {
 	const t = useT();
+	// Per-conversation chip dismissal: closing the chip hides it until the
+	// preview opens a (different) file — key is the open instance id.
+	const [dismissed, setDismissed] = useState<Record<string, string>>({});
+	const autoFile = currentFile && dismissed[activeConversationId] !== currentFile.id ? currentFile : null;
 	const pendingSubmit = useRef<{ id: string; conversation: string; text: string; attachments: ChatInputProps["attachments"] } | null>(null);
 
 	const { locale } = useI18n();
@@ -312,7 +325,21 @@ export const ChatInput = memo(function ChatInput({
 		// in agent-service.ts. The 补充 (supplement) button passes queue=true,
 		// which the server delivers as followUp instead — the prompt is sent
 		// only after the WHOLE run finishes ("AI 生成结束才发送").
-		const outgoing: PromptAttachment[] = attachments.map(({ key, isDir, ...attachment }) => attachment);
+		let outgoing: PromptAttachment[] = attachments.map(({ key, isDir, ...attachment }) => attachment);
+		// 当前文件 chip：发送时才取编辑器快照（含未保存修改），并取代同路径的
+		// 整文件附件 — chip 始终只指向当前打开的文件，不随历史累积。
+		if (autoFile) {
+			const snapshot = contextReader.current?.(autoFile.id);
+			if (!snapshot?.editorSnapshot || snapshot.path !== autoFile.path || snapshot.editorSnapshot.cwd !== autoFile.cwd) {
+				onNotice("error", t("currentFileUnavailable"));
+				return;
+			}
+			if (new TextEncoder().encode(snapshot.editorSnapshot.text).length > 512 * 1024) {
+				onNotice("error", t("currentFileTooLarge"));
+				return;
+			}
+			outgoing = mergeCurrentFile(outgoing, snapshot);
+		}
 		const requestId = randomUuid();
 		if (send({ type: "prompt", text: trimmed, queue, requestId, attachments: outgoing })) {
 			pendingSubmit.current = { id: requestId, conversation: activeConversationId, text, attachments };
@@ -484,8 +511,13 @@ export const ChatInput = memo(function ChatInput({
 				</div>
 			)}
 			<div className={`inputbox${text.length > 0 ? " has-draft" : ""}`}>
-			{attachments.length > 0 && (
+			{(attachments.length > 0 || autoFile) && (
 				<div className="attach-row">
+					{autoFile && <span className="attach-chip current-file" title={`${autoFile.cwd}/${autoFile.path}`}>
+						@{autoFile.name}{autoFile.dirty ? ` · ${t("currentFileUnsaved")}` : ""}
+						<button type="button" className="attach-remove" title={t("removeAttachment")}
+							onClick={() => setDismissed((previous) => ({ ...previous, [activeConversationId]: autoFile.id }))}>×</button>
+					</span>}
 					{attachments.map((a) => (
 						<span
 							key={a.key ?? `${a.path}|${a.mode}|${a.lines ? `${a.lines.start}-${a.lines.end}` : ""}`}
