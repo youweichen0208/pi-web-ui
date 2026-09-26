@@ -21,6 +21,14 @@ test("unmatched markers and unlabeled chains stay raw; grep no-match is neutral"
 	expect(run?.status).toBe("no-match");
 });
 
+test("recognizes labelled steps separated by semicolons while preserving quoted delimiters", () => {
+	expect(splitCommandChain('echo "a; b"; pwd; echo "=== NEXT ==="; ls missing')).toEqual(['echo "a; b"', 'pwd', 'echo "=== NEXT ==="', 'ls missing']);
+	const args = JSON.stringify({ command: 'echo "=== FIRST ==="; pwd; echo "=== SECOND ==="; ls missing' });
+	const run = parseLabeledBashSteps(args, '=== FIRST ===\n/tmp\n=== SECOND ===\nls: missing: No such file or directory\nCommand exited with code 1', true, true, 1);
+	expect(run?.status).toBe("partial");
+	expect(run?.steps.map((step) => step.state)).toEqual(["done", "failed"]);
+});
+
 test("extracts real file locations from TypeScript failures", () => {
 	expect(parseBashDiagnostics('web/src/App.tsx(23,5): error TS2322: wrong type\nserver/index.ts:17:2: error: failed')).toEqual([
 		{ path: "web/src/App.tsx", line: 23, column: 5, message: "wrong type" },

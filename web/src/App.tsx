@@ -828,6 +828,7 @@ export function App() {
 							{chat.state ? (
 								<WorkspacePathContext.Provider value={chat.state.cwd}><MessageList
 									active={view === "chat"}
+									connected={chat.ready}
 									key={chat.state.conversationId ?? "boot"}
 									state={chat.state}
 									liveOutputs={chat.liveOutputs}
@@ -893,6 +894,8 @@ export function App() {
 									active={!filesCollapsed && !previewFile && !switching && view === "chat" && ((!isMobile && !isNarrow) || drawer === "right")}
 									send={send}
 									files={chat.files}
+									conversationFilesChecked={chat.conversationFilesChecked}
+									ready={chat.ready}
 									scmData={chat.scmData}
 									scmDirty={chat.scmDirty}
 									fileChanged={chat.fileChanged}

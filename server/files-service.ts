@@ -6,7 +6,7 @@
  * 经 FilesHost 回调与 ClientSession 解耦。
  */
 import { createHash } from "node:crypto";
-import { readFileSync, statSync, writeFileSync, watch } from "node:fs";
+import { readFileSync, realpathSync, statSync, writeFileSync, watch } from "node:fs";
 import { resolve, relative, sep } from "node:path";
 import type { ServerMessage, FileEntry, FileSearchResult } from "./protocol.js";
 import {
@@ -29,6 +29,27 @@ import {
 export const IS_WIN32 = process.platform === "win32";
 /** 预览只读文件前 512KB。 */
 export const MAX_PREVIEW_BYTES = 512 * 1024;
+
+/** Confirm history-derived paths exist as files inside this workspace. */
+export function existingConversationFiles(cwd: string, paths: string[]): string[] {
+	let root: string;
+	try { root = realpathSync(cwd); } catch { return []; }
+	const seen = new Set<string>();
+	const found: string[] = [];
+	for (const path of paths.slice(0, 64)) {
+		if (typeof path !== "string" || path.length > 4096 || path.includes("\0") || seen.has(path)) continue;
+		seen.add(path);
+		const normalized = path.replaceAll("\\", "/");
+		if (normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized) || normalized.split("/").includes("..")) continue;
+		try {
+			const target = realpathSync(resolve(root, normalized));
+			const rel = relative(root, target);
+			if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || resolve(root, rel) !== target) continue;
+			if (statSync(target).isFile()) found.push(path);
+		} catch { /* removed, unreadable, or invalid */ }
+	}
+	return found;
+}
 
 // mac/linux: hide build & dependency noise (original behavior).
 const IGNORED_ENTRIES = new Set([

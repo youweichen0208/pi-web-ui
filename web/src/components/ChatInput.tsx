@@ -415,7 +415,10 @@ export const ChatInput = memo(function ChatInput({
 						type="button"
 						className="btn stop"
 						title={t("stopAgent")}
-						onClick={() => send({ type: "abort" })}
+						onClick={() => {
+							const accepted = send({ type: "abort" });
+							if (!connected) onNotice(accepted ? "warning" : "error", t(accepted ? "stopQueuedAfterReconnect" : "stopUnavailable"));
+						}}
 					>
 						<FiSquare />
 					</button>

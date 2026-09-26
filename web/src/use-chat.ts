@@ -87,6 +87,7 @@ export interface ChatState {
 	dirBrowse: DirBrowse | null;
 	/** Workspace file listing for the right panel. */
 	files: FileListing | null;
+	conversationFilesChecked: Extract<ServerMessage, { type: "conversation_files_checked" }> | null;
 	gitBranch: Extract<ServerMessage, { type: "git_branch" }> | null;
 	/** Latest file content fetched for the preview panel (request-matched in the file editor). */
 	fileContent: FileContent | null;
@@ -228,6 +229,7 @@ type Action =
 	| { type: "projects"; projects: ProjectSummary[] }
 	| { type: "dir_browse"; dirBrowse: DirBrowse }
 	| { type: "files"; files: FileListing }
+	| { type: "conversation_files_checked"; result: Extract<ServerMessage, { type: "conversation_files_checked" }> }
 	| { type: "git_branch"; data: Extract<ServerMessage, { type: "git_branch" }> }
 
 	| { type: "file_changed"; path: string }
@@ -457,7 +459,7 @@ function reducer(state: ChatState, action: Action): ChatState {
 				...state,
 				ready: true,
 				state: action.state,
-				...(state.state?.cwd !== action.state.cwd ? { sessions: [], files: null, fileContent: null, scmData: null } : {}),
+				...(state.state?.cwd !== action.state.cwd ? { sessions: [], files: null, conversationFilesChecked: null, fileContent: null, scmData: null } : {}),
 				activeConversationId: action.state.conversationId,
 				liveOutputs: pruneLiveOutputs(state.liveOutputs, action.state),
 				toolStatuses: pruneToolStatuses(state.toolStatuses, action.state),
@@ -567,6 +569,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, gitBranch: action.data };
 		case "files":
 			return { ...state, files: action.files };
+		case "conversation_files_checked":
+			return { ...state, conversationFilesChecked: action.result };
 		case "file_changed":
 			return { ...state, fileChanged: { path: action.path } };
 		case "prompt_result":
@@ -720,6 +724,7 @@ export function useChat() {
 		projects: [],
 		dirBrowse: null,
 		files: null,
+		conversationFilesChecked: null,
 		gitBranch: null,
 
 		fileChanged: null,
@@ -794,6 +799,8 @@ export function useChat() {
 	/** Last time any server message arrived — used to detect half-open connections. */
 	const lastBeatRef = useRef(0);
 	const noticeId = useRef(0);
+	/** Stop requested while offline; replay only for the same still-running conversation. */
+	const pendingAbortRef = useRef<string | null>(null);
 	/** Last delta seq seen per conversation (message_delta + tool_delta share
 	 *  one per-conversation sequence) — a gap on the ACTIVE conversation
 	 *  triggers a one-shot get_state resync; background conversations converge
@@ -839,6 +846,12 @@ export function useChat() {
 
 	const send = useCallback((msg: ClientMessage) => {
 		const ws = wsRef.current;
+		if (msg.type === "abort" && (!ws || ws.readyState !== WebSocket.OPEN || !snapshotReady.current)) {
+			const conversationId = authoritative.current.state?.conversationId;
+			if (!conversationId) return false;
+			pendingAbortRef.current = conversationId;
+			return true;
+		}
 		if (ws && ws.readyState === WebSocket.OPEN) {
 			if (!snapshotReady.current && msg.type !== "get_state") return false;
 			if (msg.type === "set_cwd") {
@@ -949,6 +962,11 @@ export function useChat() {
 					// Snapshot is authoritative — delta sequence tracking restarts.
 					lastDeltaSeqRef.current = new Map();
 					dispatch({ type: "snapshot", state: msg.state });
+					if (pendingAbortRef.current) {
+						const shouldAbort = pendingAbortRef.current === msg.state.conversationId && msg.state.isStreaming;
+						pendingAbortRef.current = null;
+						if (shouldAbort) ws.send(JSON.stringify({ type: "abort" } satisfies ClientMessage));
+					}
 					break;
 				case "snapshot_delta": {
 					// Gap detection BEFORE dispatch: if this incremental checkpoint
@@ -1024,6 +1042,10 @@ export function useChat() {
 				case "files":
 					if (msg.cwd !== confirmedCwd.current) break;
 					dispatch({ type: "files", files: msg });
+					break;
+				case "conversation_files_checked":
+					if (msg.cwd !== confirmedCwd.current) break;
+					dispatch({ type: "conversation_files_checked", result: msg });
 					break;
 				case "file_changed":
 					dispatch({ type: "file_changed", path: msg.path });

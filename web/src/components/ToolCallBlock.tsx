@@ -1,6 +1,6 @@
-import { numberedOutputLine, differentCommandDirectory, isSearchCommand } from "../bash-presentation";
+import { numberedOutputLine, differentCommandDirectory, isSearchCommand, isLikelyErrorLine, selectVisibleOutputLines, displayBashCommand } from "../bash-presentation";
 import { WorkspacePathContext } from "../workspace-context";
-import { memo, useContext, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useContext, useEffect, useRef, useState } from "react";
 import {
 	FiChevronDown,
 	FiChevronRight,
@@ -399,7 +399,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 					{targetPath ? (
 						<button type="button" className="toolcall-read-path" title={targetPath} onClick={() => setZoomed(true)}>{displayReadPath(targetPath)}</button>
 					) : block.name === "bash" && block.argumentsText.startsWith("{") ? (
-						bashRun ? <div className="bash-command-preview"><div className={fullCommand ? "full" : "clipped"}><TerminalCommand args={block.argumentsText} /></div><button type="button" onClick={() => setFullCommand((value) => !value)}>{fullCommand ? t("collapseCode") : t("bashExpandCommand", { n: bashRun.steps.length })}</button></div> : <TerminalCommand args={block.argumentsText} />
+						<div className="bash-command-preview"><div className={fullCommand ? "full" : "clipped"}><TerminalCommand args={block.argumentsText} cwd={cwd} /></div><button type="button" onClick={() => setFullCommand((value) => !value)}>{fullCommand ? t("collapseCode") : t("bashExpandFullCommand")}</button></div>
 					) : writePreview ? (
 						writePreview.lang ? (
 							<div className="toolcall-code">
@@ -413,7 +413,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 					)}
 				</div>
 			)}
-			{output.length > 0 && (block.name === "bash" ? bashRun && bashView === "steps" ? <BashSteps run={bashRun} wrap={lineWrap} /> : bashDiagnostics.length > 0 ? <BashFailure diagnostics={bashDiagnostics} output={output} wrap={lineWrap} /> : <BashOutput output={output} wrap={lineWrap} cwd={differentCommandDirectory(block.argumentsText, cwd) ?? ""} error={isError} searchOutput={isSearchCommand(block.argumentsText)} /> : (
+			{output.length > 0 && (block.name === "bash" ? bashRun && bashView === "steps" ? <BashSteps run={bashRun} wrap={lineWrap} /> : bashDiagnostics.length > 0 ? <BashFailure diagnostics={bashDiagnostics} output={output} wrap={lineWrap} /> : <BashOutput output={output} wrap={lineWrap} cwd={differentCommandDirectory(block.argumentsText, cwd) ?? ""} searchOutput={isSearchCommand(block.argumentsText)} /> : (
 				<div className="toolcall-output">
 					<div className="toolcall-output-label">
 						{isError ? t("errorOutput") : block.name === "read" ? t("modelReadOnly") : t("output")}
@@ -555,7 +555,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 });
 
 /** Pretty-print a bash tool call's arguments as a terminal line. */
-function TerminalCommand({ args }: { args: string }) {
+function TerminalCommand({ args, cwd }: { args: string; cwd: string }) {
 	let parsed: { command?: string; timeout?: number } | null = null;
 	try {
 		parsed = JSON.parse(args) as { command?: string; timeout?: number };
@@ -566,7 +566,7 @@ function TerminalCommand({ args }: { args: string }) {
 	return (
 		<div className="termline">
 			<span className="termline-icon">$</span>
-			<code>{parsed.command}</code>
+			<code title={parsed.command}>{displayBashCommand(parsed.command, cwd)}</code>
 			{typeof parsed.timeout === "number" && (
 				<span className="termline-timeout">⏱ {parsed.timeout}s</span>
 			)}
@@ -598,7 +598,7 @@ function BashSteps({ run, wrap }: { run: BashStepRun; wrap: boolean }) {
 				<span className="bash-step-count">{step.state === "no-match" ? t("bashNoMatch") : step.state === "skipped" ? t("bashSkipped") : step.state === "failed" ? run.exitCode !== undefined ? `exit ${run.exitCode}` : t("bashFailed") : step.state === "running" ? t("running") : t("toolLineCount", { n: step.lineCount })}</span>
 				<FiChevronRight className={visible ? "open" : ""} />
 			</button>
-			{visible && <div className={`bash-step-detail ${wrap ? "wrap" : ""}`}><div className="bash-step-command">$ {step.command}</div><pre>{step.output ? step.output.split("\n").map((line, lineIndex, lines) => <span key={lineIndex} className={step.state === "failed" && /\b(?:fatal|error|failed)\s*:/i.test(line) ? "error" : ""}>{line}{lineIndex < lines.length - 1 ? "\n" : ""}</span>) : t(step.state === "no-match" ? "bashNoMatch" : "waitingOutput")}</pre></div>}
+			{visible && <div className={`bash-step-detail ${wrap ? "wrap" : ""}`}><div className="bash-step-command">$ {step.command}</div><pre>{step.output ? step.output.split("\n").map((line, lineIndex, lines) => <span key={lineIndex} className={isLikelyErrorLine(line) ? "error" : ""}>{line}{lineIndex < lines.length - 1 ? "\n" : ""}</span>) : t(step.state === "no-match" ? "bashNoMatch" : "waitingOutput")}</pre></div>}
 		</div>;
 	})}</div>;
 }
@@ -613,7 +613,7 @@ function BashFailure({ diagnostics, output, wrap }: { diagnostics: ReturnType<ty
 	</div>;
 }
 
-function BashOutput({ output, wrap, cwd, error, searchOutput }: { output: string; wrap: boolean; cwd: string; error: boolean; searchOutput: boolean }) {
+function BashOutput({ output, wrap, cwd, searchOutput }: { output: string; wrap: boolean; cwd: string; searchOutput: boolean }) {
 	const t = useT();
 	const [all, setAll] = useState(false);
 	const scroller = useRef<HTMLDivElement>(null);
@@ -628,15 +628,17 @@ function BashOutput({ output, wrap, cwd, error, searchOutput }: { output: string
 	}, [output, all, wrap]);
 	const lines = output.replace(/\r\n/g, "\n").split("\n");
 	if (lines.at(-1) === "") lines.pop();
-	const visible = all ? lines : lines.slice(0, 8);
+	const visible = selectVisibleOutputLines(lines, all);
+	const errorCount = lines.filter(isLikelyErrorLine).length;
 	return <div className="bash-output">
-		<div className="bash-output-label"><span>{t(error ? "errorOutput" : "output")} · {t("toolLineCount", { n: lines.length })}</span>{cwd && <span title={cwd}>{t("toolRelativeTo", { path: cwd })}</span>}</div>
-		<div ref={scroller} className={`bash-output-lines ${wrap ? "wrap" : ""} ${overflow ? "has-overflow" : ""}`}>{visible.map((rawLine, index) => {
+		<div className="bash-output-label"><span>{t("output")} · {t("toolLineCount", { n: lines.length })}{errorCount > 0 ? ` · ${t("bashLikelyErrorLines", { n: errorCount })}` : ""}</span>{cwd && <span title={cwd}>{t("toolRelativeTo", { path: cwd })}</span>}</div>
+		<div ref={scroller} className={`bash-output-lines ${wrap ? "wrap" : ""} ${overflow ? "has-overflow" : ""}`}>{visible.map((index, position) => {
+			const rawLine = lines[index];
 			const { number: lineNumber, text: line } = numberedOutputLine(rawLine, index, searchOutput);
 			const path = /^(?:[.~/\w-]+\/)*[.\w-]+(?:\.[\w-]+)$/.test(line);
 			const split = path ? line.lastIndexOf("/") + 1 : 0;
-			return <div className="bash-output-line" key={index}><span className="bash-line-number">{lineNumber}</span><span className="bash-line-text">{path ? <><span className="bash-path-dir">{line.slice(0, split)}</span><span className={split ? "bash-path-file" : "bash-root-file"}>{line.slice(split)}</span></> : line || " "}</span></div>;
+			return <Fragment key={index}>{position > 0 && index > visible[position - 1] + 1 && <div className="bash-output-gap">{t("bashHiddenLines", { n: index - visible[position - 1] - 1 })}</div>}<div className={`bash-output-line${isLikelyErrorLine(rawLine) ? " error" : ""}`}><span className="bash-line-number">{lineNumber}</span><span className="bash-line-text">{path ? <><span className="bash-path-dir">{line.slice(0, split)}</span><span className={split ? "bash-path-file" : "bash-root-file"}>{line.slice(split)}</span></> : line || " "}</span></div></Fragment>;
 		})}</div>
-		{lines.length > 8 && <button type="button" className="bash-output-more" onClick={() => setAll((value) => !value)}>{all ? t("collapseCode") : t("toolMoreLines", { n: lines.length - 8 })}</button>}
+		{lines.length > 8 && <button type="button" className="bash-output-more" onClick={() => setAll((value) => !value)}>{all ? t("collapseCode") : t("toolMoreLines", { n: lines.length - visible.length })}</button>}
 	</div>;
 }

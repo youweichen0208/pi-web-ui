@@ -58,6 +58,10 @@ await page.locator('.toolcall-bash').waitFor();
 for(const button of await page.locator('.thinking.open .thinking-toggle').all())await button.click();
 await page.locator('.file-dir-main',{hasText:'.scratch'}).click();
 await page.locator('.file-dir-main',{hasText:'us-stock-research'}).waitFor();
+await page.locator('.tree-hidden-toggle').click();
+assert.equal(await page.locator('.file-dir-main',{hasText:'.scratch'}).count(),0);
+await page.locator('.tree-hidden-toggle').click();
+await page.locator('.file-dir-main',{hasText:'.scratch'}).waitFor();
 assert.equal(await page.locator('.file-name-text',{hasText:'AGENTS.md'}).isVisible(),true,'root siblings remain visible');
 await page.locator('.file-dir-main',{hasText:'docs'}).click();
 await page.locator('.file-name-text',{hasText:'note.md'}).waitFor();
@@ -84,9 +88,13 @@ assert.equal(readingEdges.bottom,24,JSON.stringify(readingEdges));
 assert.equal(readingEdges.topFade,'16px');assert.equal(readingEdges.bottomFade,'56px');
 assert.equal(await page.locator('.thinking-control-label').textContent(),'思考');
 await page.locator('.conversation-file').first().waitFor();
-assert.equal(await page.locator('.conversation-files-title').textContent(),'本次对话涉及搜索 12');
+assert.equal(await page.locator('.conversation-files-title').textContent(),'本次对话涉及搜索 2');
 assert.equal(await page.locator('.conversation-file em').count(),0);
-assert((await page.locator('.conversation-file',{hasText:'docs/CONTEXT.md'}).count())>0);
+assert.equal(await page.locator('.conversation-file',{hasText:'CONTEXT.md'}).count(),1);
+assert.equal(await page.locator('.conversation-file',{hasText:'spec.md'}).count(),1);
+assert.equal(await page.locator('.conversation-file',{hasText:'data-source-research.md'}).count(),0,'missing history paths stay out of the current workspace');
+assert.match(await page.locator('.status-version').textContent(),/^v\d+\.\d+\.\d+/);
+assert.equal(await page.locator('.tree-hidden-toggle').getAttribute('aria-pressed'),'true');
 const involvedLayout=await page.evaluate(()=>{
 const panel=document.querySelector('.panel-right').getBoundingClientRect();const tree=document.querySelector('.panel-right > .panel-body').getBoundingClientRect();const section=document.querySelector('.conversation-files').getBoundingClientRect();const list=document.querySelector('.conversation-files-list');
 return {panel:panel.height,tree:tree.height,section:section.height,bottom:section.bottom-panel.bottom,scrollable:list.scrollHeight>list.clientHeight};
@@ -95,7 +103,7 @@ assert(involvedLayout.tree<involvedLayout.panel*.5,JSON.stringify(involvedLayout
 assert(involvedLayout.section>involvedLayout.panel*.4,JSON.stringify(involvedLayout));
 assert(Math.abs(involvedLayout.bottom)<2,JSON.stringify(involvedLayout));
 await page.setViewportSize({width:1600,height:480});
-assert(await page.locator('.conversation-files-list').evaluate(list=>list.scrollHeight>list.clientHeight),'involved files scroll in a short viewport');
+assert.equal(await page.locator('.conversation-file').count(),2,'only confirmed files remain in a short viewport');
 await page.setViewportSize({width:1600,height:1000});
 await page.locator('.messages').evaluate(e=>e.scrollTop=0);
 await page.locator('.inputbox textarea').focus();
@@ -171,6 +179,31 @@ assert(Math.abs(shortLayout.markerPosition-shortLayout.questionPosition)<.06,JSO
 assert((await shortPage.locator('.thinking-duration').textContent()).includes('未记录'));
 assert((await shortPage.locator('.time-gap').getAttribute('title')).includes(String(new Date(shortAt).getFullYear())));
 await shortPage.close();
+
+const bashPage=await context.newPage();
+const bashCommand='echo "=== FIRST ==="; pwd; echo "=== SECOND ==="; ls '+Array.from({length:6},()=>'/Users/alice/projects/missing').join(' ')+'; ls .assets';
+const bashLines=['=== FIRST ===','/tmp','=== SECOND ===',...Array.from({length:9},(_,i)=>`normal output ${i}`),'ls: /Users/alice/projects/missing: No such file or directory',...Array.from({length:7},(_,i)=>`more output ${i}`),'Command exited with code 1'];
+assert.equal(bashLines.length,21);
+const bashMessages=[
+{id:'bash-user',role:'user',content:[{type:'text',text:'Check two locations'}]},
+{id:'bash-call',role:'assistant',content:[{type:'toolCall',id:'bash-ui',name:'bash',argumentsText:JSON.stringify({command:bashCommand})}]},
+{id:'bash-result',role:'toolResult',toolCallId:'bash-ui',toolName:'bash',isError:true,content:[{type:'text',text:bashLines.join('\n')}]},
+];
+await bashPage.routeWebSocket('**/ws',route=>{const upstream=route.connectToServer();route.onMessage(wire=>upstream.send(wire));upstream.onMessage(wire=>{const message=JSON.parse(wire.toString());if(message.type==='snapshot')Object.assign(message.state,{messages:bashMessages,piConfigured:true});route.send(JSON.stringify(message));});});
+await bashPage.goto(`http://localhost:${PORT}`);
+await bashPage.locator('.toolcall.partial .toolcall-status',{hasText:'部分失败 · 1/2 步成功'}).waitFor();
+await bashPage.locator('.tree-filter').click();
+await bashPage.locator('.file-dir-main',{hasText:'.assets'}).waitFor();
+assert.equal(await bashPage.locator('.bash-command-preview .clipped').evaluate(el=>getComputedStyle(el).webkitLineClamp),'2');
+await bashPage.locator('.bash-command-preview > button').click();
+assert.equal(await bashPage.locator('.bash-command-preview .full').count(),1);
+await bashPage.locator('.bash-view-switch button',{hasText:'原始'}).click();
+await bashPage.locator('.bash-output-label',{hasText:'输出 · 21 行 · 疑似错误 1 行'}).waitFor();
+assert.equal(await bashPage.locator('.bash-output-line.error').count(),1,'error line remains visible in collapsed output');
+assert.equal(await bashPage.locator('.bash-output-line.error .bash-line-number').textContent(),'13');
+assert.equal(await bashPage.locator('.toolcall-bash code').first().evaluate(el=>getComputedStyle(el).fontVariantLigatures),'none');
+await bashPage.screenshot({path:'/private/tmp/pi-bash-presentation.png'});
+await bashPage.close();
 
 for(const width of [1100,900,390]){
 await page.setViewportSize({width,height:900});await page.waitForTimeout(250);

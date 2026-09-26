@@ -68,7 +68,7 @@ async function phase1() {
 	const first = await c.wait((m) => m.type === "snapshot");
 	console.log("[1] initial cwd =", first.state.cwd);
 
-	// Capture the pre-switch list — switching must not reorder existing entries.
+	// Capture the pre-switch list — switching must put the target first.
 	c.send({ type: "list_projects" });
 	const before = await c.wait((m) => m.type === "projects");
 	console.log("[2] projects before switch =", before.projects.map((p) => p.path));
@@ -88,32 +88,25 @@ async function phase1() {
 	if (nowAt === -1) {
 		throw new Error("FAIL: new cwd missing from project list");
 	}
+	if (nowAt !== 0) throw new Error("FAIL: selected project did not move to the front");
 	if (wasAt === -1) {
-		// Brand-new project: prepends at the top; the rest keep their order.
-		if (nowAt !== 0) throw new Error("FAIL: brand-new project not prepended");
+		// Brand-new project: the existing projects keep their relative order.
 		const beforePaths = before.projects.map((p) => p.path);
 		const afterRest = after.projects.slice(1).map((p) => p.path);
 		if (afterRest.join() !== beforePaths.slice(0, afterRest.length).join()) {
 			throw new Error("FAIL: existing projects reordered by a new entry");
 		}
-	} else if (nowAt !== wasAt) {
-		// Already-known project: its position must not move (no jump-to-front).
-		throw new Error(`FAIL: project jumped from index ${wasAt} to ${nowAt}`);
 	}
 
-	// Switch back to the initial (older, non-first) project — the reported bug:
-	// selecting it must NOT move it to the front.
+	// Selecting the initial project moves it to the front as well.
 	const initial = first.state.cwd;
 	if (initial && initial !== PROJ_B) {
-		const beforeSwitch = after.projects.findIndex((p) => p.path === initial);
 		c.send({ type: "set_cwd", path: initial });
 		await c.wait((m) => m.type === "snapshot" && m.state.cwd === initial);
 		c.send({ type: "list_projects" });
 		const back = await c.wait((m) => m.type === "projects");
 		const backAt = back.projects.findIndex((p) => p.path === initial);
-		if (backAt !== beforeSwitch) {
-			throw new Error(`FAIL: switching to an older project moved it (index ${beforeSwitch} → ${backAt})`);
-		}
+		if (backAt !== 0) throw new Error(`FAIL: selected project stayed at index ${backAt}`);
 		// End where phase2 expects the restart to restore: PROJ_B.
 		c.send({ type: "set_cwd", path: PROJ_B });
 		await c.wait((m) => m.type === "snapshot" && m.state.cwd === PROJ_B);

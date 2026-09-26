@@ -27,11 +27,11 @@ export function bashCommand(argumentsText?: string): string | null {
 	} catch { return null; }
 }
 
-/** Split top-level && only. Quoted text, escapes and command substitutions
- * must not create UI steps. This parser is deliberately conservative. */
-export function splitCommandChain(command: string): string[] {
-	const parts: string[] = [];
+/** Split top-level `&&` and `;` while preserving the original separators. */
+function commandParts(command: string): { text: string; separator: "" | "&&" | ";" }[] {
+	const parts: { text: string; separator: "" | "&&" | ";" }[] = [];
 	let start = 0;
+	let separator: "" | "&&" | ";" = "";
 	let quote: "'" | '"' | null = null;
 	let escaped = false;
 	let depth = 0;
@@ -43,14 +43,19 @@ export function splitCommandChain(command: string): string[] {
 		if (char === "'" || char === '"') { quote = char; continue; }
 		if (char === "(" || char === "{") { depth++; continue; }
 		if (char === ")" || char === "}") { depth = Math.max(0, depth - 1); continue; }
-		if (depth === 0 && char === "&" && command[i + 1] === "&") {
-			parts.push(command.slice(start, i).trim());
-			start = i + 2;
-			i++;
+		if (depth === 0 && (char === ";" || char === "&" && command[i + 1] === "&")) {
+			parts.push({ text: command.slice(start, i).trim(), separator });
+			separator = char === ";" ? ";" : "&&";
+			start = i + separator.length;
+			i = start - 1;
 		}
 	}
-	parts.push(command.slice(start).trim());
-	return parts.filter(Boolean);
+	parts.push({ text: command.slice(start).trim(), separator });
+	return parts.filter((part) => part.text);
+}
+
+export function splitCommandChain(command: string): string[] {
+	return commandParts(command).map((part) => part.text);
 }
 
 function echoLabel(part: string): string | null {
@@ -69,17 +74,17 @@ function nonemptyLines(output: string): number {
 export function parseLabeledBashSteps(argumentsText: string | undefined, output: string, finished: boolean, isError: boolean, exitCode?: number): BashStepRun | null {
 	const command = bashCommand(argumentsText);
 	if (!command) return null;
-	const chain = splitCommandChain(command);
+	const chain = commandParts(command);
 	const plans: { label: string; command: string }[] = [];
-	let current: { label: string; commands: string[] } | null = null;
+	let current: { label: string; commands: typeof chain } | null = null;
 	for (const part of chain) {
-		const label = echoLabel(part);
+		const label = echoLabel(part.text);
 		if (label) {
-			if (current) plans.push({ label: current.label, command: current.commands.join(" && ") });
+			if (current) plans.push({ label: current.label, command: current.commands.map((item, index) => `${index ? ` ${item.separator} ` : ""}${item.text}`).join("") });
 			current = { label, commands: [] };
 		} else if (current) current.commands.push(part);
 	}
-	if (current) plans.push({ label: current.label, command: current.commands.join(" && ") });
+	if (current) plans.push({ label: current.label, command: current.commands.map((item, index) => `${index ? ` ${item.separator} ` : ""}${item.text}`).join("") });
 	if (plans.length < 2 || plans.some((plan) => !plan.command) || new Set(plans.map((plan) => plan.label)).size !== plans.length) return null;
 
 	const chunks = new Map<string, string[]>();

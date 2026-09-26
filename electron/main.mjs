@@ -83,8 +83,8 @@ async function findFreePort() {
 
 // ── 启动 Server 子进程 ──
 
-async function startServer() {
-	serverPort = await findFreePort();
+async function startServer(reusePort) {
+	serverPort = reusePort || await findFreePort();
 	const serverPath = getServerPath();
 
 	if (!existsSync(serverPath)) {
@@ -170,6 +170,39 @@ async function startServer() {
 	});
 
 	console.log(`[electron] server 就绪，端口 ${serverPort}`);
+}
+
+/** Keep the window's URL stable so its WebSocket can reconnect after a crash. */
+function watchServerExit() {
+	const child = serverProcess;
+	child?.once("exit", () => {
+		if (isQuitting || serverProcess !== child) return;
+		serverProcess = null;
+		void recoverServer();
+	});
+}
+
+async function recoverServer() {
+	const port = serverPort;
+	let lastError;
+	for (const delay of [1000, 2000, 4000]) {
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, delay));
+		if (isQuitting) return;
+		try {
+			await startServer(port);
+			watchServerExit();
+			return;
+		} catch (error) {
+			lastError = error;
+			// A failed startup can leave a child alive until its own timeout fires.
+			serverProcess?.kill("SIGTERM");
+			serverProcess = null;
+		}
+	}
+	if (!isQuitting) dialog.showErrorBox(
+		"pi 服务已断开",
+		`服务重启失败，请重新打开应用。\n\n${lastError instanceof Error ? lastError.message : String(lastError)}`,
+	);
 }
 
 // ── 窗口 ──
@@ -454,6 +487,7 @@ if (!gotLock) {
 app.whenReady().then(async () => {
 	try {
 		await startServer();
+		watchServerExit();
 	} catch (err) {
 		dialog.showErrorBox("pi 启动失败", err instanceof Error ? err.message : String(err));
 		app.quit();

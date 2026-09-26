@@ -330,6 +330,8 @@ export type ClientMessage =
 	| { type: "switch_conversation"; id: string }
 	| { type: "list_projects" }
 	| { type: "list_files"; path?: string }
+	/** Confirm conversation file candidates against the current workspace. */
+	| { type: "check_conversation_files"; cwd: string; reqId: number; paths: string[] }
 	/** Read a workspace file for the preview panel (size-capped, binary-safe). */
 	| { type: "read_file"; path: string; requestId?: string; cwd?: string }
 	/** Save text edited in the file preview panel. */
@@ -1014,6 +1016,7 @@ export type ServerMessage =
 			truncated?: boolean;
 	  }
 	| { type: "projects"; projects: ProjectSummary[] }
+	| { type: "conversation_files_checked"; cwd: string; reqId: number; paths: string[] }
 	| { type: "git_branch"; cwd: string; branch: string | null; detached: boolean; notRepo?: boolean }
 	/** Directory listing for the workspace picker (see `browse_dirs`). */
 	| ({ type: "dir_browse" } & DirBrowse)

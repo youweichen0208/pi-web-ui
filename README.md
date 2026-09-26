@@ -20,7 +20,7 @@ pi-web-ui --port 9000 --cwd /path/to/project
 
 ### 版本与升级
 
-正式版通过 `npm install -g @youweichen/pi-web-ui@latest` 安装，桌面安装包见 [GitHub Releases](https://github.com/youweichen0208/pi-web-ui/releases)。`0.6.x` 的 SemVer 排序低于旧版 `0.51.2`；如果你在其他项目的依赖中固定了 `^0.51.2`，请显式改为 `^0.6.1` 才会切换到本系列。可运行 `npm view @youweichen/pi-web-ui dist-tags --json` 核对 npm 标签。
+正式版通过 `npm install -g @youweichen/pi-web-ui@latest` 安装，桌面安装包见 [GitHub Releases](https://github.com/youweichen0208/pi-web-ui/releases)。`0.6.x` 的 SemVer 排序低于旧版 `0.51.2`；如果你在其他项目的依赖中固定了 `^0.51.2`，请显式改为 `^0.6.2` 才会切换到本系列。可运行 `npm view @youweichen/pi-web-ui dist-tags --json` 核对 npm 标签。
 
 ## SSH 节点工作台
 

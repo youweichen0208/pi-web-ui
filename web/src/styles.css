@@ -2527,6 +2527,7 @@ body.panel-resizing {
 	gap: 6px;
 	color: var(--text-dim);
 }
+.status-version { flex: none; color: var(--text-faint); font: 10px var(--mono); }
 
 .status-sep {
 	color: var(--border);
@@ -8820,6 +8821,7 @@ body { -webkit-font-smoothing: antialiased; }
 @keyframes working-dot { 0%, 70%, 100% { opacity: .3; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { .working-dots i { animation: none; opacity: .7; } }
 .agent-working { display: flex; align-items: center; gap: 8px; margin: 12px 28px 20px; color: var(--text-dim); font: 12.5px/1.5 var(--sans); }
+.agent-working.disconnected { color: var(--amber); }
 .working-duration { color: var(--text-faint); }
 .design-workspace .msg-continuation > .msg-meta { display: none; }
 .design-workspace .msg-continuation { margin-top: -14px; }
@@ -8882,6 +8884,9 @@ body { -webkit-font-smoothing: antialiased; }
 .design-workspace .qn-bar { background: #bdb9c8; }
 .design-workspace .qn-bar:hover { background: #7c7592; }
 .design-workspace .qn-bar.active { background: var(--accent); }
+.design-workspace .qn-bar.cluster { width: 18px; height: 12px; border-radius: 6px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.design-workspace .qn-bar.cluster.active { border-color: var(--accent); }
+.qn-cluster-count { display: grid; place-items: center; width: 100%; height: 100%; color: var(--accent); font: 9px/1 var(--mono); }
 .qn-bar-text { right: calc(100% + 7px); width: 145px; padding: 5px 7px; border: 0; border-radius: 5px; background: #303033; color: #fff; box-shadow: 0 2px 8px #0003; pointer-events: none; }
 .qn-rail:hover .qn-bar-text { visibility: hidden; opacity: 0; }
 .qn-rail .qn-bar:hover .qn-bar-text, .qn-rail .qn-bar:focus-visible .qn-bar-text { visibility: visible; opacity: 1; color: #fff; }
@@ -8908,9 +8913,9 @@ body { -webkit-font-smoothing: antialiased; }
 .design-workspace .input-tools .btn:disabled { opacity: .4; }
 .design-workspace .input-tools-right:has(.btn.stop) .composer-context { display: none; }
 .design-workspace .panel-right > .panel-title { gap: 7px; padding-inline: 12px; }
-.tree-filter { border: 0; border-radius: 4px; background: transparent; padding: 3px 5px; color: var(--text-faint); font: 11px var(--sans); white-space: nowrap; cursor: pointer; }
-.tree-filter:hover { color: var(--text); background: var(--bg-elev2); }
-.tree-filter[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.tree-filter, .tree-hidden-toggle { border: 0; border-radius: 4px; background: transparent; padding: 3px 5px; color: var(--text-faint); font: 11px var(--sans); white-space: nowrap; cursor: pointer; }
+.tree-filter:hover, .tree-hidden-toggle:hover { color: var(--text); background: var(--bg-elev2); }
+.tree-filter[aria-pressed="true"], .tree-hidden-toggle[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .tree-modified-count { flex: none; font: 11px var(--mono); color: var(--text-faint); min-width: 14px; text-align: right; }
 .tree-change-badge { flex: none; min-width: 14px; text-align: center; font: 600 11px var(--mono); }
 .tree-change-badge.m { color: var(--amber); }
@@ -9090,8 +9095,11 @@ body { -webkit-font-smoothing: antialiased; }
 .bash-card-more button:hover { background: var(--bg-elev2); }
 .bash-command-preview { padding: 8px 12px; background: var(--bg-elev); }
 .bash-command-preview .termline { border: 0; padding: 0; background: transparent; color: var(--text); }
-.bash-command-preview .termline code { color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
-.bash-command-preview code, .bash-step-command { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+.bash-command-preview .termline code { color: var(--text); white-space: pre-wrap; overflow-wrap: normal; word-break: normal; }
+.design-workspace .toolcall-bash code, .design-workspace .toolcall-bash pre, .bash-output-lines, .bash-step-detail { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+.bash-output-line.error { color: #f1a7a7; background: color-mix(in srgb, var(--red) 12%, transparent); }
+.bash-output-line.error .bash-line-number { color: #d98b8b; }
+.bash-output-gap { padding: 2px 14px 2px 42px; color: oklch(0.55 0.01 80); font: 10px/1.5 var(--mono); }
 .bash-command-preview .clipped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .bash-command-preview > button { margin: 5px 0 0 20px; border: 0; background: transparent; color: var(--accent); font: 11px var(--sans); cursor: pointer; }
 .bash-steps { background: var(--bg-elev); }

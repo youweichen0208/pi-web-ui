@@ -61,6 +61,8 @@ npm run publish:electron       # 同 build，但 --publish always——本地跑
   即用 Electron 自带的 Node 运行时跑纯 Node 代码，不是渲染进程）。
 - 通过 stdout 里的 `⚡ pi-web-ui` 标记（见 `server/index.ts` 的 `httpServer.listen` 回调）
   判断 server 就绪，再让 `BrowserWindow` 加载 `http://127.0.0.1:{随机空闲端口}`。
+- 子进程意外退出后，主进程在同一端口最多重启 3 次（间隔 1/2/4 秒），窗口保留原 URL，
+  WebSocket 会自行重连；三次均失败时显示错误弹窗。退出应用时不会触发重启。
 - `PI_WEB_PKG_ROOT` 告诉 server 去哪找 `web/dist`（打包后指向
   `process.resourcesPath`，即 `electron-builder.yml` 里 `extraResources` 复制的
   `dist/`、`web/dist/`、`extensions/`）。

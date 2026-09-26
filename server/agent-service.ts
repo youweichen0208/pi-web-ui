@@ -60,7 +60,7 @@ import { SettingsService } from "./settings-service.js";
 import { GoalService } from "./goal-service.js";
 import { SlashCommandsService, parseSlash } from "./slash-commands.js";
 import { ModelAdminService } from "./model-admin.js";
-import { FilesService, workspacePath } from "./files-service.js";
+import { FilesService, existingConversationFiles, workspacePath } from "./files-service.js";
 import {
 	isExtensionDisabled,
 	type PromptMode,
@@ -3114,7 +3114,7 @@ export class ClientSession {
 			// Only keep directories that still exist — a deleted/unmounted workspace
 			// is useless in the picker. Tombstoned entries (explicitly removed by
 			// the user) stay hidden even though session files still mention them.
-			// Order is first-added newest-first and never moves (mergeProjectSummaries).
+			// Order is most recently used/activity first (mergeProjectSummaries).
 			const projects = mergeProjectSummaries(
 				saved.projects.filter((p) => existsSync(p.path)),
 				all.filter((p) => existsSync(p.path)),
@@ -3130,6 +3130,11 @@ export class ClientSession {
 	/** List a workspace directory (relative to the configured cwd). */
 	async listFiles(relPath?: string): Promise<void> {
 		return this.files.listFiles(relPath);
+	}
+
+	checkConversationFiles(cwd: string, reqId: number, paths: string[]): void {
+		const current = this.cwd;
+		this.emit({ type: "conversation_files_checked", cwd, reqId, paths: cwd === current && Array.isArray(paths) ? existingConversationFiles(current, paths) : [] });
 	}
 
 	/** 全局搜索：递归文件名匹配（结果经 search_files_result 回推，reqId 匹配）。 */

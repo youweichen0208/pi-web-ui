@@ -3,12 +3,14 @@ import { FiChevronRight, FiDownload, FiLink, FiMaximize2, FiPlus, FiX } from "re
 import type { FileEntry, FileListing, ScmFileEntry, ServerMessage, UiMessage } from "../types";
 import { useT } from "../i18n";
 import { downloadFile } from "../download";
-import { conversationFileEntries } from "../conversation-files";
+import { conversationFileEntries, mentionedHiddenDirs } from "../conversation-files";
 
 type AttachMode = "inline" | "reference";
 interface RightPanelProps {
 	active: boolean;
 	files: FileListing | null;
+	conversationFilesChecked: Extract<ServerMessage, { type: "conversation_files_checked" }> | null;
+	ready: boolean;
 	fileChanged: { path: string } | null;
 	scmData: ServerMessage | null;
 	scmDirty: number;
@@ -16,7 +18,7 @@ interface RightPanelProps {
 	messages: UiMessage[];
 	streamingMessage: UiMessage | null;
 	cwd: string;
-	send: (msg: { type: "list_files"; path?: string } | { type: "scm_status"; reqId: number }) => boolean;
+	send: (msg: { type: "list_files"; path?: string } | { type: "scm_status"; reqId: number } | { type: "check_conversation_files"; cwd: string; reqId: number; paths: string[] }) => boolean;
 	onAttach: (path: string, name: string, mode: AttachMode, isDir?: boolean) => void;
 	onPreview: (path: string, name: string) => void;
 	onNotice: (level: "info" | "warning" | "error", text: string) => void;
@@ -24,7 +26,8 @@ interface RightPanelProps {
 
 // Negative IDs keep tree status requests separate from SCMPanel's positive IDs.
 let treeStatusId = -100;
-export const RightPanel = memo(function RightPanel({ active, files, fileChanged, scmData, scmDirty, widgets, messages, streamingMessage, cwd, send, onAttach, onPreview, onNotice }: RightPanelProps) {
+let conversationFilesId = 0;
+export const RightPanel = memo(function RightPanel({ active, files, conversationFilesChecked, ready, fileChanged, scmData, scmDirty, widgets, messages, streamingMessage, cwd, send, onAttach, onPreview, onNotice }: RightPanelProps) {
 	const t = useT();
 	const [expandedWidget, setExpandedWidget] = useState<string | null>(null);
 	const [directories, setDirectories] = useState<Record<string, FileListing>>({});
@@ -32,6 +35,18 @@ export const RightPanel = memo(function RightPanel({ active, files, fileChanged,
 	const [changed, setChanged] = useState<ScmFileEntry[]>([]);
 	const [notRepo, setNotRepo] = useState(false);
 	const [onlyChanged, setOnlyChanged] = useState(false);
+	const [showHidden, setShowHidden] = useState(true);
+	const [fileCheck, setFileCheck] = useState<{ key: string; reqId: number } | null>(null);
+	const allMessages = streamingMessage ? [...messages, streamingMessage] : messages;
+	const fileCandidates = conversationFileEntries(allMessages, cwd);
+	const fileCheckKey = `${cwd}\0${fileCandidates.map((file) => file.path).join("\0")}`;
+	useEffect(() => {
+		if (!ready) { if (fileCheck) setFileCheck(null); return; }
+		if (!active || !cwd || !fileCandidates.length || fileCheck?.key === fileCheckKey) return;
+		const reqId = ++conversationFilesId;
+		if (send({ type: "check_conversation_files", cwd, reqId, paths: fileCandidates.map((file) => file.path) })) setFileCheck({ key: fileCheckKey, reqId });
+	}, [active, cwd, fileCheckKey, ready, send]);
+	const hiddenMentioned = mentionedHiddenDirs(allMessages);
 	const owner = useRef(cwd);
 	const seenFiles = useRef<FileListing | null>(null);
 	const queue = useRef<string[]>([]);
@@ -84,6 +99,9 @@ export const RightPanel = memo(function RightPanel({ active, files, fileChanged,
 		if (active && fileChanged) request(fileChanged.path);
 	}, [active, fileChanged, request]);
 	useEffect(() => {
+		if (fileChanged) setFileCheck(null);
+	}, [fileChanged]);
+	useEffect(() => {
 		if (!active || !cwd) return;
 		const refresh = () => {
 			statusRequest.current = --treeStatusId;
@@ -127,7 +145,8 @@ export const RightPanel = memo(function RightPanel({ active, files, fileChanged,
 		const count = changed.filter((change) => change.path === entry.path || (dir && change.path.startsWith(`${entry.path}/`))).length;
 		const change = !dir ? changed.find((item) => item.path === entry.path) : undefined;
 		const changeKind = change ? change.x === "D" || change.y === "D" ? "D" : change.x === "A" || change.y === "A" || change.x === "?" ? "A" : "M" : null;
-		if (onlyChanged && !count) return null;
+		const mentioned = dir && entry.name.startsWith(".") && hiddenMentioned.has(entry.name);
+		if ((!showHidden && entry.name.startsWith(".") || onlyChanged && !count) && !mentioned) return null;
 		return <div key={entry.path} role="treeitem" aria-expanded={dir ? open : undefined}>
 			<div className={`file-item ${dir ? "dir" : "file"}`} style={{ paddingLeft: 6 + depth * 16 }}>
 				<button type="button" data-tree-node={entry.path} className={dir ? "file-dir-main" : "file-name"} title={entry.path} disabled={virtual && !dir} onClick={() => dir ? virtual ? setExpanded((previous) => { const next = new Set(previous); if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path); return next; }) : toggle(entry.path) : onPreview(entry.path, entry.name)}>
@@ -147,18 +166,14 @@ export const RightPanel = memo(function RightPanel({ active, files, fileChanged,
 		{directoryEntries(path).map(({ entry, virtual }) => renderEntry(entry, depth, virtual))}
 		{directories[path]?.truncated && <div className="panel-empty files-truncated">{t("filesTruncated")}</div>}
 	</>;
-	const involved = conversationFileEntries(streamingMessage ? [...messages, streamingMessage] : messages, cwd);
+	const confirmed = fileCheck?.key === fileCheckKey && conversationFilesChecked?.cwd === cwd && conversationFilesChecked.reqId === fileCheck.reqId ? new Set(conversationFilesChecked.paths) : new Set<string>();
+	const involved = fileCandidates.filter((file) => confirmed.has(file.path)).slice(0, 12);
 	const actionCounts = involved.reduce((counts, file) => ({ ...counts, [file.action]: counts[file.action] + 1 }), { read: 0, grep: 0, used: 0 });
 	const actionLabel = (action: "read" | "grep" | "used") => t(action === "read" ? "readVerb" : action === "grep" ? "grepSearch" : "fileUsed");
 	const actionSummary = (["read", "grep", "used"] as const).filter((action) => actionCounts[action] > 0).map((action) => `${actionLabel(action)} ${actionCounts[action]}`).join(" · ");
 	const oneAction = (["read", "grep", "used"] as const).filter((action) => actionCounts[action] > 0).length === 1;
-	const nameCounts = new Map<string, number>();
-	for (const file of involved) {
-		const name = file.path.split("/").at(-1) ?? file.path;
-		nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
-	}
 	return <aside className={`panel panel-right${involved.length ? " has-conversation-files" : ""}`}>
-		<div className="panel-title"><span>{t("workspaceFiles")}</span>{!notRepo && <button type="button" className="tree-filter" aria-pressed={onlyChanged} onClick={() => setOnlyChanged(value => !value)}>{t("changedCount", { n: changed.length })}</button>}</div>
+		<div className="panel-title"><span>{t("workspaceFiles")}</span><button type="button" className="tree-hidden-toggle" aria-pressed={showHidden} onClick={() => setShowHidden(value => !value)}>{t("showHiddenFiles")}</button>{!notRepo && <button type="button" className="tree-filter" aria-pressed={onlyChanged} onClick={() => setOnlyChanged(value => !value)}>{t("changedCount", { n: changed.length })}</button>}</div>
 		<div className="panel-body" role="tree" aria-label={t("workspaceFiles")} onKeyDown={(event) => {
 			const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-tree-node]");
 			if (!button) return;
@@ -181,7 +196,7 @@ export const RightPanel = memo(function RightPanel({ active, files, fileChanged,
 		}}>
 			{onlyChanged && changed.length === 0 ? <div className="panel-empty">{t("noChangedFiles")}</div> : directories[""] ? renderDirectory("", 0) : <div className="panel-empty">{t("loading")}</div>}
 		</div>
-		{involved.length > 0 && <div className="conversation-files"><div className="conversation-files-title"><span>{t("conversationFiles")}</span><span>{actionSummary}</span></div><div className="conversation-files-list">{involved.map(({ path, action }) => { const name = path.split("/").at(-1) ?? path; const duplicate = (nameCounts.get(name) ?? 0) > 1; return <button type="button" key={path} className="conversation-file" title={path} onClick={() => onPreview(path, name)}><span className="conversation-file-main"><span>{duplicate ? path : name}</span>{!oneAction && <em>{actionLabel(action)}</em>}</span>{path.includes("/") && !duplicate && <small>{path.slice(0, path.lastIndexOf("/"))}</small>}</button>; })}</div></div>}
+		{involved.length > 0 && <div className="conversation-files"><div className="conversation-files-title"><span>{t("conversationFiles")}</span><span>{actionSummary}</span></div><div className="conversation-files-list">{involved.map(({ path, action }) => { const name = path.split("/").at(-1) ?? path; return <button type="button" key={path} className="conversation-file" title={path} onClick={() => onPreview(path, name)}><span className="conversation-file-main"><span>{name}</span>{!oneAction && <em>{actionLabel(action)}</em>}</span>{path.includes("/") && <small>{path.slice(0, path.lastIndexOf("/"))}</small>}</button>; })}</div></div>}
 			{widgets.filter((w) => w.lines.length > 0).length > 0 && (
 				<div className="panel-widgets">
 					{widgets

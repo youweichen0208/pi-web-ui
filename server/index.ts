@@ -650,6 +650,9 @@ wss.on("connection", (ws) => {
 			case "list_files":
 				void cs.listFiles(msg.path);
 				break;
+			case "check_conversation_files":
+				cs.checkConversationFiles(msg.cwd, msg.reqId, msg.paths);
+				break;
 			case "search_files":
 				void cs.searchFiles(msg.query, msg.reqId);
 				break;

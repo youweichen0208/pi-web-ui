@@ -2,11 +2,11 @@
 
 > npm 发布者账号是 `youweichen`（`npm whoami` 验证），包名 `@youweichen/pi-web-ui`。当前项目独立维护，仓库为 `youweichen0208/pi-web-ui`。`dist/`、`web/dist/` 被 gitignore 不进 git，但 `package.json` 的 `files` 白名单会把它们打进 npm 包；`prepublishOnly` 会在发布前自动 `npm run build`。
 
-## 0.6.1 正式版
+## 0.6.2 正式版
 
-`0.6.1` 修复 `/reload` 的对话内反馈、通知位置与快捷键提示显示。发布前核对 npm 版本未占用，保持 `package.json` 和 `package-lock.json` 一致，运行协议检查、类型检查、构建、单测、冒烟测试及 `npm pack --dry-run`。提交并推送源代码后，以 `npm publish --access public --tag latest` 发布 npm 包；推送 `v0.6.1` 标签会触发 macOS、Windows、Linux 的 Electron 安装包构建，生成正式 GitHub Release。最后核对 npm `latest`、GitHub Release 状态与三平台安装包。
+`0.6.2` 修复工作区文件误报、命令输出展示、断线时的工作状态与桌面服务恢复，并在 Web/Desktop 底栏显示运行版本。发布前核对 npm 版本未占用，保持 `package.json` 和 `package-lock.json` 一致，运行协议检查、类型检查、构建、单测、冒烟测试及 `npm pack --dry-run`。提交并推送源代码后，以 `npm publish --access public --tag latest` 发布 npm 包；推送 `v0.6.2` 标签会触发 macOS、Windows、Linux 的 Electron 安装包构建，生成正式 GitHub Release。最后核对 npm `latest`、GitHub Release 状态与三平台安装包。
 
-**版本排序提醒**：SemVer 将 `0.6.x` 排在旧正式版 `0.51.2` 之前。npm 的 `latest` 标签可指向 `0.6.1`，但依赖范围 `^0.51.2` 不会自动升级；依赖方需要显式更新版本范围。后续版本规划需考虑这一历史编号。
+**版本排序提醒**：SemVer 将 `0.6.x` 排在旧正式版 `0.51.2` 之前。npm 的 `latest` 标签可指向 `0.6.2`，但依赖范围 `^0.51.2` 不会自动升级；依赖方需要显式更新版本范围。后续版本规划需考虑这一历史编号。
 
 ## 步骤
 

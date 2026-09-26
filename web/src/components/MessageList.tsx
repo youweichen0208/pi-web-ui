@@ -30,6 +30,7 @@ import {
 	type WinRect,
 } from "../lazy-window";
 import { SearchBar } from "./SearchBar";
+import { clusterQuestionMarkers } from "../question-markers";
 import { useT, type Translate } from "../i18n";
 
 /** Stable shared empty map — passing this (instead of a fresh Map) lets
@@ -77,6 +78,7 @@ function examples(
 
 interface MessageListProps {
 	active?: boolean;
+	connected?: boolean;
 	state: UiState;
 	liveOutputs: ReadonlyMap<string, { toolName: string; text: string }>;
 	toolStatuses: ReadonlyMap<string, ToolStatus>;
@@ -126,7 +128,7 @@ function ReloadEvent({ event }: { event: ReloadStatus }) {
 	</div>;
 }
 
-export const MessageList = memo(function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho, reloadEvents = [] }: MessageListProps) {
+export const MessageList = memo(function MessageList({ state, connected = true, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho, reloadEvents = [] }: MessageListProps) {
 	const t = useT();
 	const timeline = useMemo(() => {
 		const events = reloadEvents.filter((event) => event.conversationId === state.conversationId).sort((a, b) => a.timestamp - b.timestamp);
@@ -615,9 +617,9 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 		return () => window.removeEventListener("resize", update);
 	}, [scheduleSweep]);
 	const positionedQuestions = questions.filter((question) => markerPositions[question.id] !== undefined);
-	/** Closely spaced questions use the existing hover list for navigation. */
-	const many = positionedQuestions.some((question, index) => index > 0 &&
-		(markerPositions[question.id] - markerPositions[positionedQuestions[index - 1].id]) * railH < 20);
+	const markerGroups = clusterQuestionMarkers(positionedQuestions.map((question) => ({ id: question.id, position: markerPositions[question.id] })), railH);
+	/** Clustered marks retain the existing hover list for precise navigation. */
+	const many = markerGroups.some((group) => group.ids.length > 1);
 
 	return (
 		<div className="messages-wrap">
@@ -713,7 +715,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 							toolResults={toolResults}
 							liveOutputs={hasToolCall(m) ? liveOutputs : EMPTY_LIVE}
 							toolStatuses={toolStatuses}
-							streaming={state.isStreaming}
+							streaming={state.isStreaming && connected}
 							onKillBash={onKillBash}
 							toolsWrap={toolsWrap}
 							thinkingWrap={thinkingWrap}
@@ -735,7 +737,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 							hasToolCall(state.streamingMessage) ? liveOutputs : EMPTY_LIVE
 						}
 						toolStatuses={toolStatuses}
-						streaming
+						streaming={connected}
 						isLast
 						onEdit={onEdit}
 						onKillBash={onKillBash}
@@ -743,7 +745,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 						thinkingWrap={thinkingWrap}
 					/>
 				)}
-				{state.isStreaming && (awaitingFirstAssistant ? <div className="msg msg-assistant agent-working-placeholder"><div className="msg-meta"><span className="msg-role">{t("role.assistant")}</span>{state.model?.id && <span className="msg-model">{state.model.id}</span>}<span className="msg-time">{new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div><WorkingStatus key={state.conversationId} label={activityLabel} phase={activityPhase} /></div> : <WorkingStatus key={state.conversationId} label={activityLabel} phase={activityPhase} durationMs={!runningTool && lastBlock?.type === "thinking" && typeof lastBlock.durationMs === "number" ? lastBlock.durationMs : undefined} />)}
+				{state.isStreaming && (connected ? (awaitingFirstAssistant ? <div className="msg msg-assistant agent-working-placeholder"><div className="msg-meta"><span className="msg-role">{t("role.assistant")}</span>{state.model?.id && <span className="msg-model">{state.model.id}</span>}<span className="msg-time">{new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div><WorkingStatus key={state.conversationId} label={activityLabel} phase={activityPhase} /></div> : <WorkingStatus key={state.conversationId} label={activityLabel} phase={activityPhase} durationMs={!runningTool && lastBlock?.type === "thinking" && typeof lastBlock.durationMs === "number" ? lastBlock.durationMs : undefined} />) : <div className="agent-working disconnected" role="status">{t("workDisconnected")}</div>)}
 				{/* 乐观本地回显：刚点发送、服务端确认（snapshot_delta 追加）之前，
 				 *  立刻把用户刚输入的文字显示出来，避免等待服务端往返的空白期。
 				 *  一旦真实消息落地（reducer 里 appended.length>0）就会清空 pendingEcho，
@@ -797,18 +799,22 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 					ref={railRef}
 					aria-label={t("questionNavTitle")}
 				>
-					{positionedQuestions.map((q) => (
+					{markerGroups.map((group) => {
+						const q = positionedQuestions.find((question) => question.id === group.ids[0])!;
+						return (
 						<button
 							type="button"
-							key={q.id}
-							className={`qn-bar ${questions[activeIdx]?.id === q.id ? "active" : ""}`}
-							style={{ top: `${markerPositions[q.id] * 100}%` }}
-							aria-label={`${questions.indexOf(q) + 1}. ${q.text}`}
+							key={group.ids.join(":")}
+							className={`qn-bar ${group.ids.length > 1 ? "cluster" : ""} ${group.ids.includes(questions[activeIdx]?.id ?? "") ? "active" : ""}`}
+							style={{ top: `${group.position * 100}%` }}
+							aria-label={group.ids.length > 1 ? t("questionMarkerGroup", { n: group.ids.length }) : `${questions.indexOf(q) + 1}. ${q.text}`}
 							onClick={() => jumpTo(q.id)}
 						>
+							{group.ids.length > 1 && <span className="qn-cluster-count">{group.ids.length}</span>}
 							<span className="qn-bar-text">{questions.indexOf(q) + 1}. {q.text}</span>
 						</button>
-					))}
+						);
+					})}
 					{many && (
 						<div className="qn-list">
 							{questions.map((q, i) => (

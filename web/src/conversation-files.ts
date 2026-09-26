@@ -12,7 +12,7 @@ export function conversationFileEntries(messages: UiMessage[], cwd: string): Con
 		const root = cwd.replaceAll("\\", "/").replace(/\/$/, "");
 		const relative = path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
 		if (relative.startsWith("/") || relative.startsWith("~/") || relative.split("/").includes("..")) return;
-		const clean = relative.replace(/^\.\//, "");
+		const clean = relative.replace(/^\.\//, "").replace(/^--+(?=[\w.])/, "");
 		if (!clean || seen.has(clean)) return;
 		seen.add(clean);
 		files.push({ path: clean, action });
@@ -30,9 +30,21 @@ export function conversationFileEntries(messages: UiMessage[], cwd: string): Con
 			}
 		}
 	}
-	return files.slice(0, 12);
+	return files.slice(0, 64);
 }
 
 export function conversationFiles(messages: UiMessage[], cwd: string): string[] {
 	return conversationFileEntries(messages, cwd).map((entry) => entry.path);
+}
+
+/** Hidden folder names explicitly mentioned by commands in this conversation. */
+export function mentionedHiddenDirs(messages: UiMessage[]): Set<string> {
+	const names = new Set<string>();
+	for (const message of messages) for (const block of message.content) {
+		if (block.type !== "toolCall" || block.name !== "bash" || typeof block.argumentsText !== "string") continue;
+		let command: string;
+		try { command = (JSON.parse(block.argumentsText ?? "{}") as { command?: string }).command ?? ""; } catch { continue; }
+		for (const match of command.matchAll(/(?:^|[\s'"=/])(\.[A-Za-z][\w.-]*)(?=\/|[\s'";&|]|$)/g)) names.add(match[1]);
+	}
+	return names;
 }

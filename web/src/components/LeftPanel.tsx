@@ -352,7 +352,7 @@ export const LeftPanel = memo(function LeftPanel({
 										<span className="thinking-spinner project-spinner" aria-hidden="true" />
 									) : (
 										<span className="project-time">
-											{formatModified(p.path === currentCwd && sessions.length ? Math.max(...sessions.map((session) => session.modified)) : (p.lastConversationAt ?? p.lastUsed), t("yesterday"))}
+											{formatModified(Math.max(p.lastUsed, p.lastConversationAt ?? 0, p.path === currentCwd && sessions.length ? Math.max(...sessions.map((session) => session.modified)) : 0), t("yesterday"))}
 										</span>
 									)}
 								</button>

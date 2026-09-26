@@ -121,8 +121,8 @@ export function isExtensionDisabled(
 export interface ClientState {
 	/** Absolute path of the workspace this client last used. */
 	lastCwd?: string;
-	/** Workspaces this client opened before, first-added newest first (capped
-	 *  at 30). Order is stable: opening/switching never moves an entry. */
+	/** Workspaces this client opened before, most-recently-used first (capped
+	 *  at 30). Opening/switching moves an entry to the front. */
 	projects: { path: string; lastUsed: number; firstAdded?: number }[];
 	/** Last-used goal / review preferences (model choice, max rounds, locked) so
 	 *  they survive a reload — "全局记忆". maxRounds: 0 means unlimited. The model
@@ -160,11 +160,10 @@ export interface DiskProjectSummary {
 
 /**
  * Merge persisted projects with disk-discovered ones into the project list:
- * ordered by first-added time, newest first, positions never move. A persisted
- * entry always wins over the disk anchor; a legacy persisted entry without
- * `firstAdded` falls back to (and is thereby frozen at) its `lastUsed`.
+ * ordered by latest use/activity, newest first. Persisted first-added values
+ * remain as stable tie-breakers and for legacy data migration.
  * Tombstoned entries (explicitly removed by the user) stay hidden; the list is
- * capped at 20, dropping the earliest-added first.
+ * capped at 20, dropping the least recently used first.
  */
 export function mergeProjectSummaries(
 	saved: { path: string; lastUsed: number; firstAdded?: number }[],
@@ -178,9 +177,8 @@ export function mergeProjectSummaries(
 		lastUsed.set(p.path, p.lastUsed);
 	}
 	for (const p of disk) {
-		if (firstAdded.has(p.path)) continue; // persisted entries drive their own order
-		firstAdded.set(p.path, p.firstAdded);
-		lastUsed.set(p.path, p.lastUsed);
+		if (!firstAdded.has(p.path)) firstAdded.set(p.path, p.firstAdded);
+		lastUsed.set(p.path, Math.max(lastUsed.get(p.path) ?? 0, p.lastUsed));
 	}
 	const byPath = new Map(disk.map((p) => [p.path, p]));
 	return [...firstAdded.entries()]
@@ -192,7 +190,7 @@ export function mergeProjectSummaries(
 			lastConversationAt: byPath.get(path)?.lastUsed,
 			conversationCount: byPath.get(path)?.conversationCount ?? 0,
 		}))
-		.sort((a, b) => b.firstAdded - a.firstAdded)
+		.sort((a, b) => b.lastUsed - a.lastUsed || b.firstAdded - a.firstAdded)
 		.slice(0, 20);
 }
 
@@ -253,31 +251,29 @@ export class ClientStateStore {
 			changed = true;
 		}
 		if (changed) {
-			state.projects.sort((a, b) => (b.firstAdded ?? b.lastUsed) - (a.firstAdded ?? a.lastUsed));
+			state.projects.sort((a, b) => b.lastUsed - a.lastUsed || (b.firstAdded ?? 0) - (a.firstAdded ?? 0));
 			state.projects = state.projects.slice(0, 30);
 			this.save();
 		}
 	}
 
-	/** Remember which workspace a client last used. The project-list order is
-	 *  stable: existing entries only get their (informational) lastUsed
-	 *  refreshed in place, new entries are prepended, nothing ever moves. */
+	/** Remember which workspace a client last used and move it to the front. */
 	remember(clientId: string, cwd: string): void {
 		const all = this.load();
 		const state = (all[clientId] ??= { projects: [] });
 		state.lastCwd = cwd;
-		const now = Date.now();
+		// Distinct clicks can share one millisecond; keep ordering deterministic.
+		const now = Math.max(Date.now(), ...state.projects.map((project) => project.lastUsed + 1));
 		const existing = state.projects.find((p) => p.path === cwd);
 		if (existing) {
-			// 旧数据没有 firstAdded：冻结在其最后一次使用的时间上，此后永不再变。
+			// Keep the historical first-added value as a deterministic tie-breaker.
 			existing.firstAdded ??= existing.lastUsed;
 			existing.lastUsed = now;
 		} else {
-			state.projects = [
-				{ path: cwd, lastUsed: now, firstAdded: now },
-				...state.projects,
-			].slice(0, 30);
+			state.projects.push({ path: cwd, lastUsed: now, firstAdded: now });
 		}
+		state.projects.sort((a, b) => b.lastUsed - a.lastUsed || (b.firstAdded ?? 0) - (a.firstAdded ?? 0));
+		state.projects = state.projects.slice(0, 30);
 		// Opening the workspace again clears its removal tombstone.
 		if (state.removedProjects?.length) {
 			state.removedProjects = state.removedProjects.filter((p) => p !== cwd);

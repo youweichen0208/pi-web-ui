@@ -48,15 +48,14 @@ jobs:
           version=$(node -p "require('./package.json').version")
           test "$RELEASE_TAG" = "v$version"
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            if [[ "$version" == *-* ]]; then
-              if [ -f ".github/release-notes/$RELEASE_TAG.md" ]; then
-                gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-file ".github/release-notes/$RELEASE_TAG.md" --prerelease
-              else
-                gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Desktop prerelease $version" --prerelease
-              fi
+            args=(--verify-tag --title "$RELEASE_TAG")
+            if [ -f ".github/release-notes/$RELEASE_TAG.md" ]; then
+              args+=(--notes-file ".github/release-notes/$RELEASE_TAG.md")
             else
-              gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Desktop release $version"
+              args+=(--notes "Desktop release $version")
             fi
+            if [[ "$version" == *-* ]]; then args+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" "${args[@]}"
           fi
 
   build-mac:
