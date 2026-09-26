@@ -18,9 +18,9 @@ pi-web-ui --port 9000 --cwd /path/to/project
 
 不安装到全局也可以运行 `npx @youweichen/pi-web-ui`。升级后若使用开机自启服务，运行 `pi-web-ui server restart`，让服务端加载新版本。
 
-### Beta 版本
+### 版本与升级
 
-测试版发布后，可用 `npm install -g @youweichen/pi-web-ui@beta` 安装；正式版继续使用 `@latest`。安装前可运行 `npm view @youweichen/pi-web-ui dist-tags --json` 查看当前标签与版本。Beta 版请在独立环境试用，并通过 [Issues](https://github.com/youweichen0208/pi-web-ui/issues) 反馈。
+正式版通过 `npm install -g @youweichen/pi-web-ui@latest` 安装，桌面安装包见 [GitHub Releases](https://github.com/youweichen0208/pi-web-ui/releases)。`0.6.0` 的 SemVer 排序低于旧版 `0.51.2`；如果你在其他项目的依赖中固定了 `^0.51.2`，请显式改为 `0.6.0` 才会切换到本版本。可运行 `npm view @youweichen/pi-web-ui dist-tags --json` 核对 npm 标签。
 
 ## SSH 节点工作台
 
