@@ -88,6 +88,8 @@ export interface UiState {
 	sessionFile?: string;
 	/** Id of the ACTIVE conversation (see `conversations` message). */
 	conversationId: string;
+	/** Command-driven workspace changes stored in this session's transcript. */
+	cwdEvents: { cwd: string; timestamp: number }[];
 	/** Monotonic snapshot revision — increments on every snapshot/snapshot_delta
 	 *  emission. snapshot_delta.baseRev must equal the client's current rev;
 	 *  a mismatch means the client missed an update and must get_state resync. */
@@ -996,7 +998,6 @@ export type ServerMessage =
 	 *  and on request (get_commands). */
 	| { type: "slash_commands"; commands: SlashCommandInfo[] }
 	| { type: "reload_status"; conversationId: string; requestId: string; phase: "running" | "done"; timestamp: number; durationMs?: number; extensions?: number; skills?: number; prompts?: number; resources?: { extensions: string[]; skills: string[]; prompts: string[] }; errors?: { path: string; message: string }[] }
-	| { type: "cwd_event"; conversationId: string; cwd: string; timestamp: number }
 	| { type: "notice"; level: "info" | "warning" | "error"; text: string }
 	/** The watched git dir changed outside the panel (terminal commit,
 	 *  CLI, IDE) — the client should re-run its scm_status query. */

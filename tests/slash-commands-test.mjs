@@ -165,11 +165,11 @@ async function main() {
 			(m.type === "snapshot" || m.type === "snapshot_delta") &&
 			norm(m.state?.cwd) === norm(TMP_CWD),
 	);
-	const cwdOk = await c.wait((m) => m.type === "cwd_event", 6000).catch(() => null);
-	if (!cwdOk || norm(cwdOk.cwd) !== norm(TMP_CWD)) {
+	const cwdOk = await c.wait((m) => (m.type === "snapshot" || m.type === "snapshot_delta") && m.state?.cwdEvents?.some((event) => norm(event.cwd) === norm(TMP_CWD)), 6000).catch(() => null);
+	if (!cwdOk) {
 		throw new Error("FAIL: /cwd valid path did not switch workspace");
 	}
-	console.log(`[3] /cwd valid → ${cwdOk.cwd}`);
+	console.log(`[3] /cwd valid → ${TMP_CWD}`);
 
 	c.send({ type: "prompt", text: "/cwd /nonexistent-zzz" });
 	const cwdBad = await c.wait((m) => m.type === "notice", 6000);

@@ -839,7 +839,6 @@ export function App() {
 								toolsWrap={chat.settings?.toolsWrap ?? true}
 								pendingEcho={chat.pendingEcho}
 								reloadEvents={chat.reloadEvents}
-								cwdEvents={chat.cwdEvents}
 								/></WorkspacePathContext.Provider>
 							) : (
 								<div className="boot-wait">

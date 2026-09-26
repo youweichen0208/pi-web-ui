@@ -12,7 +12,7 @@ import type {
 	UiMessage,
 	UiState,
 } from "../types";
-import type { CwdEvent, PendingEcho, ReloadStatus } from "../use-chat";
+import type { PendingEcho, ReloadStatus } from "../use-chat";
 import { Message, asText } from "./Message";
 
 import { collectQuestionAttachments } from "../question-attachments";
@@ -98,7 +98,6 @@ interface MessageListProps {
 	 *  用户消息幻影气泡，与 state.conversationId 匹配时才渲染。 */
 	pendingEcho?: PendingEcho | null;
 	reloadEvents?: ReloadStatus[];
-	cwdEvents?: CwdEvent[];
 }
 
 const scrollPositions = new Map<string, { top: number; bottom: boolean; hidden: Set<string>; expanded: Set<string>; heights: Map<string, number> }>();
@@ -129,12 +128,12 @@ function ReloadEvent({ event }: { event: ReloadStatus }) {
 	</div>;
 }
 
-export const MessageList = memo(function MessageList({ state, connected = true, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho, reloadEvents = [], cwdEvents = [] }: MessageListProps) {
+export const MessageList = memo(function MessageList({ state, connected = true, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho, reloadEvents = [] }: MessageListProps) {
 	const t = useT();
 	const timeline = useMemo(() => {
 		const events = [
 			...reloadEvents.filter((event) => event.conversationId === state.conversationId).map((event) => ({ kind: "reload" as const, event })),
-			...cwdEvents.filter((event) => event.conversationId === state.conversationId && event.cwd === state.cwd).map((event) => ({ kind: "cwd" as const, event })),
+			...state.cwdEvents.filter((event) => event.cwd === state.cwd).map((event) => ({ kind: "cwd" as const, event })),
 		].sort((a, b) => a.event.timestamp - b.event.timestamp);
 		const items: ({ kind: "message"; message: UiMessage; index: number } | (typeof events)[number])[] = [];
 		let next = 0;
@@ -144,7 +143,7 @@ export const MessageList = memo(function MessageList({ state, connected = true, 
 		});
 		while (next < events.length) items.push(events[next++]);
 		return items;
-	}, [state.messages, state.conversationId, state.cwd, reloadEvents, cwdEvents]);
+	}, [state.messages, state.conversationId, state.cwd, state.cwdEvents, reloadEvents]);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
 	const stickRef = useRef(true);

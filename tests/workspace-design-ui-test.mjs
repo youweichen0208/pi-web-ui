@@ -39,7 +39,6 @@ browser=await chromium.launch({executablePath:CHROME_PATH});
 const context=await browser.newContext({viewport:{width:1600,height:1000},permissions:['clipboard-read','clipboard-write']});
 const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const sent=[];
-let cwdEventInjected=false;
 await page.routeWebSocket('**/ws',route=>{
 const upstream=route.connectToServer();
 route.onMessage(wire=>{const message=JSON.parse(wire.toString());sent.push(message);if(message.type==='prompt')throw Error('No model requests allowed');upstream.send(wire)});
@@ -48,11 +47,11 @@ const message=JSON.parse(wire.toString());
 if(message.type==='snapshot'){
 Object.assign(message.state,{messages,piConfigured:true,model:{id:'glm-5.3',name:'GLM 5.3',provider:'volc-glm'},thinkingLevel:'minimal',availableThinkingLevels:['off','minimal','low','medium','high']});
 message.state.stats.contextUsage={tokens:17300,contextWindow:1000000,percent:1.73};
+message.state.cwdEvents=[{cwd,timestamp:Date.now()}];
 }
 if(message.type==='projects')message.projects=[{path:'/',lastUsed:1,firstAdded:1,conversationCount:1},{path:join(root,'recent'),lastUsed:100,firstAdded:100,conversationCount:1},{path:cwd,lastUsed:50,firstAdded:50,conversationCount:1}];
 if(message.type==='settings_state')Object.assign(message.settings??message,{toolsWrap:true,thinkingWrap:false});
 route.send(JSON.stringify(message));
-if(message.type==='snapshot'&&!cwdEventInjected){cwdEventInjected=true;route.send(JSON.stringify({type:'cwd_event',conversationId:message.state.conversationId,cwd,timestamp:Date.now()}));}
 });
 });
 await page.goto(`http://localhost:${PORT}`);

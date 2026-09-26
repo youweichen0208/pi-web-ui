@@ -1642,6 +1642,10 @@ export class ClientSession {
 			sessionId: this.session.sessionId,
 			sessionFile: this.session.sessionFile,
 			conversationId: this.activeId,
+			cwdEvents: this.session.sessionManager.getBranch()
+				.filter((entry) => entry.type === "custom" && entry.customType === "pi-web-ui:cwd-switch" && typeof (entry.data as { cwd?: unknown } | undefined)?.cwd === "string")
+				.slice(-40)
+				.map((entry) => ({ cwd: (entry as { data: { cwd: string } }).data.cwd, timestamp: Date.parse(entry.timestamp) })),
 			rev,
 			// The in-progress assistant message lives in state.streamingMessage
 			// (the SDK only pushes it into state.messages at message_end). Surfacing
@@ -3285,6 +3289,10 @@ export class ClientSession {
 			this.cwd = abs;
 			this.files.unwatchGit();
 			this.files.unwatchDir();
+			if (source !== "ui") {
+				try { this.session.sessionManager.appendCustomEntry("pi-web-ui:cwd-switch", { cwd: abs }); }
+				catch { /* A transcript write failure must not turn a completed switch into an error. */ }
+			}
 			const preparedAt = Date.now();
 			this.flushSnapshot(true);
 			if (requestId) this.emit({ type: "cwd_result", requestId, cwd: abs, ok: true,
@@ -3304,7 +3312,6 @@ export class ClientSession {
 			this.goalSvc.emitGoalStatus();
 			// Skills / prompt templates are project-bound — refresh the catalog.
 			void this.pushSlashCommands();
-			if (source !== "ui") this.emit({ type: "cwd_event", conversationId: this.activeId, cwd: abs, timestamp: Date.now() });
 			void this.refreshSessions();
 			// Commands are per-project (.pi/commands.json in the current cwd).
 			void this.listCommands();

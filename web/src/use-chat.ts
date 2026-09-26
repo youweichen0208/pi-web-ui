@@ -40,19 +40,8 @@ export interface Notice {
 }
 
 export type ReloadStatus = Extract<ServerMessage, { type: "reload_status" }>;
-export type CwdEvent = Extract<ServerMessage, { type: "cwd_event" }>;
 
 const RELOAD_EVENTS_KEY = "pi-web-ui:reload-events";
-const CWD_EVENTS_KEY = "pi-web-ui:cwd-events";
-function restoreCwdEvents(): CwdEvent[] {
-	try {
-		const events: unknown = JSON.parse(sessionStorage.getItem(CWD_EVENTS_KEY) ?? "[]");
-		return Array.isArray(events) ? events.filter((event): event is CwdEvent =>
-			event && typeof event === "object" && event.type === "cwd_event" &&
-			typeof event.conversationId === "string" && typeof event.cwd === "string" && typeof event.timestamp === "number",
-		).slice(-40) : [];
-	} catch { return []; }
-}
 function restoreReloadEvents(): ReloadStatus[] {
 	try {
 		const events: unknown = JSON.parse(sessionStorage.getItem(RELOAD_EVENTS_KEY) ?? "[]");
@@ -211,7 +200,6 @@ export interface ChatState {
 	 */
 	pendingEcho: PendingEcho | null;
 	reloadEvents: ReloadStatus[];
-	cwdEvents: CwdEvent[];
 }
 
 export interface PendingEcho {
@@ -230,7 +218,6 @@ type Action =
 	| { type: "tool_status"; status: ToolStatus }
 	| { type: "notice"; notice: Notice }
 	| { type: "reload_status"; event: ReloadStatus }
-	| { type: "cwd_event"; event: CwdEvent }
 	| { type: "dismiss_notice"; id: number }
 	| { type: "ready"; serverVersion: string; protocolVersion?: number }
 	| { type: "sessions"; sessions: SessionSummary[] }
@@ -557,8 +544,6 @@ function reducer(state: ChatState, action: Action): ChatState {
 				: state.reloadEvents.map((event, index) => index === existing ? action.event : event);
 			return { ...state, reloadEvents };
 		}
-		case "cwd_event":
-			return { ...state, cwdEvents: [...state.cwdEvents, action.event].slice(-40) };
 		case "dismiss_notice":
 			return {
 				...state,
@@ -774,14 +759,10 @@ export function useChat() {
 		protocolMismatch: false,
 		pendingEcho: null,
 		reloadEvents: restoreReloadEvents(),
-		cwdEvents: restoreCwdEvents(),
 	});
 	useEffect(() => {
 		try { sessionStorage.setItem(RELOAD_EVENTS_KEY, JSON.stringify(chat.reloadEvents)); } catch { /* storage unavailable or full */ }
 	}, [chat.reloadEvents]);
-	useEffect(() => {
-		try { sessionStorage.setItem(CWD_EVENTS_KEY, JSON.stringify(chat.cwdEvents)); } catch { /* storage unavailable or full */ }
-	}, [chat.cwdEvents]);
 	const authoritative = useRef(chat);
 	authoritative.current = chat;
 	const cache = useRef(new ProjectCache<Pick<ChatState, "state" | "sessions" | "files">>());
@@ -1028,9 +1009,6 @@ export function useChat() {
 				}
 				case "reload_status":
 					dispatch({ type: "reload_status", event: msg });
-					break;
-				case "cwd_event":
-					dispatch({ type: "cwd_event", event: msg });
 					break;
 				case "sessions":
 					if (msg.cwd !== confirmedCwd.current) break;
