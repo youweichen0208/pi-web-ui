@@ -1,7 +1,7 @@
 /* Smoke test: boots the real (compiled) server and exercises the terminal +
  * commands protocol over WebSocket (no browser needed).
  * Run:  npm run build:server && node terminal-smoke-test.mjs */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -502,7 +502,14 @@ main().catch((err) => {
 // Ensure the spawned server dies even on early crashes.
 process.on("exit", () => {
 	try {
-		process.kill(-server.pid, "SIGKILL");
+		if (process.platform === "win32") {
+			// A lingering server holds ssh2's native cpu-features binding open and
+			// makes Electron's subsequent rebuild fail to unlink cpufeatures.node.
+			// taskkill waits for the complete child tree before this test returns.
+			spawnSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, timeout: 10000 });
+		} else {
+			process.kill(-server.pid, "SIGKILL");
+		}
 	} catch {
 		/* already gone */
 	}
