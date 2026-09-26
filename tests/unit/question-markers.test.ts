@@ -10,4 +10,5 @@ test("nearby question marks become one visible rail mark without losing navigati
 	expect(groups.map((group) => group.ids)).toEqual([["a", "b"], ["c"]]);
 	expect(groups[0].position).toBeCloseTo(0.105);
 	expect(groups[1].position).toBe(0.50);
+	expect(clusterQuestionMarkers([{ id: "a", position: 0.1 }, { id: "b", position: 0.125 }], 1000)).toHaveLength(1);
 });

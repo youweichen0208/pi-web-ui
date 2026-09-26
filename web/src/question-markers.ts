@@ -2,7 +2,7 @@
 export function clusterQuestionMarkers(
 	markers: readonly { id: string; position: number }[],
 	railHeight: number,
-	minGapPx = 20,
+	minGapPx = 32,
 ): { ids: string[]; position: number }[] {
 	const groups: { ids: string[]; positions: number[] }[] = [];
 	for (const marker of [...markers].sort((a, b) => a.position - b.position)) {

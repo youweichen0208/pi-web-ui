@@ -51,6 +51,7 @@ let snapshot = null;
 let conversations = [];
 let files = null;
 const notices = [];
+const cwdEvents = [];
 
 ws.on("message", (d) => {
 	let m;
@@ -73,6 +74,7 @@ ws.on("message", (d) => {
 	} else if (m.type === "conversations") conversations = m.conversations;
 	else if (m.type === "files") files = m;
 	else if (m.type === "notice") notices.push(m.text);
+	else if (m.type === "cwd_event") cwdEvents.push(m);
 	else if (m.type === "ready") {
 		console.log("ready");
 		send({ type: "list_files", path: undefined });
@@ -118,7 +120,7 @@ check(
 );
 
 // B gets its own conversation; A stays warm.
-send({ type: "set_cwd", path: B });
+send({ type: "set_cwd", path: B, source: "ui" });
 await waitFor(() => snapshot?.cwd === B, "cwd=B");
 send({ type: "list_files" });
 const convB = snapshot.conversationId;
@@ -132,6 +134,7 @@ await waitFor(
 	() => files?.entries?.some((e) => e.name === "only-in-B.txt"),
 	"B file tree",
 );
+check("UI project switch has no timeline event", cwdEvents.length === 0, JSON.stringify(cwdEvents));
 check(
 	"file tree shows B's files",
 	files?.entries?.some((e) => e.name === "only-in-B.txt"),
@@ -175,11 +178,8 @@ check(
 	conversations.every((c) => c.cwd === B),
 	`${conversations.length} listed`,
 );
-check(
-	"workspace-switch notices fired",
-	notices.some((n) => n.includes("已切换到工作目录")),
-	notices.join(" | "),
-);
+check("workspace switches do not use toast notices", !notices.some((n) => n.includes("已切换到工作目录")), notices.join(" | "));
+check("command switch produces conversation event", cwdEvents.some((event) => event.cwd === A && event.conversationId === convA2), JSON.stringify(cwdEvents));
 
 console.log("--- conversation summaries ---");
 for (const c of conversations)

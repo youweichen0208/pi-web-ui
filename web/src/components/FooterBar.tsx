@@ -9,7 +9,7 @@ interface FooterBarProps {
 	send: (
 		msg:
 			| { type: "complete_path"; path: string }
-			| { type: "set_cwd"; path: string }
+			| { type: "set_cwd"; path: string; source?: "ui" }
 			| { type: "get_git_branch" },
 	) => boolean;
 }
@@ -100,7 +100,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 	const commit = (path: string) => {
 		const trimmed = path.trim();
 		if (trimmed && trimmed !== state.cwd)
-			send({ type: "set_cwd", path: trimmed });
+			send({ type: "set_cwd", path: trimmed, source: "ui" });
 		setEditing(false);
 	};
 

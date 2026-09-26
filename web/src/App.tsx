@@ -806,7 +806,7 @@ export function App() {
 					onSoundChange={setSound}
 					onSoundPreview={(kind: SoundKind) => playSound(kind, sound)}
 				/>
-				{switchError && <div className="protocol-banner" role="alert"><button onClick={() => send({ type: "set_cwd", path: switchError })}>{t("retryProjectSwitch")}</button> {switchError}</div>}
+				{switchError && <div className="protocol-banner" role="alert"><button onClick={() => send({ type: "set_cwd", path: switchError, source: "ui" })}>{t("retryProjectSwitch")}</button> {switchError}</div>}
 				{switching && <div className="protocol-banner" role="status">{t("switchingProject")} {switching}</div>}
 				{chat.protocolMismatch && (
 					<div className="protocol-banner">
@@ -839,6 +839,7 @@ export function App() {
 								toolsWrap={chat.settings?.toolsWrap ?? true}
 								pendingEcho={chat.pendingEcho}
 								reloadEvents={chat.reloadEvents}
+								cwdEvents={chat.cwdEvents}
 								/></WorkspacePathContext.Provider>
 							) : (
 								<div className="boot-wait">
@@ -1016,7 +1017,7 @@ export function App() {
 						void send({ type: "switch_session", path });
 					}}
 					onSwitchProject={(path) => {
-						void send({ type: "set_cwd", path });
+						void send({ type: "set_cwd", path, source: "ui" });
 					}}
 					onPreviewFile={openPreview}
 				/>

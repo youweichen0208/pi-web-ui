@@ -12,7 +12,7 @@ import type {
 	UiMessage,
 	UiState,
 } from "../types";
-import type { PendingEcho, ReloadStatus } from "../use-chat";
+import type { CwdEvent, PendingEcho, ReloadStatus } from "../use-chat";
 import { Message, asText } from "./Message";
 
 import { collectQuestionAttachments } from "../question-attachments";
@@ -98,6 +98,7 @@ interface MessageListProps {
 	 *  用户消息幻影气泡，与 state.conversationId 匹配时才渲染。 */
 	pendingEcho?: PendingEcho | null;
 	reloadEvents?: ReloadStatus[];
+	cwdEvents?: CwdEvent[];
 }
 
 const scrollPositions = new Map<string, { top: number; bottom: boolean; hidden: Set<string>; expanded: Set<string>; heights: Map<string, number> }>();
@@ -128,19 +129,22 @@ function ReloadEvent({ event }: { event: ReloadStatus }) {
 	</div>;
 }
 
-export const MessageList = memo(function MessageList({ state, connected = true, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho, reloadEvents = [] }: MessageListProps) {
+export const MessageList = memo(function MessageList({ state, connected = true, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho, reloadEvents = [], cwdEvents = [] }: MessageListProps) {
 	const t = useT();
 	const timeline = useMemo(() => {
-		const events = reloadEvents.filter((event) => event.conversationId === state.conversationId).sort((a, b) => a.timestamp - b.timestamp);
-		const items: ({ kind: "message"; message: UiMessage; index: number } | { kind: "reload"; event: ReloadStatus })[] = [];
+		const events = [
+			...reloadEvents.filter((event) => event.conversationId === state.conversationId).map((event) => ({ kind: "reload" as const, event })),
+			...cwdEvents.filter((event) => event.conversationId === state.conversationId && event.cwd === state.cwd).map((event) => ({ kind: "cwd" as const, event })),
+		].sort((a, b) => a.event.timestamp - b.event.timestamp);
+		const items: ({ kind: "message"; message: UiMessage; index: number } | (typeof events)[number])[] = [];
 		let next = 0;
 		state.messages.forEach((message, index) => {
-			while (next < events.length && events[next].timestamp <= (message.timestamp ?? 0)) items.push({ kind: "reload", event: events[next++] });
+			while (next < events.length && events[next].event.timestamp <= (message.timestamp ?? 0)) items.push(events[next++]);
 			items.push({ kind: "message", message, index });
 		});
-		while (next < events.length) items.push({ kind: "reload", event: events[next++] });
+		while (next < events.length) items.push(events[next++]);
 		return items;
-	}, [state.messages, state.conversationId, reloadEvents]);
+	}, [state.messages, state.conversationId, state.cwd, reloadEvents, cwdEvents]);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
 	const stickRef = useRef(true);
@@ -657,6 +661,7 @@ export const MessageList = memo(function MessageList({ state, connected = true, 
 				)}
 				{timeline.map((item) => {
 					if (item.kind === "reload") return <ReloadEvent key={`reload-${item.event.requestId}`} event={item.event} />;
+					if (item.kind === "cwd") return <div key={`cwd-${item.event.timestamp}`} className="goal-event cwd-event" role="status"><span aria-hidden="true">↪</span><span>{t("cwdSwitchEvent", { path: item.event.cwd.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~") })}</span></div>;
 					const { message: m, index: i } = item;
 					if (goalEvents.absorbed.has(m.id)) return null;
 					const withGap = (content: ReactNode) => {
@@ -810,7 +815,6 @@ export const MessageList = memo(function MessageList({ state, connected = true, 
 							aria-label={group.ids.length > 1 ? t("questionMarkerGroup", { n: group.ids.length }) : `${questions.indexOf(q) + 1}. ${q.text}`}
 							onClick={() => jumpTo(q.id)}
 						>
-							{group.ids.length > 1 && <span className="qn-cluster-count">{group.ids.length}</span>}
 							<span className="qn-bar-text">{questions.indexOf(q) + 1}. {q.text}</span>
 						</button>
 						);

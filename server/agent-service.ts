@@ -3184,17 +3184,17 @@ export class ClientSession {
 		return this.files.completePath(input);
 	}
 
-	private cwdQueue: { path: string; id?: string; done: () => void } | null = null;
+	private cwdQueue: { path: string; id?: string; source?: "ui"; done: () => void } | null = null;
 	private cwdSwitchRunning = false;
 	get switchingWorkspace(): boolean { return this.cwdSwitchRunning; }
 
-	async setCwd(path: string, id?: string): Promise<void> {
+	async setCwd(path: string, id?: string, source?: "ui"): Promise<void> {
 		return new Promise<void>((done) => {
 			if (this.cwdQueue) {
 				if (this.cwdQueue.id) this.emit({ type: "cwd_result", requestId: this.cwdQueue.id, cwd: this.cwd, ok: false, error: "superseded" });
 				this.cwdQueue.done();
 			}
-			this.cwdQueue = { path, id, done };
+			this.cwdQueue = { path, id, source, done };
 			void this.drainCwdQueue();
 		});
 	}
@@ -3206,13 +3206,13 @@ export class ClientSession {
 			while (this.cwdQueue) {
 				const next = this.cwdQueue;
 				this.cwdQueue = null;
-				await this.commitCwd(next.path, next.id);
+				await this.commitCwd(next.path, next.id, next.source);
 				next.done();
 			}
 		} finally { this.cwdSwitchRunning = false; }
 	}
 
-	private async commitCwd(newCwd: string, requestId?: string): Promise<void> {
+	private async commitCwd(newCwd: string, requestId?: string, source?: "ui"): Promise<void> {
 		const startedAt = Date.now();
 		try {
 			const { resolve } = await import("node:path");
@@ -3225,11 +3225,6 @@ export class ClientSession {
 			}
 			if (abs === this.cwd) {
 				if (requestId) this.emit({ type: "cwd_result", requestId, cwd: abs, ok: true });
-				this.emit({
-					type: "notice",
-					level: "info",
-					text: `已在工作目录：${abs}`,
-				});
 				this.flushSnapshot(true);
 				return;
 			}
@@ -3309,11 +3304,7 @@ export class ClientSession {
 			this.goalSvc.emitGoalStatus();
 			// Skills / prompt templates are project-bound — refresh the catalog.
 			void this.pushSlashCommands();
-			this.emit({
-				type: "notice",
-				level: "info",
-				text: `已切换到工作目录：${abs}`,
-			});
+			if (source !== "ui") this.emit({ type: "cwd_event", conversationId: this.activeId, cwd: abs, timestamp: Date.now() });
 			void this.refreshSessions();
 			// Commands are per-project (.pi/commands.json in the current cwd).
 			void this.listCommands();

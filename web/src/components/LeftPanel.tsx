@@ -45,7 +45,7 @@ interface LeftPanelProps {
 			| { type: "list_projects" }
 			| { type: "switch_session"; path: string }
 			| { type: "switch_conversation"; id: string }
-			| { type: "set_cwd"; path: string }
+			| { type: "set_cwd"; path: string; source?: "ui" }
 			| { type: "remove_project"; path: string }
 			| { type: "delete_session"; path: string }
 			| { type: "rename_session"; path: string; name: string }
@@ -162,6 +162,15 @@ export const LeftPanel = memo(function LeftPanel({
 		if (/^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\/Users\/[^/]+)$/.test(normalized)) return "~";
 		return normalized.split("/").at(-1) || normalized;
 	};
+	const projectActivity = (project: ProjectSummary) => Math.max(
+		project.lastUsed,
+		project.lastConversationAt ?? 0,
+		project.path === currentCwd && sessions.length ? Math.max(...sessions.map((session) => session.modified)) : 0,
+	);
+	const sortedProjects = [...projects].sort((a, b) =>
+		Number(b.path === currentCwd) - Number(a.path === currentCwd) ||
+		projectActivity(b) - projectActivity(a) || a.path.localeCompare(b.path),
+	);
 
 	const history = (
 			<div className="panel-sessions">
@@ -317,7 +326,7 @@ export const LeftPanel = memo(function LeftPanel({
 					</button>
 				</div>
 				<div className="projects-scroll">
-					{projects.map((p) => {
+					{sortedProjects.map((p) => {
 						const active = currentCwd === p.path;
 						const pending = !active && pendingCwd === p.path;
 						const expanded = active && !collapsedActive;
@@ -339,7 +348,7 @@ export const LeftPanel = memo(function LeftPanel({
 										else {
 											setCollapsedActive(false);
 											setPendingCwd(p.path);
-											send({ type: "set_cwd", path: p.path });
+										send({ type: "set_cwd", path: p.path, source: "ui" });
 										}
 									}}
 								>
@@ -352,7 +361,7 @@ export const LeftPanel = memo(function LeftPanel({
 										<span className="thinking-spinner project-spinner" aria-hidden="true" />
 									) : (
 										<span className="project-time">
-											{formatModified(Math.max(p.lastUsed, p.lastConversationAt ?? 0, p.path === currentCwd && sessions.length ? Math.max(...sessions.map((session) => session.modified)) : 0), t("yesterday"))}
+											{formatModified(projectActivity(p), t("yesterday"))}
 										</span>
 									)}
 								</button>
@@ -384,7 +393,7 @@ export const LeftPanel = memo(function LeftPanel({
 					onBrowse={(path) => send({ type: "browse_dirs", path })}
 					onPick={(path) => {
 						setPendingCwd(path);
-						send({ type: "set_cwd", path });
+						send({ type: "set_cwd", path, source: "ui" });
 						setPicking(false);
 					}}
 					onClose={() => setPicking(false)}

@@ -165,11 +165,11 @@ async function main() {
 			(m.type === "snapshot" || m.type === "snapshot_delta") &&
 			norm(m.state?.cwd) === norm(TMP_CWD),
 	);
-	const cwdOk = await c.wait((m) => m.type === "notice", 6000).catch(() => null);
-	if (!cwdOk || !cwdOk.text.includes("已切换到工作目录")) {
+	const cwdOk = await c.wait((m) => m.type === "cwd_event", 6000).catch(() => null);
+	if (!cwdOk || norm(cwdOk.cwd) !== norm(TMP_CWD)) {
 		throw new Error("FAIL: /cwd valid path did not switch workspace");
 	}
-	console.log(`[3] /cwd valid → ${cwdOk.text}`);
+	console.log(`[3] /cwd valid → ${cwdOk.cwd}`);
 
 	c.send({ type: "prompt", text: "/cwd /nonexistent-zzz" });
 	const cwdBad = await c.wait((m) => m.type === "notice", 6000);

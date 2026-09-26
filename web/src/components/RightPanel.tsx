@@ -168,10 +168,8 @@ export const RightPanel = memo(function RightPanel({ active, files, conversation
 	</>;
 	const confirmed = fileCheck?.key === fileCheckKey && conversationFilesChecked?.cwd === cwd && conversationFilesChecked.reqId === fileCheck.reqId ? new Set(conversationFilesChecked.paths) : new Set<string>();
 	const involved = fileCandidates.filter((file) => confirmed.has(file.path)).slice(0, 12);
-	const actionCounts = involved.reduce((counts, file) => ({ ...counts, [file.action]: counts[file.action] + 1 }), { read: 0, grep: 0, used: 0 });
 	const actionLabel = (action: "read" | "grep" | "used") => t(action === "read" ? "readVerb" : action === "grep" ? "grepSearch" : "fileUsed");
-	const actionSummary = (["read", "grep", "used"] as const).filter((action) => actionCounts[action] > 0).map((action) => `${actionLabel(action)} ${actionCounts[action]}`).join(" · ");
-	const oneAction = (["read", "grep", "used"] as const).filter((action) => actionCounts[action] > 0).length === 1;
+	const involvedGroups = (["read", "grep", "used"] as const).map((action) => ({ action, files: involved.filter((file) => file.action === action) })).filter((group) => group.files.length > 0);
 	return <aside className={`panel panel-right${involved.length ? " has-conversation-files" : ""}`}>
 		<div className="panel-title"><span>{t("workspaceFiles")}</span><button type="button" className="tree-hidden-toggle" aria-pressed={showHidden} onClick={() => setShowHidden(value => !value)}>{t("showHiddenFiles")}</button>{!notRepo && <button type="button" className="tree-filter" aria-pressed={onlyChanged} onClick={() => setOnlyChanged(value => !value)}>{t("changedCount", { n: changed.length })}</button>}</div>
 		<div className="panel-body" role="tree" aria-label={t("workspaceFiles")} onKeyDown={(event) => {
@@ -196,7 +194,7 @@ export const RightPanel = memo(function RightPanel({ active, files, conversation
 		}}>
 			{onlyChanged && changed.length === 0 ? <div className="panel-empty">{t("noChangedFiles")}</div> : directories[""] ? renderDirectory("", 0) : <div className="panel-empty">{t("loading")}</div>}
 		</div>
-		{involved.length > 0 && <div className="conversation-files"><div className="conversation-files-title"><span>{t("conversationFiles")}</span><span>{actionSummary}</span></div><div className="conversation-files-list">{involved.map(({ path, action }) => { const name = path.split("/").at(-1) ?? path; return <button type="button" key={path} className="conversation-file" title={path} onClick={() => onPreview(path, name)}><span className="conversation-file-main"><span>{name}</span>{!oneAction && <em>{actionLabel(action)}</em>}</span>{path.includes("/") && <small>{path.slice(0, path.lastIndexOf("/"))}</small>}</button>; })}</div></div>}
+		{involved.length > 0 && <div className="conversation-files"><div className="conversation-files-title"><span>{t("conversationFiles")}</span></div><div className="conversation-files-list">{involvedGroups.map(({ action, files }) => <section className="conversation-file-group" key={action}><h3>{actionLabel(action)} · {files.length}</h3>{files.map(({ path }) => { const name = path.split("/").at(-1) ?? path; const directory = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "."; return <button type="button" key={path} className="conversation-file" title={path} onClick={() => onPreview(path, name)}><span className="conversation-file-name">{name}</span><small className="conversation-file-directory">{directory}</small></button>; })}</section>)}</div></div>}
 			{widgets.filter((w) => w.lines.length > 0).length > 0 && (
 				<div className="panel-widgets">
 					{widgets

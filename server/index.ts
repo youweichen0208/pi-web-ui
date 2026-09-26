@@ -687,7 +687,7 @@ wss.on("connection", (ws) => {
 				cs.setThinking(msg.level);
 				break;
 			case "set_cwd":
-				void cs.setCwd(msg.path, msg.requestId);
+				void cs.setCwd(msg.path, msg.requestId, msg.source);
 				break;
 			case "complete_path":
 				void cs.completePath(msg.path);

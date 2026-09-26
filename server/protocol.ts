@@ -339,7 +339,7 @@ export type ClientMessage =
 	| { type: "list_models" }
 	| { type: "set_model"; modelId: string }
 	| { type: "set_thinking"; level: string }
-	| { type: "set_cwd"; path: string; requestId?: string }
+	| { type: "set_cwd"; path: string; requestId?: string; source?: "ui" }
 	| { type: "complete_path"; path: string }
 	| { type: "dialog_response"; id: number; value: string | boolean | null }
 	// -- self-update ----------------------------------------------------------
@@ -996,6 +996,7 @@ export type ServerMessage =
 	 *  and on request (get_commands). */
 	| { type: "slash_commands"; commands: SlashCommandInfo[] }
 	| { type: "reload_status"; conversationId: string; requestId: string; phase: "running" | "done"; timestamp: number; durationMs?: number; extensions?: number; skills?: number; prompts?: number; resources?: { extensions: string[]; skills: string[]; prompts: string[] }; errors?: { path: string; message: string }[] }
+	| { type: "cwd_event"; conversationId: string; cwd: string; timestamp: number }
 	| { type: "notice"; level: "info" | "warning" | "error"; text: string }
 	/** The watched git dir changed outside the panel (terminal commit,
 	 *  CLI, IDE) — the client should re-run its scm_status query. */
