@@ -3539,11 +3539,10 @@ body.panel-resizing {
 }
 
 	.notices {
-		position: fixed;
-		/* 顶部偏下：顶栏下方，不挡顶栏也不贴消息区 */
-		top: 80px;
-		left: 50%;
-		transform: translateX(-50%);
+		position: relative;
+		flex: none;
+		margin: 0 auto 8px;
+		width: min(760px, calc(100% - 24px));
 		z-index: 50;
 		display: flex;
 		flex-direction: column;
@@ -3551,6 +3550,7 @@ body.panel-resizing {
 		align-items: center;
 		pointer-events: none;
 	}
+	.notices-overlay { position: fixed; bottom: 48px; left: 50%; transform: translateX(-50%); }
 
 	.notice {
 		pointer-events: auto;
@@ -3569,7 +3569,7 @@ body.panel-resizing {
 		font-weight: 600;
 		line-height: 1.5;
 		text-align: left;
-		box-shadow: 0 10px 36px rgba(0, 0, 0, 0.55);
+		box-shadow: 0 5px 18px rgba(35, 29, 40, 0.1);
 		animation: notice-in 0.18s ease;
 	}
 	@keyframes notice-in {
@@ -3585,7 +3585,7 @@ body.panel-resizing {
 	/* 悬浮中：计时暂停、通知一直显示——边框高亮给出反馈 */
 	.notice.paused {
 		border-color: var(--accent);
-		box-shadow: 0 0 0 1px var(--accent), 0 14px 44px rgba(0, 0, 0, 0.65);
+		box-shadow: 0 0 0 1px var(--accent), 0 8px 22px rgba(35, 29, 40, 0.13);
 	}
 	.notice-icon {
 		flex: none;
@@ -3615,38 +3615,25 @@ body.panel-resizing {
 		color: var(--text);
 	}
 	.notice-error {
-		border-color: rgba(248, 113, 113, 0.55);
-		border-left-color: #ef4444;
-		color: #fca5a5;
-		/* 不透明背景：避免下层文字透出来干扰阅读 */
-		background: #401d23;
+		border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+		border-left-color: var(--red);
+		color: var(--text);
+		background: color-mix(in srgb, var(--red) 7%, var(--bg-elev));
 	}
 	.notice-error .notice-icon {
-		color: #f87171;
+		color: var(--red);
 	}
 	.notice-warning {
-		border-color: rgba(251, 191, 36, 0.5);
-		border-left-color: #f59e0b;
-		color: #fcd34d;
-		background: #38251f;
+		border-color: color-mix(in srgb, var(--amber) 35%, var(--border));
+		border-left-color: var(--amber);
+		color: var(--text);
+		background: color-mix(in srgb, var(--amber) 8%, var(--bg-elev));
 	}
 	.notice-warning .notice-icon {
-		color: #fbbf24;
+		color: var(--amber);
 	}
-	.notice-info {
-		border-color: rgba(96, 165, 250, 0.45);
-		border-left-color: #3b82f6;
-		/* Fixed light-on-dark pairing (like .notice-error/.notice-warning below) —
-		   the background here is a permanently dark navy tint regardless of theme,
-		   so the text must stay a fixed light blue too. var(--text) used to sit
-		   here, which is fine on the dark theme (light text) but turns into
-		   dark-on-dark and disappears on any light theme. */
-		color: #93c5fd;
-		background: #1b2544;
-	}
-	.notice-info .notice-icon {
-		color: #60a5fa;
-	}
+	.notice-info { border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); border-left-color: var(--accent); color: var(--text); background: var(--bg-elev); }
+	.notice-info .notice-icon { color: var(--accent); }
 
 /* ------------------------------------------------------------ message list */
 
@@ -8544,7 +8531,7 @@ img.brand-logo, img.empty-logo { background: transparent; object-fit: contain; }
 .design-workspace .topbar-actions > .panel-toggle { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid oklch(0.9 0.005 80); border-radius: 8px; color: oklch(0.4 0.01 80); background: transparent; cursor: pointer; }
 .design-workspace .messages { display: flex; flex-direction: column; padding: 28px 0 24px; }
 .design-workspace .messages > * { flex-shrink: 0; }
-.design-workspace .messages:has(.msg, .goal-event, .msg-collapsed) > :first-child { margin-top: auto; }
+.design-workspace .messages:has(.msg, .goal-event, .reload-event, .msg-collapsed) > :first-child { margin-top: auto; }
 .design-workspace .messages-wrap::before,
 .design-workspace .messages-wrap::after { content: ""; position: absolute; left: 0; right: 0; z-index: 4; pointer-events: none; }
 .design-workspace .messages-wrap::before { top: 0; height: 16px; background: linear-gradient(to bottom, var(--bg), transparent); }
@@ -8799,6 +8786,25 @@ body { -webkit-font-smoothing: antialiased; }
 .goal-event-details { flex-basis: 100%; text-align: center; }
 .goal-event-details summary { cursor: pointer; display: inline-block; color: var(--text-faint); }
 .goal-event-details pre { max-width: 724px; margin: 8px auto; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elev); white-space: pre-wrap; text-align: left; font: 12px/1.5 var(--sans); }
+.reload-event { width: 100%; max-width: 780px; margin: 0 auto 26px; padding: 0 28px; display: flex; flex-direction: column; gap: 14px; color: var(--text-dim); }
+.reload-command { align-self: flex-end; padding: 9px 14px; border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border)); border-radius: 12px 12px 4px 12px; background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev)); color: var(--accent); }
+.reload-command code { font: 13px/1.4 var(--mono); }
+.reload-event-line { align-self: center; display: block; font: 12.5px/1.5 var(--sans); text-align: center; }
+.reload-event-line > span:first-child { display: inline-block; margin-right: 8px; }
+.reload-mark { font-weight: 700; color: var(--green); }
+.reload-event.failed .reload-mark, .reload-event.failed .reload-event-line { color: var(--amber); }
+.reload-dots { display: inline-flex !important; align-items: center; gap: 3px; vertical-align: middle; }
+.reload-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); animation: reload-bounce .9s ease-in-out infinite; }
+.reload-dots i:nth-child(2) { animation-delay: .15s; }
+.reload-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes reload-bounce { 50% { transform: translateY(-4px); opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .reload-dots i { animation: none; } }
+.reload-errors { align-self: center; max-width: 100%; color: var(--text-dim); font: 12px/1.5 var(--sans); }
+.reload-errors summary { cursor: pointer; text-align: center; color: var(--amber); }
+.reload-errors ul { max-width: 680px; max-height: 220px; overflow: auto; margin: 9px 0 0; padding: 10px 16px 10px 28px; border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--border)); border-radius: 8px; background: var(--bg-elev); text-align: left; }
+.reload-errors li { margin: 4px 0; overflow-wrap: anywhere; }
+.reload-errors li strong { display: block; font: 11px var(--mono); }
+.reload-errors li span { display: block; }
 @media (max-width: 768px) {
 	.design-workspace > .statusbar .status-cwd-wrap { min-width: 0; }
 	.design-workspace > .statusbar .status-connection { display: none; }
@@ -8958,8 +8964,8 @@ body { -webkit-font-smoothing: antialiased; }
 /* Quiet reading state, with focus guidance only while the message field is active. */
 .design-workspace .inputbox:focus-within { border-color: oklch(0.87 0.006 80); }
 .design-workspace .inputbox.has-draft:focus-within { border-color: var(--accent); }
-.design-workspace .composer-hint { visibility: hidden; opacity: 0; transition: opacity .15s ease; }
-.design-workspace .inputbar:has(.inputbox textarea:focus) .composer-hint { visibility: visible; opacity: 1; }
+.design-workspace .composer-hint { display: none; }
+.design-workspace .inputbar:has(.inputbox:not(.has-draft) textarea:focus) .composer-hint { display: block; }
 
 .design-workspace .thinking-toggle { min-height: 22px; align-items: center; gap: 6px; line-height: 18px; }
 .design-workspace .thinking-toggle > svg { flex: none; width: 14px; height: 14px; }

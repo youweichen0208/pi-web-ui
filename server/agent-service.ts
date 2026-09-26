@@ -2237,7 +2237,8 @@ export class ClientSession {
 			// never reach the SDK. Extension / skill / template commands fall
 			// through — AgentSession.prompt() handles those itself.
 			const slash = parseSlash(text);
-			if (slash && (await this.slash.exec(slash.name, slash.args))) {
+			if (slash?.name === "reload") acknowledge(true);
+			if (slash && (await this.slash.exec(slash.name, slash.args, { conversationId: conv.id, requestId: requestId ?? `reload-${Date.now()}` }))) {
 				acknowledge(true);
 				this.flushSnapshot();
 				return;

@@ -94,10 +94,10 @@ function NoticeToast({
 	const t = useT();
 	const [paused, setPaused] = useState(false);
 	useEffect(() => {
-		if (paused) return;
+		if (paused || notice.level !== "info") return;
 		const t = setTimeout(
 			() => onDismiss(notice.id),
-			notice.level === "error" ? 12000 : 7000,
+			3000,
 		);
 		return () => clearTimeout(t);
 	}, [paused, notice.id, notice.level, onDismiss]);
@@ -813,11 +813,9 @@ export function App() {
 						⚠ {t("protocolMismatch")}
 					</div>
 				)}
-				<div className="notices">
-					{chat.notices.map((n) => (
-						<NoticeToast key={n.id} notice={n} onDismiss={dismissNotice} />
-					))}
-				</div>
+				{view !== "chat" && chat.notices.length > 0 && <div className="notices notices-overlay">
+					{chat.notices.map((n) => <NoticeToast key={n.id} notice={n} onDismiss={dismissNotice} />)}
+				</div>}
 				<div
 					className="layout"
 					style={{ "--left-w": `${leftWidth}px`, "--right-w": `${rightWidth}px`, "--editor-share": editorShare } as CSSProperties}
@@ -839,6 +837,7 @@ export function App() {
 									thinkingWrap={chat.settings?.thinkingWrap ?? true}
 								toolsWrap={chat.settings?.toolsWrap ?? true}
 								pendingEcho={chat.pendingEcho}
+								reloadEvents={chat.reloadEvents}
 								/></WorkspacePathContext.Provider>
 							) : (
 								<div className="boot-wait">
@@ -855,6 +854,9 @@ export function App() {
 							/>
 							{/* 扩展问卷：非模态内联面板，插在输入框上方，对话内容保持可见 */}
 							{chat.dialog && <Dialog dialog={chat.dialog} send={send} />}
+							{chat.notices.length > 0 && <div className="notices">
+								{chat.notices.map((n) => <NoticeToast key={n.id} notice={n} onDismiss={dismissNotice} />)}
+							</div>}
 							<ChatInput
 								currentFile={!switching && currentFile?.cwd === chat.state?.cwd ? currentFile : null}
 								contextReader={contextReader}

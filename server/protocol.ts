@@ -993,6 +993,7 @@ export type ServerMessage =
 	 *  prompt template + skill commands). Pushed on attach, on project switch
 	 *  and on request (get_commands). */
 	| { type: "slash_commands"; commands: SlashCommandInfo[] }
+	| { type: "reload_status"; conversationId: string; requestId: string; phase: "running" | "done"; timestamp: number; durationMs?: number; extensions?: number; skills?: number; prompts?: number; resources?: { extensions: string[]; skills: string[]; prompts: string[] }; errors?: { path: string; message: string }[] }
 	| { type: "notice"; level: "info" | "warning" | "error"; text: string }
 	/** The watched git dir changed outside the panel (terminal commit,
 	 *  CLI, IDE) — the client should re-run its scm_status query. */

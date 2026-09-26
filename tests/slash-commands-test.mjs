@@ -32,6 +32,7 @@ const NATIVE_NAMES = [
 	"cwd",
 	"thinking",
 	"resume",
+	"reload",
 	"help",
 	"copy",
 ];
@@ -205,14 +206,17 @@ async function main() {
 	console.log(`[7] /new → active conversation ${newChat.activeId.slice(0, 8)}…`);
 
 	// --- 8. /reload re-discovers resources and re-pushes the catalog ---
-	c.send({ type: "prompt", text: "/reload" });
+	const reloadRequestId = `reload-${Date.now()}`;
+	c.send({ type: "prompt", text: "/reload", requestId: reloadRequestId });
+	const running = await c.wait((m) => m.type === "reload_status" && m.requestId === reloadRequestId && m.phase === "running", 8000);
+	if (!running.conversationId) throw new Error("FAIL: /reload running event lacks conversation identity");
 	const catReloaded = await c.wait(
 		(m) => m.type === "slash_commands",
 		20000,
 	);
-	const reloadNotice = await c.wait((m) => m.type === "notice", 8000);
-	if (!reloadNotice.text.includes("已重新加载")) {
-		throw new Error(`FAIL: /reload notice unexpected: ${reloadNotice.text}`);
+	const done = await c.wait((m) => m.type === "reload_status" && m.requestId === reloadRequestId && m.phase === "done", 8000);
+	if (done.conversationId !== running.conversationId || !Number.isFinite(done.durationMs) || !Number.isInteger(done.extensions) || !Number.isInteger(done.skills) || !Number.isInteger(done.prompts) || !Array.isArray(done.errors) || !Array.isArray(done.resources?.skills)) {
+		throw new Error(`FAIL: /reload result incomplete: ${JSON.stringify(done)}`);
 	}
 	const namesAfterReload = new Set(catReloaded.commands.map((x) => x.name));
 	const missingAfterReload = NATIVE_NAMES.filter((n) => !namesAfterReload.has(n));
@@ -222,7 +226,7 @@ async function main() {
 		);
 	}
 	console.log(
-		`[8] /reload → catalog re-pushed (${catReloaded.commands.length} commands), ${reloadNotice.text}`,
+		`[8] /reload → catalog re-pushed (${catReloaded.commands.length} commands), extensions=${done.extensions}, skills=${done.skills}, prompts=${done.prompts}, errors=${done.errors.length}`,
 	);
 
 	c.close();

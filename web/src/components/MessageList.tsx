@@ -12,7 +12,7 @@ import type {
 	UiMessage,
 	UiState,
 } from "../types";
-import type { PendingEcho } from "../use-chat";
+import type { PendingEcho, ReloadStatus } from "../use-chat";
 import { Message, asText } from "./Message";
 
 import { collectQuestionAttachments } from "../question-attachments";
@@ -95,12 +95,50 @@ interface MessageListProps {
 	/** 乐观本地回显（见 ChatState.pendingEcho）——服务端确认前立即显示的
 	 *  用户消息幻影气泡，与 state.conversationId 匹配时才渲染。 */
 	pendingEcho?: PendingEcho | null;
+	reloadEvents?: ReloadStatus[];
 }
 
 const scrollPositions = new Map<string, { top: number; bottom: boolean; hidden: Set<string>; expanded: Set<string>; heights: Map<string, number> }>();
 
-export const MessageList = memo(function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho }: MessageListProps) {
+function ReloadEvent({ event }: { event: ReloadStatus }) {
 	const t = useT();
+	const errors = event.errors ?? [];
+	const failed = event.phase === "done" && errors.length > 0;
+	const summary = event.phase === "running" ? t("reloadRunning")
+		: failed ? t("reloadPartial", { count: errors.length }) : t("reloadDone");
+	const counts = event.extensions === undefined ? "" : t("reloadCounts", {
+		extensions: event.extensions, skills: event.skills ?? 0, prompts: event.prompts ?? 0,
+	});
+	const duration = event.durationMs === undefined ? "" : ` · ${(event.durationMs / 1000).toFixed(1)}s`;
+	const names = (items: string[]) => items.length > 8 ? `${items.slice(0, 8).join(", ")} +${items.length - 8}` : items.join(", ");
+	const detail = event.resources ? [
+		t("reloadExtensionList", { names: names(event.resources.extensions) || "—" }),
+		t("reloadSkillList", { names: names(event.resources.skills) || "—" }),
+		t("reloadPromptList", { names: names(event.resources.prompts) || "—" }),
+	].join("\n") : "";
+	return <div className={`reload-event${failed ? " failed" : ""}`} role="status" title={counts ? `${counts}${duration}\n${detail}` : undefined}>
+		<div className="reload-command"><code>/reload</code></div>
+		<div className="reload-event-line">
+			<span className={event.phase === "running" ? "reload-dots" : "reload-mark"} aria-hidden="true">{event.phase === "running" ? <><i /><i /><i /></> : failed ? "!" : "✓"}</span>
+			<span>{summary}{event.phase === "done" && counts ? ` · ${counts}${duration}` : duration}</span>
+		</div>
+		{failed && <details className="reload-errors"><summary>{t("reloadDetails")}</summary><ul>{errors.map((error, index) => <li key={`${error.path}-${index}`}><strong>{error.path || t("reloadGeneralError")}</strong><span>{error.message}</span></li>)}</ul></details>}
+	</div>;
+}
+
+export const MessageList = memo(function MessageList({ state, liveOutputs, toolStatuses, onEdit, onKillBash, thinkingWrap, toolsWrap, pendingEcho, reloadEvents = [] }: MessageListProps) {
+	const t = useT();
+	const timeline = useMemo(() => {
+		const events = reloadEvents.filter((event) => event.conversationId === state.conversationId).sort((a, b) => a.timestamp - b.timestamp);
+		const items: ({ kind: "message"; message: UiMessage; index: number } | { kind: "reload"; event: ReloadStatus })[] = [];
+		let next = 0;
+		state.messages.forEach((message, index) => {
+			while (next < events.length && events[next].timestamp <= (message.timestamp ?? 0)) items.push({ kind: "reload", event: events[next++] });
+			items.push({ kind: "message", message, index });
+		});
+		while (next < events.length) items.push({ kind: "reload", event: events[next++] });
+		return items;
+	}, [state.messages, state.conversationId, reloadEvents]);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [stickBottom, setStickBottom] = useState(true);
 	const stickRef = useRef(true);
@@ -584,7 +622,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 	return (
 		<div className="messages-wrap">
 			<div className="messages" ref={scrollRef} onScroll={onScroll}>
-				{state.messages.length === 0 && !state.streamingMessage && (
+				{timeline.length === 0 && !state.streamingMessage && (
 					<div className="empty-state">
 						<div className="empty-logo-wrap">
 							<img className="empty-logo" src="/favicon.svg" alt="" />
@@ -615,7 +653,9 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 						</div>
 					</div>
 				)}
-				{state.messages.map((m, i) => {
+				{timeline.map((item) => {
+					if (item.kind === "reload") return <ReloadEvent key={`reload-${item.event.requestId}`} event={item.event} />;
+					const { message: m, index: i } = item;
 					if (goalEvents.absorbed.has(m.id)) return null;
 					const withGap = (content: ReactNode) => {
 						const label = timeGaps.get(i);

@@ -39,6 +39,20 @@ export interface Notice {
 	text: string;
 }
 
+export type ReloadStatus = Extract<ServerMessage, { type: "reload_status" }>;
+
+const RELOAD_EVENTS_KEY = "pi-web-ui:reload-events";
+function restoreReloadEvents(): ReloadStatus[] {
+	try {
+		const events: unknown = JSON.parse(sessionStorage.getItem(RELOAD_EVENTS_KEY) ?? "[]");
+		return Array.isArray(events) ? events.filter((event): event is ReloadStatus =>
+			event && typeof event === "object" && event.type === "reload_status" &&
+			typeof event.conversationId === "string" && typeof event.requestId === "string" &&
+			(event.phase === "running" || event.phase === "done") && typeof event.timestamp === "number",
+		).slice(-40) : [];
+	} catch { return []; }
+}
+
 /** A terminal tab. The output stream itself lives in the xterm instance
  * (via the terminal bridge) — this is just the tab metadata. */
 export interface TerminalMeta extends TerminalInfo {
@@ -184,6 +198,7 @@ export interface ChatState {
 	 * timer, so it can't outlive or fight with the real message.
 	 */
 	pendingEcho: PendingEcho | null;
+	reloadEvents: ReloadStatus[];
 }
 
 export interface PendingEcho {
@@ -201,6 +216,7 @@ type Action =
 	| { type: "message_delta"; msg: MessageDeltaMsg }
 	| { type: "tool_status"; status: ToolStatus }
 	| { type: "notice"; notice: Notice }
+	| { type: "reload_status"; event: ReloadStatus }
 	| { type: "dismiss_notice"; id: number }
 	| { type: "ready"; serverVersion: string; protocolVersion?: number }
 	| { type: "sessions"; sessions: SessionSummary[] }
@@ -519,6 +535,13 @@ function reducer(state: ChatState, action: Action): ChatState {
 			};
 		case "notice":
 			return { ...state, notices: [...state.notices, action.notice].slice(-6) };
+		case "reload_status": {
+			const existing = state.reloadEvents.findIndex((event) => event.requestId === action.event.requestId && event.conversationId === action.event.conversationId);
+			const reloadEvents = existing < 0
+				? [...state.reloadEvents, action.event].slice(-40)
+				: state.reloadEvents.map((event, index) => index === existing ? action.event : event);
+			return { ...state, reloadEvents };
+		}
 		case "dismiss_notice":
 			return {
 				...state,
@@ -730,7 +753,11 @@ export function useChat() {
 		pluginsEpoch: 0,
 		protocolMismatch: false,
 		pendingEcho: null,
+		reloadEvents: restoreReloadEvents(),
 	});
+	useEffect(() => {
+		try { sessionStorage.setItem(RELOAD_EVENTS_KEY, JSON.stringify(chat.reloadEvents)); } catch { /* storage unavailable or full */ }
+	}, [chat.reloadEvents]);
 	const authoritative = useRef(chat);
 	authoritative.current = chat;
 	const cache = useRef(new ProjectCache<Pick<ChatState, "state" | "sessions" | "files">>());
@@ -962,6 +989,9 @@ export function useChat() {
 					});
 					break;
 				}
+				case "reload_status":
+					dispatch({ type: "reload_status", event: msg });
+					break;
 				case "sessions":
 					if (msg.cwd !== confirmedCwd.current) break;
 					dispatch({ type: "sessions", sessions: msg.sessions });

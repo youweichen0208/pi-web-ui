@@ -149,7 +149,7 @@ export class SlashCommandsService {
 
 	/** Run a native slash command (see NATIVE_COMMANDS). Returns false when the
 	 *  name is not a native command (the prompt falls through to the SDK). */
-	async exec(name: string, args: string): Promise<boolean> {
+	async exec(name: string, args: string, context: { conversationId: string; requestId: string }): Promise<boolean> {
 		switch (name) {
 			case "new":
 				await this.host.newChat();
@@ -259,6 +259,8 @@ export class SlashCommandsService {
 				});
 				return true;
 			case "reload":
+				const startedAt = Date.now();
+				this.host.emit({ type: "reload_status", ...context, phase: "running", timestamp: startedAt });
 				try {
 					// Re-discovers extensions / skills / prompt templates from disk and
 					// re-pushes the picker catalog (the CLI's /reload semantics).
@@ -266,16 +268,31 @@ export class SlashCommandsService {
 					// reload() 会把 custom 工具加回活跃集——重放设置门控（终端开关等）。
 					this.host.afterReload?.();
 					await this.push();
+					const s = this.host.getSession();
+					const extensions = s.resourceLoader.getExtensions();
+					const skills = s.resourceLoader.getSkills();
+					const prompts = s.resourceLoader.getPrompts();
+					const errors = [
+						...extensions.errors.map((e) => ({ path: e.path, message: e.error })),
+						...skills.diagnostics.filter((d) => d.type === "error").map((d) => ({ path: d.path ?? "", message: d.message })),
+						...prompts.diagnostics.filter((d) => d.type === "error").map((d) => ({ path: d.path ?? "", message: d.message })),
+					];
 					this.host.emit({
-						type: "notice",
-						level: "info",
-						text: "已重新加载扩展、技能与提示模板",
+						type: "reload_status", ...context, phase: "done", timestamp: startedAt,
+						durationMs: Date.now() - startedAt,
+						extensions: extensions.extensions.length, skills: skills.skills.length,
+						prompts: prompts.prompts.length, errors,
+						resources: {
+							extensions: extensions.extensions.map((extension) => extension.path),
+							skills: skills.skills.map((skill) => skill.name),
+							prompts: prompts.prompts.map((prompt) => prompt.name),
+						},
 					});
 				} catch (err) {
 					this.host.emit({
-						type: "notice",
-						level: "error",
-						text: `重新加载失败：${(err as Error).message}`,
+						type: "reload_status", ...context, phase: "done", timestamp: startedAt,
+						durationMs: Date.now() - startedAt,
+						errors: [{ path: "", message: (err as Error).message }],
 					});
 				}
 				return true;

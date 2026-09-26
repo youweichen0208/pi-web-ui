@@ -127,7 +127,7 @@ export const ChatInput = memo(function ChatInput({
 		onSent(pending.conversation, pending.attachments);
 		if (pending.conversation === activeConversationId) {
 			setText((value) => value === pending.text ? "" : value);
-			setPendingEcho(activeConversationId, pending.text.trim());
+			if (pending.text.trim() !== "/reload") setPendingEcho(activeConversationId, pending.text.trim());
 		} else {
 			drafts.current.delete(pending.conversation);
 		}
