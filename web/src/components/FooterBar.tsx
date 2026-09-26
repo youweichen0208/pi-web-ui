@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FiFile, FiFolder, FiGitBranch } from "react-icons/fi";
+import { FiFile, FiFolder } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import { useT } from "../i18n";
 import { WorkingDots } from "./WorkingStatus";
@@ -163,7 +163,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 			<span className="status-sep">·</span>
 
 			<span className="status-item status-branch" title={git?.notRepo ? branchLabel : `${t("scmCurrentBranch")}: ${branchLabel}`}>
-				{!git?.notRepo && <><span className="workspace-stat-label">{t("workspaceBranch")}</span><FiGitBranch aria-hidden="true" /></>}
+				{!git?.notRepo && <span className="workspace-stat-label">{t("workspaceBranch")}</span>}
 				<span className="status-branch-name">{branchLabel}</span>
 			</span>
 			<span className="status-sep">·</span>
@@ -242,7 +242,7 @@ export function FooterBar({ chat, send }: FooterBarProps) {
 					title={t("cwdTip", { path: state.cwd })}
 					onClick={startEdit}
 				>
-					<span className="workspace-stat-label">{t("workspacePath")}</span><span className="workspace-stat-path">{state.cwd}</span>
+					<span className="workspace-stat-label">{t("workspacePath")}</span><span className="workspace-stat-path">{state.cwd.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~")}</span>
 				</button>
 			)}
 		</footer>

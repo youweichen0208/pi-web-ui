@@ -41,8 +41,9 @@ try {
 		});
 	});
 	await page.goto(`http://localhost:${port}`);
-	await page.locator('.tree-not-repo').waitFor();
-	assert.equal(await page.locator('.tree-not-repo').textContent(),'非 Git 仓库');
+	await page.locator('.panel-right .panel-title').waitFor();
+	await page.locator('.tree-filter').waitFor({state:'detached'});
+	assert.equal(await page.locator('.panel-right .panel-title').textContent(),'文件');
 	assert.equal(await page.locator('.tree-filter').count(),0);
 	assert.equal(await page.locator('.time-gap').count(),1);
 	await page.getByText('本次对话涉及').waitFor();

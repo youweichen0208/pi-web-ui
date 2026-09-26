@@ -71,6 +71,8 @@ try {
 	assert.equal(await page.locator(".sidebar-brand").isVisible(), true);
 	assert.equal(await page.locator(".sidebar-footer").isVisible(), true);
 	assert.equal(await page.locator(".input-tools .thinking-segments").isVisible(), true);
+	await page.locator('.view-switch [aria-label="Git"][aria-disabled="true"]').waitFor();
+	assert.equal(await page.locator('.panel-right .panel-title').textContent(), '文件');
 	await page.locator(".input-tools .dropdown > .chip").first().click();
 	const modelMenu = await page.locator(".input-tools .dd-menu").boundingBox();
 	const modelTrigger = await page.locator(".input-tools .dropdown > .chip").first().boundingBox();
@@ -196,7 +198,7 @@ try {
 	assert.equal(await editor.inputValue(), "protected draft");
 	const element = await editor.elementHandle();
 	await editor.evaluate((node) => { node.focus(); node.setSelectionRange(3, 3); });
-	await page.getByRole("tab").nth(2).click();
+	await page.getByRole("tab").nth(1).click();
 	await page.getByRole("tab").nth(0).click();
 	assert.equal(await editor.inputValue(), "protected draft");
 	assert.equal(await element.evaluate((node) => node === document.querySelector(".fp-editor") && node.selectionStart === 3), true);
@@ -267,7 +269,7 @@ try {
 	await page.locator(".fp-reference").click();
 	await page.locator(".attach-chip.reference").waitFor();
 	await editor.fill("search departure draft");
-	await page.getByRole("tab").nth(2).click();
+	await page.getByRole("tab").nth(1).click();
 	await page.keyboard.press("Control+k");
 	await page.locator(".gs-input-row input").fill("second");
 	await page.locator(".gs-item", { hasText: "second.txt" }).click();

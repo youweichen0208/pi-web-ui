@@ -363,7 +363,7 @@ export const Message = memo(function Message({
 				</span>
 				{message.model && <span className="msg-model">{message.model}</span>}
 				{message.timestamp && (
-					<span className="msg-time">{formatTime(message.timestamp)}</span>
+					<span className="msg-time" title={new Date(message.timestamp).toLocaleString()}>{formatTime(message.timestamp)}</span>
 				)}
 				{onCollapse && (
 					<button

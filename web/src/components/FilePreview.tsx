@@ -165,12 +165,21 @@ export const FilePreviewContent = memo(function FilePreviewContent({
 		if (!content || content.requestId !== compareReadId.current || content.path !== file.path || content.cwd !== file.cwd) return;
 		compareReadId.current = "";
 		if (loaded && content.version !== loaded.version) {
-			setRemoteText(content.text);
-			setExternalChanged(true);
+			if (dirty) {
+				setRemoteText(content.text);
+				setExternalChanged(true);
+			} else {
+				// 改动回流（干净分支）：编辑器无未保存修改时自动重载为磁盘新版。
+				loadedRef.current = content;
+				setLoaded(content);
+				setDraft(content.text);
+			}
 		}
-	}, [content, loaded, file.path, file.cwd]);
+	}, [content, loaded, dirty, file.path, file.cwd]);
 	useEffect(() => {
-		if (!fileChanged || !loaded || !dirty || pending.current || disabled) return;
+		// 磁盘变化时对比读取：草稿干净则自动重载（改动回流），有未保存修改
+		// 则走外部修改横幅，保留用户草稿由其二选一。
+		if (!fileChanged || !loaded || pending.current || disabled) return;
 		compareReadId.current = randomUuid();
 		send({ type: "read_file", path: file.path, cwd: file.cwd, requestId: compareReadId.current });
 	}, [fileChanged, file.path, file.cwd, loaded, dirty, disabled, send]);

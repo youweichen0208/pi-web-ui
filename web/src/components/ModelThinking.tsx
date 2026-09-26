@@ -200,12 +200,12 @@ export const ModelThinking = memo(function ModelThinking({ state, models, models
 					</div>
 				</Dropdown>
 
-			{segmented ? <div className="thinking-segments" role="group" aria-label={t("thinkingLevel")}>
+			{segmented ? <div className="thinking-control" title={t("thinkingDepthTip")}><span className="thinking-control-label">{t("thinking")}</span><div className="thinking-segments" role="group" aria-label={t("thinkingLevel")}>
 				{modes.map((mode) => {
 					const value = mode.values.find((candidate) => !supportedThinking || supportedThinking.has(candidate));
 					return <button type="button" key={mode.label} disabled={!value} aria-pressed={mode.values.includes(state?.thinkingLevel ?? "off")} title={value ? thinkingLabel(value) : t("thinkingLevel")} onClick={() => value && send({ type: "set_thinking", level: value })}>{mode.label}</button>;
 				})}
-			</div> : <Dropdown
+			</div></div> : <Dropdown
 				trigger={
 					<>
 						<FiZap />

@@ -16,14 +16,14 @@ describe("conversation titles", () => {
 			expect(completedTitleTurn([{ role: "user", content: "task" }, { role: "assistant", content: "partial", stopReason }])).toBeNull();
 		}
 	});
-	it("keeps a casual greeting as its original title", async () => {
+	it("waits for a substantive request after a casual greeting", async () => {
 		const job = new ConversationTitleJob(true);
-		const generate = vi.fn(async () => "简短问候");
+		const generate = vi.fn(async () => "Project work");
 		const save = vi.fn();
 		await job.complete("hello", "Hello!", generate, save);
 		await job.complete("another task", "answer", generate, save);
-		expect(generate).not.toHaveBeenCalled();
-		expect(save).not.toHaveBeenCalled();
+		expect(generate).toHaveBeenCalledOnce();
+		expect(save).toHaveBeenCalledExactlyOnceWith("Project work");
 	});
 	it("rejects a long English title for a Chinese first message", async () => {
 		const save = vi.fn();

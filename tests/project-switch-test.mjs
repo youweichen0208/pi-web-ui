@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +22,7 @@ for (const [i, project] of projects.entries()) {
 		session.appendMessage({ role: "assistant", content: [{ type: "text", text: `reply-${i}-${n} ` + "example text ".repeat(40) }], api: "openai-completions", provider: "test", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() });
 	}
 }
+assert.equal(spawnSync("git", ["init", "-q", projects[2]]).status, 0);
 const probe = createServer();
 await new Promise((r) => probe.listen(0, "127.0.0.1", r));
 const port = probe.address().port;

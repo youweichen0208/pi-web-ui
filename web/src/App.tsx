@@ -51,6 +51,7 @@ import { FiAlertCircle, FiAlertTriangle, FiInfo, FiX } from "react-icons/fi";
 import type { Notice } from "./use-chat";
 import { fileToProcessedImage, isRasterImage, type ProcessedImage } from "./image-paste";
 import { randomUuid } from "./uuid";
+import { keepNonPreviewAttachments } from "./preview-attachments";
 import {
 	loadSoundSettings,
 	playSound,
@@ -212,6 +213,17 @@ export function App() {
 		}
 	}, [chat.activeConversationId, attachments]);
 	const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
+	const previousPreview = useRef<PreviewFile | null>(null);
+	useLayoutEffect(() => {
+		const previous = previousPreview.current;
+		if (previous && (previous.cwd !== previewFile?.cwd || previous.path !== previewFile?.path)) {
+			setAttachments(keepNonPreviewAttachments);
+			for (const [id, draft] of attachmentDrafts.current) {
+				attachmentDrafts.current.set(id, keepNonPreviewAttachments(draft));
+			}
+		}
+		previousPreview.current = previewFile;
+	}, [previewFile]);
 	// 当前文件（0.50.0 语义）：预览面板的严格镜像 — chip 跟随打开的文件，
 	// 发送时经 contextReader 取编辑器快照（含未保存修改）。
 	const contextReader = useRef<ReadCurrentFile | null>(null);

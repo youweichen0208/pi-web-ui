@@ -239,6 +239,26 @@ export class ClientStateStore {
 		return this.load()[clientId] ?? { projects: [] };
 	}
 
+	/** Freeze the order anchors of projects discovered from old session files as
+	 *  soon as they are shown. Selecting one later must not make it "new". */
+	rememberDisplayedProjects(clientId: string, projects: readonly ProjectSummary[]): void {
+		const all = this.load();
+		const state = (all[clientId] ??= { projects: [] });
+		const known = new Set(state.projects.map((p) => p.path));
+		let changed = false;
+		for (const project of projects) {
+			if (known.has(project.path)) continue;
+			state.projects.push({ path: project.path, lastUsed: project.lastUsed, firstAdded: project.firstAdded });
+			known.add(project.path);
+			changed = true;
+		}
+		if (changed) {
+			state.projects.sort((a, b) => (b.firstAdded ?? b.lastUsed) - (a.firstAdded ?? a.lastUsed));
+			state.projects = state.projects.slice(0, 30);
+			this.save();
+		}
+	}
+
 	/** Remember which workspace a client last used. The project-list order is
 	 *  stable: existing entries only get their (informational) lastUsed
 	 *  refreshed in place, new entries are prepended, nothing ever moves. */

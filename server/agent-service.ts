@@ -3119,6 +3119,7 @@ export class ClientSession {
 				all.filter((p) => existsSync(p.path)),
 				removedProjects,
 			);
+			this.stateStore.rememberDisplayedProjects(this.clientId, projects);
 			this.emit({ type: "projects", projects });
 		} catch {
 			this.emit({ type: "projects", projects: [] });

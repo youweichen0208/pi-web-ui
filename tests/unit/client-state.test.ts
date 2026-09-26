@@ -74,6 +74,24 @@ it("merges persisted and disk-discovered projects into a stable first-added orde
 	expect(merged[2].lastUsed).toBe(6000);
 });
 
+it("keeps a disk-discovered project's displayed position after selecting it and reconnecting", () => {
+	const file = statePath();
+	const disk = [
+		{ path: "/history/new", lastUsed: 3000, firstAdded: 3000, conversationCount: 1 },
+		{ path: "/history/old", lastUsed: 2000, firstAdded: 1000, conversationCount: 1 },
+	];
+	const store = new ClientStateStore(file);
+	const shown = mergeProjectSummaries(store.get("c").projects, disk, new Set());
+	store.rememberDisplayedProjects("c", shown);
+	store.remember("c", "/history/old");
+	const reconnected = new ClientStateStore(file);
+	expect(mergeProjectSummaries(reconnected.get("c").projects, disk, new Set()).map((p) => p.path))
+		.toEqual(["/history/new", "/history/old"]);
+	reconnected.remember("c", "/brand/new");
+	expect(mergeProjectSummaries(reconnected.get("c").projects, disk, new Set()).map((p) => p.path))
+		.toEqual(["/brand/new", "/history/new", "/history/old"]);
+});
+
 it("caps the merged project list at 20, dropping the earliest-added first", () => {
 	const saved = Array.from({ length: 25 }, (_, i) => ({ path: `/p/${i}`, lastUsed: i, firstAdded: i }));
 	const merged = mergeProjectSummaries(saved, [], new Set());

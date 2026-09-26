@@ -98,6 +98,7 @@ export function TopBar({
 	const [windowState, setWindowState] = useState<DesktopWindowState>({ maximized: false, fullscreen: false });
 	useEffect(() => desktopAPI?.onWindowState(setWindowState), []);
 	const projectName = chat.state?.cwd?.split(/[\\/]/).filter(Boolean).at(-1);
+	const notGitRepo = chat.gitBranch?.cwd === chat.state?.cwd && !!chat.gitBranch?.notRepo;
 
 	const session = chat.sessions.find((item) => item.path === chat.state?.sessionFile);
 	const conversation = chat.conversations.find((item) => item.id === chat.activeConversationId);
@@ -105,8 +106,9 @@ export function TopBar({
 		conversation?.title || skillAwarePreview(session?.firstMessage ?? "") || t("newChat"),
 		session?.firstMessage,
 		session?.name,
-		session?.messageCount ?? conversation?.messageCount ?? 0,
+		Math.max(session?.messageCount ?? 0, conversation?.messageCount ?? 0, chat.state?.messages.length ?? 0),
 		locale,
+		chat.state?.messages,
 	);
 
 	const LANGUAGES: { value: Locale; label: string }[] = [
@@ -237,10 +239,11 @@ export function TopBar({
 						type="button"
 						role="tab"
 						aria-label={t("scmTab")}
-						title={t("scmTab")}
+						title={notGitRepo ? t("notGitRepoShort") : t("scmTab")}
+						aria-disabled={notGitRepo}
+						className={view === "git" ? "active" : undefined}
 						aria-selected={view === "git"}
-						className={view === "git" ? "active" : ""}
-						onClick={() => onViewChange("git")}
+						onClick={() => { if (!notGitRepo) onViewChange("git"); }}
 					>
 						<FiGitBranch />
 						<span>{t("scmTab")}</span>

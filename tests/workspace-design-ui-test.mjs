@@ -25,7 +25,7 @@ const messages=[
 ...Array.from({length:3},(_,i)=>({id:`goal-${i}`,role:'user',content:[{type:'text',text:'【目标已设定】\n\n把首页标题改为 Goal Buddy\n\n请现在开始实现这个目标。'}]})),
 {id:'user',role:'user',timestamp,content:[{type:'text',text:'审查一下最近的代码改动请求，先看看项目里都有哪些文件，最近改了什么。'}]},
 {id:'assistant-tool',role:'assistant',model:'glm-5.3',timestamp,content:[{type:'thinking',thinking:'先检查目录与最近修改，再核对项目约束。',durationMs:3000},{type:'toolCall',id:'bash-design',name:'bash',argumentsText:JSON.stringify({command})}]},
-{id:'result',role:'toolResult',toolCallId:'bash-design',toolName:'bash',isError:false,content:[{type:'text',text:lines.join('\n')+'\n'}]},
+{id:'result',role:'toolResult',toolCallId:'bash-design',toolName:'bash',isError:false,content:[{type:'text',text:lines.join('\n')+'\n'},...[...lines.slice(0,11),'docs/CONTEXT.md'].map((path,i)=>({type:'toolCall',id:`grep-${i}`,name:'grep',argumentsText:JSON.stringify({path})}))]},
 {id:'assistant',role:'assistant',model:'glm-5.3',timestamp,content:[{type:'thinking',thinking:'Confirmed: the workspace contains only docs — no code at all.'},{type:'text',text:'这个仓库目前**只有文档，没有代码**。最近的改动集中在 `.scratch/us-stock-research/issues/`，共 8 个 issue 草稿，另外有两份 ADR。要我逐个审查这些 issue 吗？'}]},
 ];
 let server,browser;
@@ -76,6 +76,27 @@ const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {
 return {left:box('.drawer-left'),right:box('.drawer-right'),header:box('.topbar'),composer:box('.inputbox'),font:getComputedStyle(document.body).fontFamily};
 });
 assert.equal(geometry.left.w,264);assert.equal(geometry.right.w,272);assert.equal(geometry.header.h,52);assert.equal(geometry.composer.w,780);assert(geometry.font.includes('IBM Plex Sans'));
+const readingEdges=await page.evaluate(()=>{
+const messages=document.querySelector('.messages');const composer=document.querySelector('.main > .inputbar');const wrap=document.querySelector('.messages-wrap');
+return {bottom:parseFloat(getComputedStyle(messages).paddingBottom),composer:composer.getBoundingClientRect().height,topFade:getComputedStyle(wrap,'::before').height,bottomFade:getComputedStyle(wrap,'::after').height};
+});
+assert.equal(readingEdges.bottom,24,JSON.stringify(readingEdges));
+assert.equal(readingEdges.topFade,'16px');assert.equal(readingEdges.bottomFade,'56px');
+assert.equal(await page.locator('.thinking-control-label').textContent(),'思考');
+await page.locator('.conversation-file').first().waitFor();
+assert.equal(await page.locator('.conversation-files-title').textContent(),'本次对话涉及搜索 12');
+assert.equal(await page.locator('.conversation-file em').count(),0);
+assert((await page.locator('.conversation-file',{hasText:'docs/CONTEXT.md'}).count())>0);
+const involvedLayout=await page.evaluate(()=>{
+const panel=document.querySelector('.panel-right').getBoundingClientRect();const tree=document.querySelector('.panel-right > .panel-body').getBoundingClientRect();const section=document.querySelector('.conversation-files').getBoundingClientRect();const list=document.querySelector('.conversation-files-list');
+return {panel:panel.height,tree:tree.height,section:section.height,bottom:section.bottom-panel.bottom,scrollable:list.scrollHeight>list.clientHeight};
+});
+assert(involvedLayout.tree<involvedLayout.panel*.5,JSON.stringify(involvedLayout));
+assert(involvedLayout.section>involvedLayout.panel*.4,JSON.stringify(involvedLayout));
+assert(Math.abs(involvedLayout.bottom)<2,JSON.stringify(involvedLayout));
+await page.setViewportSize({width:1600,height:480});
+assert(await page.locator('.conversation-files-list').evaluate(list=>list.scrollHeight>list.clientHeight),'involved files scroll in a short viewport');
+await page.setViewportSize({width:1600,height:1000});
 await page.locator('.messages').evaluate(e=>e.scrollTop=0);
 await page.locator('.inputbox textarea').focus();
 await page.waitForTimeout(1300);
@@ -126,6 +147,30 @@ await save.click();await page.locator('.fp-header-status',{hasText:'已保存'})
 assert.equal(await save.count(),0);
 await page.locator('.fp-back').click();
 console.log('PASS review: goal events, timing, font actually rendered, single footer, editor title/save/table/resize/attachment');
+
+const shortPage=await context.newPage();
+const shortAt=Date.now()-6*60*60*1000;
+const shortMessages=[
+{id:'short-question',role:'user',timestamp:shortAt,content:[{type:'text',text:'请帮我看一下'}]},
+{id:'short-answer',role:'assistant',timestamp:shortAt+60_000,content:[{type:'thinking',thinking:'检查中'},{type:'text',text:'已经检查。'}]},
+{id:'short-goal',role:'user',timestamp:shortAt+5*60*60*1000,content:[{type:'text',text:'【目标已设定】\n\n继续审查\n\n请现在开始实现这个目标。'}]},
+];
+await shortPage.routeWebSocket('**/ws',route=>{const upstream=route.connectToServer();route.onMessage(wire=>upstream.send(wire));upstream.onMessage(wire=>{const message=JSON.parse(wire.toString());if(message.type==='snapshot')Object.assign(message.state,{messages:shortMessages,piConfigured:true});route.send(JSON.stringify(message));});});
+await shortPage.goto(`http://localhost:${PORT}`);
+await shortPage.locator('.goal-event').waitFor();
+await shortPage.locator('.qn-bar').waitFor();
+const shortLayout=await shortPage.evaluate(()=>{
+const messages=document.querySelector('.messages');const event=document.querySelector('.goal-event');const rail=document.querySelector('.qn-rail');const marker=document.querySelector('.qn-bar');const question=document.querySelector('[data-msg-id="short-question"]');
+const distance=messages.getBoundingClientRect().bottom-event.getBoundingClientRect().bottom;
+const markerPosition=(marker.getBoundingClientRect().top-rail.getBoundingClientRect().top)/rail.getBoundingClientRect().height;
+const questionPosition=(question.getBoundingClientRect().top-messages.getBoundingClientRect().top+messages.scrollTop)/messages.scrollHeight;
+return {distance,markerPosition,questionPosition};
+});
+assert(shortLayout.distance<80,JSON.stringify(shortLayout));
+assert(Math.abs(shortLayout.markerPosition-shortLayout.questionPosition)<.06,JSON.stringify(shortLayout));
+assert((await shortPage.locator('.thinking-duration').textContent()).includes('未记录'));
+assert((await shortPage.locator('.time-gap').getAttribute('title')).includes(String(new Date(shortAt).getFullYear())));
+await shortPage.close();
 
 for(const width of [1100,900,390]){
 await page.setViewportSize({width,height:900});await page.waitForTimeout(250);

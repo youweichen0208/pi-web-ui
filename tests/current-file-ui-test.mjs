@@ -102,6 +102,19 @@ try {
 	await chip.waitFor();
 	assert((await chip.textContent()).includes("@note.md"), "chip follows the newly opened file");
 	assert.equal(await chip.count(), 1, "exactly one current-file chip");
+	await page.locator(".fp-reference").click();
+	await page.locator(".attach-chip.reference").waitFor();
+	await page.locator(".fp-back").click();
+	await page.locator(".attach-chip.reference").waitFor({ state: "detached" });
+	await page.locator(".file-name", { hasText: "code.ts" }).click();
+	await page.locator(".fp-editor").waitFor();
+	assert.equal(await page.locator(".attach-chip.reference").count(), 0, "old whole-file reference is removed after switching previews");
+	await submit("switched file only");
+	await sent();
+	assert.deepEqual(prompts.at(-1).attachments.map((a) => a.path), ["code.ts"]);
+	await page.locator(".fp-back").click();
+	await page.locator(".file-name", { hasText: "note.md" }).click();
+	await page.locator(".fp-rich-document").waitFor();
 
 	// [7] Quote-selected lines coexist with the snapshot; markdown edits ride along.
 	await page.locator(".fp-markdown p").evaluate((node) => {

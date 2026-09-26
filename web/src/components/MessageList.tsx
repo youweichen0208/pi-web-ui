@@ -4,7 +4,7 @@ import { goalEventText, goalCompletedText, groupGoalEvents } from "../goal-event
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { FiArrowDown } from "react-icons/fi";
 import type {
 	PromptAttachment,
@@ -333,6 +333,30 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 	useEffect(() => {
 		questionsRef.current = questions;
 	}, [questions]);
+	const [markerPositions, setMarkerPositions] = useState<Record<string, number>>({});
+	const updateMarkerPositions = useCallback(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const top = el.getBoundingClientRect().top;
+		const height = Math.max(el.scrollHeight, 1);
+		const next: Record<string, number> = {};
+		for (const question of questionsRef.current) {
+			const node = el.querySelector<HTMLElement>(`[data-msg-id="${question.id}"]`);
+			if (node) next[question.id] = Math.max(0.02, Math.min(0.98, (node.getBoundingClientRect().top - top + el.scrollTop) / height));
+		}
+		setMarkerPositions((previous) => Object.keys(next).length === Object.keys(previous).length &&
+			Object.keys(next).every((id) => Math.abs(next[id] - previous[id]) < 0.002) ? previous : next);
+	}, []);
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		let frame = requestAnimationFrame(updateMarkerPositions);
+		const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(updateMarkerPositions); };
+		const observer = new MutationObserver(schedule);
+		observer.observe(el, { childList: true, subtree: true });
+		window.addEventListener("resize", schedule);
+		return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("resize", schedule); };
+	}, [questions, updateMarkerPositions]);
 
 	// Which question is currently on screen (drives the bar highlight).
 	const updateActiveFromScroll = useCallback(() => {
@@ -466,8 +490,9 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 		stickRef.current = nearBottom && !escapedRef.current;
 		setStickBottom(stickRef.current);
 		updateActiveFromScroll();
+		updateMarkerPositions();
 		scheduleSweep();
-	}, [updateActiveFromScroll, scheduleSweep]);
+	}, [updateActiveFromScroll, updateMarkerPositions, scheduleSweep]);
 
 	// 流结束兜底：finalize 瞬间 streaming→persisted 切换可能让内容高度塌缩一帧，
 	// 浏览器把视口 clamp 到半路；若用户并未主动离开（!escaped），等布局稳定后吸回底部。
@@ -551,15 +576,10 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 		window.addEventListener("resize", update);
 		return () => window.removeEventListener("resize", update);
 	}, [scheduleSweep]);
-	const n = questions.length;
-	const railGap = useMemo(() => {
-		if (n === 0) return 27;
-		const h = railH || 600;
-		return Math.max(4, Math.min(27, Math.floor((h - 16) / n) - 3));
-	}, [n, railH]);
-	/** Many questions: per-tick chips would overlap (pitch < ~24px), so the
-	 *  hover panel becomes a scrollable list instead. */
-	const many = railGap < 20;
+	const positionedQuestions = questions.filter((question) => markerPositions[question.id] !== undefined);
+	/** Closely spaced questions use the existing hover list for navigation. */
+	const many = positionedQuestions.some((question, index) => index > 0 &&
+		(markerPositions[question.id] - markerPositions[positionedQuestions[index - 1].id]) * railH < 20);
 
 	return (
 		<div className="messages-wrap">
@@ -599,7 +619,7 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 					if (goalEvents.absorbed.has(m.id)) return null;
 					const withGap = (content: ReactNode) => {
 						const label = timeGaps.get(i);
-						return label ? <Fragment key={m.id}><div className="time-gap" aria-label={t("timeGapAt", { time: label })}><span>{label}</span></div>{content}</Fragment> : content;
+						return label ? <Fragment key={m.id}><div className="time-gap" aria-label={t("timeGapAt", { time: label })} title={m.timestamp ? new Date(m.timestamp).toLocaleString() : undefined}><span>{label}</span></div>{content}</Fragment> : content;
 					};
 					const event = goalEvents.groups.get(m.id);
 					if (event) return withGap(<div key={m.id} className={`goal-event ${event.kind}`} data-msg-id={m.id}>
@@ -736,17 +756,17 @@ export const MessageList = memo(function MessageList({ state, liveOutputs, toolS
 					className={`qn-rail ${many ? "many" : ""}`}
 					ref={railRef}
 					aria-label={t("questionNavTitle")}
-					style={{ "--rail-gap": `${railGap}px` } as CSSProperties}
 				>
-					{questions.map((q, i) => (
+					{positionedQuestions.map((q) => (
 						<button
 							type="button"
 							key={q.id}
-							className={`qn-bar ${i === activeIdx ? "active" : ""}`}
-							aria-label={`${i + 1}. ${q.text}`}
+							className={`qn-bar ${questions[activeIdx]?.id === q.id ? "active" : ""}`}
+							style={{ top: `${markerPositions[q.id] * 100}%` }}
+							aria-label={`${questions.indexOf(q) + 1}. ${q.text}`}
 							onClick={() => jumpTo(q.id)}
 						>
-							<span className="qn-bar-text">{i + 1}. {q.text}</span>
+							<span className="qn-bar-text">{questions.indexOf(q) + 1}. {q.text}</span>
 						</button>
 					))}
 					{many && (

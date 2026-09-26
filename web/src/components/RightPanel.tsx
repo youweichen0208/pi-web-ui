@@ -148,8 +148,17 @@ export const RightPanel = memo(function RightPanel({ active, files, fileChanged,
 		{directories[path]?.truncated && <div className="panel-empty files-truncated">{t("filesTruncated")}</div>}
 	</>;
 	const involved = conversationFileEntries(streamingMessage ? [...messages, streamingMessage] : messages, cwd);
-	return <aside className="panel panel-right">
-		<div className="panel-title"><span>{t("workspaceFiles")}</span>{notRepo ? <span className="tree-not-repo">{t("notGitRepoShort")}</span> : <button type="button" className="tree-filter" aria-pressed={onlyChanged} onClick={() => setOnlyChanged(value => !value)}>{t("onlyChanged")} ({changed.length})</button>}</div>
+	const actionCounts = involved.reduce((counts, file) => ({ ...counts, [file.action]: counts[file.action] + 1 }), { read: 0, grep: 0, used: 0 });
+	const actionLabel = (action: "read" | "grep" | "used") => t(action === "read" ? "readVerb" : action === "grep" ? "grepSearch" : "fileUsed");
+	const actionSummary = (["read", "grep", "used"] as const).filter((action) => actionCounts[action] > 0).map((action) => `${actionLabel(action)} ${actionCounts[action]}`).join(" · ");
+	const oneAction = (["read", "grep", "used"] as const).filter((action) => actionCounts[action] > 0).length === 1;
+	const nameCounts = new Map<string, number>();
+	for (const file of involved) {
+		const name = file.path.split("/").at(-1) ?? file.path;
+		nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+	}
+	return <aside className={`panel panel-right${involved.length ? " has-conversation-files" : ""}`}>
+		<div className="panel-title"><span>{t("workspaceFiles")}</span>{!notRepo && <button type="button" className="tree-filter" aria-pressed={onlyChanged} onClick={() => setOnlyChanged(value => !value)}>{t("changedCount", { n: changed.length })}</button>}</div>
 		<div className="panel-body" role="tree" aria-label={t("workspaceFiles")} onKeyDown={(event) => {
 			const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-tree-node]");
 			if (!button) return;
@@ -172,7 +181,7 @@ export const RightPanel = memo(function RightPanel({ active, files, fileChanged,
 		}}>
 			{onlyChanged && changed.length === 0 ? <div className="panel-empty">{t("noChangedFiles")}</div> : directories[""] ? renderDirectory("", 0) : <div className="panel-empty">{t("loading")}</div>}
 		</div>
-		{involved.length > 0 && <div className="conversation-files"><div className="conversation-files-title">{t("conversationFiles")}</div>{involved.map(({ path, action }) => <button type="button" key={path} className="conversation-file" title={path} onClick={() => onPreview(path, path.split("/").at(-1) || path)}><span className="conversation-file-main"><span>{path.split("/").at(-1)}</span><em>{action}</em></span>{path.includes("/") && <small>{path.slice(0, path.lastIndexOf("/"))}</small>}</button>)}</div>}
+		{involved.length > 0 && <div className="conversation-files"><div className="conversation-files-title"><span>{t("conversationFiles")}</span><span>{actionSummary}</span></div><div className="conversation-files-list">{involved.map(({ path, action }) => { const name = path.split("/").at(-1) ?? path; const duplicate = (nameCounts.get(name) ?? 0) > 1; return <button type="button" key={path} className="conversation-file" title={path} onClick={() => onPreview(path, name)}><span className="conversation-file-main"><span>{duplicate ? path : name}</span>{!oneAction && <em>{actionLabel(action)}</em>}</span>{path.includes("/") && !duplicate && <small>{path.slice(0, path.lastIndexOf("/"))}</small>}</button>; })}</div></div>}
 			{widgets.filter((w) => w.lines.length > 0).length > 0 && (
 				<div className="panel-widgets">
 					{widgets

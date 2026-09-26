@@ -58,8 +58,10 @@ export class ConversationTitleJob {
 		save: (title: string) => void,
 	): Promise<void> {
 		if (this.locked || this.pending || this.attempts >= 3 || !question.trim() || !answer.trim()) return;
+		// A greeting is not enough to name the conversation. Wait for the first
+		// substantive turn instead of permanently locking the title at "hello".
+		if (isCasualGreeting(question)) return;
 		this.firstQuestion ??= question.trim();
-		if (isCasualGreeting(this.firstQuestion)) { this.locked = true; return; }
 		this.attempts++;
 		const controller = new AbortController();
 		this.pending = controller;

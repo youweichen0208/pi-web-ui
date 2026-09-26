@@ -25,7 +25,7 @@ export function ThinkingBlock({ thinking, durationMs, streaming, wrap = true }: 
 		<button type="button" className="thinking-toggle" onClick={() => setOpen(!expanded)}>
 			{expanded ? <FiChevronDown /> : <FiChevronRight />}
 			<span className="thinking-label">{t("thinking")}</span>
-			{durationMs !== undefined && <span className="thinking-duration">· {t("thinkingDuration", { n: Math.max(1, Math.round(durationMs / 1000)) })}</span>}
+			<span className="thinking-duration">· {durationMs !== undefined ? t("thinkingDuration", { n: Math.max(1, Math.round(durationMs / 1000)) }) : t("thinkingUnrecorded")}</span>
 		</button>
 		{expanded && <div className="thinking-body">{thinking}</div>}
 	</div>;
